@@ -1,0 +1,172 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>anonymice — trace console</title>
+<style>
+  :root{--bg:#0e1116;--panel:#151a22;--line:#232a35;--fg:#d8dee9;--dim:#7d8799;
+        --ok:#5fb37a;--warn:#e0a458;--bad:#e05561;--acc:#5aa9e6;--tok:#a678de}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;height:100vh;display:grid;grid-template-rows:auto 1fr}
+  header{display:flex;gap:16px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+  h1{font-size:14px;margin:0;font-weight:600;letter-spacing:.5px}
+  .sp{flex:1}
+  button,select{background:#1d2530;color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:4px 9px;font:inherit;cursor:pointer}
+  button:hover{border-color:var(--acc)}
+  main{display:grid;grid-template-columns:1fr 420px;overflow:hidden}
+  #trace{overflow:auto;padding:8px}
+  aside{border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:12px}
+  .ev{border:1px solid var(--line);border-left-width:3px;border-radius:6px;margin-bottom:6px;padding:7px 10px;background:var(--panel);cursor:pointer}
+  .ev:hover{border-color:var(--acc)}
+  .ev .hd{display:flex;gap:9px;align-items:baseline}
+  .pt{width:1.4em;text-align:center;color:var(--acc)}
+  .op{font-weight:600;min-width:170px}
+  .flow{color:var(--dim);min-width:130px;font-size:12px}
+  .sum{color:var(--dim);flex:1}
+  .t{color:#4a5364;font-size:11px}
+  .ev[data-k=classify]{border-left-color:var(--acc)}
+  .ev[data-k=egress-mask]{border-left-color:var(--tok)}
+  .ev[data-k=egress-block],.ev[data-k=egress-allow]{border-left-color:var(--warn)}
+  .ev[data-k=resolve]{border-left-color:var(--ok)}
+  .ev[data-k=provider-received]{border-left-color:var(--ok);background:#121a15}
+  .ev[data-k=PROVIDER-RECEIVED-PLAINTEXT]{border-left-color:var(--bad);background:#1e1315}
+  .ev[data-k=PROVIDER-RECEIVED-PLAINTEXT] .op{color:var(--bad)}
+  .body{display:none;margin-top:8px;border-top:1px solid var(--line);padding-top:8px;white-space:pre-wrap;word-break:break-word}
+  .ev.open .body{display:block}
+  .lbl{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.6px;margin:6px 0 2px}
+  mark{background:#3a2b52;color:#d9c2ff;border-radius:3px;padding:0 2px}
+  mark.real{background:#4a1f24;color:#ff9aa3}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  td,th{text-align:left;padding:3px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--dim);font-weight:500}
+  .tok{color:var(--tok)}
+  .tabs{display:flex;gap:6px;margin-bottom:10px}
+  .tabs button.on{border-color:var(--acc);color:#fff}
+  .empty{color:var(--dim);padding:20px;text-align:center}
+</style>
+
+<header>
+  <h1>🐭 anonymice · trace console</h1>
+  <span class="t" id="conn">connecting…</span>
+  <span class="sp"></span>
+  <label class="t">re-identify as
+    <select id="actor"></select>
+  </label>
+  <input id="filter" placeholder="filter flow…" style="background:#1d2530;border:1px solid var(--line);color:var(--fg);border-radius:5px;padding:4px 9px">
+  <button id="clear">clear view</button>
+  <button id="reset">reset vault</button>
+</header>
+
+<main>
+  <div id="trace"><div class="empty">waiting for events — open a fixture and type, copy or paste</div></div>
+  <aside>
+    <div class="tabs">
+      <button data-tab="foreign" class="on">foreign storage</button>
+      <button data-tab="vault">vault</button>
+      <button data-tab="legend">legend</button>
+    </div>
+    <div id="pane"></div>
+  </aside>
+</main>
+
+<script type="module">
+const $ = (s) => document.querySelector(s);
+const traceEl = $('#trace');
+let events = [], filter = '', tab = 'foreign';
+
+const es = new EventSource('http://vault.localhost:8787/events');
+es.onopen = () => $('#conn').textContent = 'live';
+es.onerror = () => $('#conn').textContent = 'disconnected';
+es.onmessage = (m) => { const e = JSON.parse(m.data); events.push(e); if (show(e)) render(e); refresh(); };
+
+function show(e) { return !filter || JSON.stringify(e).toLowerCase().includes(filter); }
+
+function esc(s){return String(s ?? '').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+
+function highlightSpans(text, spans, cls) {
+  if (!spans?.length) return esc(text);
+  let out = '', last = 0;
+  for (const s of [...spans].sort((a,b)=>a.start-b.start)) {
+    if (s.start == null) continue;
+    out += esc(text.slice(last, s.start)) + `<mark class="${cls}">${esc(text.slice(s.start, s.end))}</mark>`;
+    last = s.end;
+  }
+  return out + esc(text.slice(last));
+}
+
+function render(e) {
+  if (traceEl.querySelector('.empty')) traceEl.innerHTML = '';
+  const d = document.createElement('div');
+  d.className = 'ev'; d.dataset.k = e.op;
+  const time = new Date(e.ts).toLocaleTimeString('de-CH', { hour12: false });
+  d.innerHTML = `<div class="hd">
+      <span class="pt">${esc(e.point ?? '·')}</span>
+      <span class="op">${esc(e.op)}</span>
+      <span class="flow">${esc(e.flow ?? '')}</span>
+      <span class="sum">${esc(e.summary ?? '')}</span>
+      <span class="t">${time}</span>
+    </div><div class="body">${detail(e)}</div>`;
+  d.onclick = () => d.classList.toggle('open');
+  traceEl.prepend(d);
+  if (e.op === 'PROVIDER-RECEIVED-PLAINTEXT') d.classList.add('open');
+}
+
+function detail(e) {
+  let h = '';
+  if (e.url) h += `<div class="lbl">url</div>${esc(e.url)}`;
+  if (e.actor) h += `<div class="lbl">actor</div>${esc(e.actor)}`;
+  if (e.before != null) h += `<div class="lbl">before (inside our boundary)</div>${highlightSpans(e.before, e.spans ?? e.leak, e.leak ? 'real' : '')}`;
+  if (e.after != null && e.after !== e.before) h += `<div class="lbl">after (what leaves)</div>${esc(e.after)}`;
+  if (e.spans?.length) h += `<div class="lbl">spans</div>` + e.spans.map(s =>
+    `${s.cls}  conf ${s.confidence ?? '—'}  <span class="tok">${esc(s.token ?? s.digest ?? '')}</span>${s.fresh ? '  (new entity)' : ''}`).join('<br>');
+  if (e.leak?.length) h += `<div class="lbl" style="color:var(--bad)">leaked values</div>` +
+    e.leak.map(l => `${l.cls}: ${esc(l.value)}`).join('<br>');
+  return h || '<span class="t">no payload</span>';
+}
+
+async function refresh() {
+  const st = await fetch('http://vault.localhost:8787/api/state').then(r => r.json());
+  const sel = $('#actor');
+  if (!sel.options.length) {
+    sel.innerHTML = st.roles.map(r => `<option${r === st.actor ? ' selected' : ''}>${r}</option>`).join('');
+    sel.onchange = () => fetch('http://vault.localhost:8787/api/actor',
+      { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ actor: sel.value }) });
+  }
+  const pane = $('#pane');
+  if (tab === 'vault') {
+    pane.innerHTML = `<table><tr><th>token</th><th>class</th><th>real value</th><th>uses</th></tr>` +
+      st.vault.map(v => `<tr><td class="tok">${v.digest}</td><td>${v.cls}</td><td>${esc(v.value)}</td><td>${v.uses}</td></tr>`).join('') +
+      `</table>` + (st.vault.length ? '' : '<div class="empty">no entities yet</div>');
+  } else if (tab === 'foreign') {
+    pane.innerHTML = `<div class="lbl">everything below has left our boundary</div>` +
+      (st.foreign.length ? st.foreign.slice().reverse().map(f =>
+        `<div style="border:1px solid var(--line);border-radius:6px;padding:8px;margin-bottom:6px">
+           <div class="t">${new Date(f.ts).toLocaleTimeString('de-CH',{hour12:false})} · ${esc(f.service)}${esc(f.path)}</div>
+           <div style="margin-top:5px;white-space:pre-wrap;word-break:break-word">${esc(f.body).slice(0, 900)}</div>
+         </div>`).join('') : '<div class="empty">provider has received nothing</div>');
+  } else {
+    pane.innerHTML = `<table>
+      <tr><td>①</td><td>capture-phase input / clipboard — before the untrusted client's JS</td></tr>
+      <tr><td>②</td><td>editor adapter — the document model</td></tr>
+      <tr><td>③</td><td>chokepoint shim — the guarantee</td></tr>
+      <tr><td>🌍</td><td>foreign service received something</td></tr>
+      <tr><td colspan="2" style="padding-top:10px;color:var(--bad)">PROVIDER-RECEIVED-PLAINTEXT = a real value crossed the border. This is the only failure that matters.</td></tr>
+    </table>`;
+  }
+}
+
+for (const b of document.querySelectorAll('.tabs button')) {
+  b.onclick = () => {
+    document.querySelectorAll('.tabs button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on'); tab = b.dataset.tab; refresh();
+  };
+}
+$('#filter').oninput = (e) => {
+  filter = e.target.value.toLowerCase();
+  traceEl.innerHTML = ''; events.filter(show).forEach(render);
+};
+$('#clear').onclick = () => { events = []; traceEl.innerHTML = '<div class="empty">cleared</div>'; };
+$('#reset').onclick = async () => {
+  await fetch('http://vault.localhost:8787/api/reset', { method: 'POST' });
+  events = []; traceEl.innerHTML = '<div class="empty">reset</div>'; refresh();
+};
+refresh();
+</script>

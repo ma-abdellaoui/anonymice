@@ -1,0 +1,41 @@
+<!doctype html><meta charset="utf-8"><title>Internal CRM — trusted</title>
+<link rel="stylesheet" href="/fixtures/_style.css">
+<header><b>Internal CRM</b><span class="badge trusted">trusted.localhost · INSIDE our boundary</span>
+<span style="flex:1"></span><a href="http://vault.localhost:8787/" target="_blank">trace console →</a></header>
+<main>
+  <div class="card">
+    <h2>Kunde 4711 — real values live here</h2>
+    <dl>
+      <dt>Name</dt><dd>Anna Meier</dd>
+      <dt>Adresse</dt><dd>Bahnhofstrasse 12, 8001 Zürich</dd>
+      <dt>E-Mail</dt><dd>anna.meier@ourco.ch</dd>
+      <dt>Telefon</dt><dd>+41 44 668 18 00</dd>
+      <dt>IBAN</dt><dd>CH93 0076 2011 6238 5295 7</dd>
+      <dt>AHV</dt><dd>756.1234.5678.97</dd>
+      <dt>Vertrag</dt><dd>VTR-4711</dd>
+    </dl>
+    <p class="hint">Select any of this and copy (⌘/Ctrl+C) → flow 1. The clipboard
+      receives tokens, never plaintext. Watch the console.</p>
+  </div>
+
+  <div class="card">
+    <h2>Paste target (trusted destination → re-identification)</h2>
+    <textarea id="pt" rows="4" placeholder="paste tokenized text here — it resolves back, subject to your role"></textarea>
+    <p class="hint">Switch role to <code>guest</code> in the console and paste again: nothing resolves.</p>
+  </div>
+
+  <div class="card">
+    <h2>Egress test (trusted destination)</h2>
+    <div class="row"><button onclick="send()">POST plaintext to trusted API</button></div>
+    <p class="hint">Destination is trusted → the chokepoint lets plaintext through. Console shows <code>egress-allow</code>.</p>
+    <div class="log" id="log"></div>
+  </div>
+</main>
+<script>
+async function send(){
+  const r = await fetch('/api/trace',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({op:'note',flow:'F0-trusted-egress',point:'③',summary:'plaintext POST to trusted host',before:'Anna Meier / CH93 0076 2011 6238 5295 7'})});
+  log('sent → ' + r.status);
+}
+function log(m){document.getElementById('log').textContent += m + '\n'}
+</script>

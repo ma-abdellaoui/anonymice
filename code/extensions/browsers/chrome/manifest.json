@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "Anonymice",
+  "version": "0.0.1",
+  "description": "Tokenizes sensitive values before they cross our boundary; re-identifies locally for authorized users.",
+  "minimum_chrome_version": "111",
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "permissions": [
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "run_at": "document_start",
+      "all_frames": true,
+      "world": "MAIN",
+      "js": [
+        "src/content/chokepoint.js"
+      ]
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "run_at": "document_start",
+      "all_frames": true,
+      "world": "ISOLATED",
+      "js": [
+        "src/content/bridge.js",
+        "src/content/clipboard.js",
+        "src/content/input.js",
+        "src/content/reader.js"
+      ]
+    }
+  ],
+  "storage": {
+    "managed_schema": "src/managed-schema.json"
+  }
+}
