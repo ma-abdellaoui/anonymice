@@ -11,7 +11,9 @@ const pending = new Map();
 let seq = 0;
 
 function ask(type, payload) {
-  return chrome.runtime.sendMessage({ type, ...payload }).catch((e) => ({ ok: false, error: String(e) }));
+  return self.anonymicePlatform.runtime            // seam ④: chrome.* vs browser.*
+    .sendMessage({ type, ...payload })
+    .catch((e) => ({ ok: false, error: String(e) }));
 }
 
 // --- MAIN <-> ISOLATED -------------------------------------------------------

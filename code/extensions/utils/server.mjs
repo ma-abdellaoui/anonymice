@@ -18,9 +18,9 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createHmac, randomUUID } from 'node:crypto';
 
-import { classify, sweep } from '../../../extension/src/lib/classifier.js';
-import { mergeOverlapping, applySpans } from '../../../extension/src/lib/spans.js';
-import { render, HIGH_CONFIDENCE } from '../../../extension/src/lib/tokens.js';
+import { classify, sweep } from '../core/lib/classifier.js';
+import { mergeOverlapping, applySpans } from '../core/lib/spans.js';
+import { render, HIGH_CONFIDENCE } from '../core/lib/tokens.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PORT = 8787;

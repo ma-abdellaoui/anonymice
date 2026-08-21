@@ -11,8 +11,9 @@
 // tokens.
 
 const A = self.anonymice;
-const PROV = 'application/x-anonymice';   // sync events
-const PROV_WEB = 'web ' + PROV;           // async Clipboard API
+const P = self.anonymicePlatform;         // see platform/README.md, seam ②
+const PROV = P.clipboard.provenanceType;
+const PROV_WEB = P.clipboard.provenanceTypeAsync;
 
 // --- copy / cut --------------------------------------------------------------
 for (const ev of ['copy', 'cut']) {
@@ -37,7 +38,9 @@ async function onCopy(e) {
   const dt = e.clipboardData;
   dt.setData('text/plain', tokenized);
   dt.setData('text/html', escapeHtml(tokenized));      // sanitize EVERY flavour
-  dt.setData(PROV, JSON.stringify({
+  // Where the platform has no custom formats the tokens still go out; paste
+  // simply falls back to the slow no-provenance branch.
+  if (P.clipboard.customFormats) dt.setData(PROV, JSON.stringify({
     v: 1,
     origin: location.origin,
     ts: Date.now(),
@@ -69,7 +72,9 @@ async function onPaste(e) {
     }
   }
 
-  const provenance = safeJson(dt.getData(PROV) || dt.getData(PROV_WEB));
+  const provenance = P.clipboard.customFormats
+    ? safeJson(dt.getData(PROV) || dt.getData(PROV_WEB))
+    : null;
   const plain = dt.getData('text/plain');
   if (!plain) return;
 
