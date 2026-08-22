@@ -1,0 +1,7 @@
+# The engine keeps its own language list, separate from the recognizer
+# registry's, and refuses to start if the two disagree. Both must name every
+# language the image supports.
+supported_languages:
+  - en
+  - de
+default_score_threshold: 0

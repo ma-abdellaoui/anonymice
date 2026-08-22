@@ -64,7 +64,12 @@ services:
     # The PII anonymizer guardrail's first detection stage. Without it the
     # guardrail and every /pii route answer 501, so it belongs in the stack
     # rather than in a local overlay.
-    image: mcr.microsoft.com/presidio-analyzer:2.2.360
+    #
+    # Built locally rather than pulled: the stock image registers English only
+    # and rejects German outright, and the corpus this proxy serves is German.
+    build:
+      context: ./docker/presidio
+    image: anonymice/pii-rules:local
     restart: always
     ports:
       - "5002:3000"
