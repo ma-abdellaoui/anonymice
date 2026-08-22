@@ -1,9 +1,11 @@
 # Handover: implementing the PII codec architecture
 
-You are picking up an in-progress feature in a hard fork of LiteLLM. This document tells you where things
-stand, what is already decided, what will break the moment you run the tooling, and where to start.
+Second handover. The first one described a tree where nothing had been re-verified after the move into this
+repo; this one describes a tree where Phases A through D of the plan are done, Phase E is done through the
+storage layer, and the tooling that was broken by the move has been fixed.
 
-Read this first, then `PII_CODEC_ARCHITECTURE.md`, which is the actual plan you are implementing.
+Read this, then `PII_CODEC_ARCHITECTURE.md`. Part 6 of that document is the checklist and it is now marked
+up: `[x]` done, `[~]` partly done with a note saying exactly what is missing, `[ ]` not started.
 
 ---
 
@@ -13,269 +15,233 @@ Read this first, then `PII_CODEC_ARCHITECTURE.md`, which is the actual plan you 
 |---|---|
 | Repo | `git@github.com:ma-abdellaoui/anonymice.git` |
 | Engine lives at | `code/engine/` (a hard fork of LiteLLM) |
-| Branch | `main` |
-| Upstream | **none.** Deliberately disconnected from `BerriAI/litellm`. No remote, no shared history |
+| Branch | `pii-codec-implementation`, branched from and merged with `main` |
+| Upstream | **none.** Deliberately disconnected from `BerriAI/litellm` |
 | Feature code | `code/engine/litellm/pii/` |
 | Plan you are executing | `code/engine/PII_CODEC_ARCHITECTURE.md`, Part 6 |
-| Background on detection | `code/engine/PII_ANONYMIZATION_PLAN.md` |
-
-The fork is a snapshot of LiteLLM's tracked tree with the PII work committed on top. Because it is
-disconnected, upstream security fixes and new model support will not arrive on their own.
 
 All paths below are relative to `code/engine/` unless stated otherwise.
 
+**`main` moves constantly.** Several PRs landed on it during the last session. Merge it in regularly; the
+browser-extension work and the engine work touch disjoint files, so conflicts have not happened yet.
+
 ---
 
-## 2. Read this before running any tooling
+## 2. Run the tests with `-n 8`
 
-The fork inherited four things that reference LiteLLM's upstream repository and will fail here. None are
-hard to fix; all of them will waste your time if you meet them cold.
+This is the single most useful thing in this document.
 
-**The three lint gates are broken by the move, and `--base origin/main` alone does not fix them.**
-`scripts/ruff_strict_gate.py`, `scripts/type_discipline_gate.py`, and `scripts/type_check_gate.py` all set
-`DEFAULT_BASE = "origin/litellm_internal_staging"`, which does not exist here. But changing only that is not
-enough, and the failure it produces is misleading rather than obvious.
-
-Each gate measures the base by creating a git worktree at the base ref and scanning `<worktree>/litellm`,
-because upstream the engine sat at the repository root. Here the engine is at `code/engine/`, so that path
-does not exist in the worktree, the base measures zero violations, and every pre-existing violation in the
-tree is blamed on your change. Running it today reports things like `LIT001 ... this change added 22824`,
-which is the entire codebase, not your diff.
-
-The fix is to teach the gates the subdirectory prefix. In each of the three scripts, derive it once and use
-it when scanning the base worktree:
-
-```python
-GIT_ROOT = Path(_run(["git", "rev-parse", "--show-toplevel"], cwd=REPO_ROOT).strip())
-ENGINE_PREFIX = REPO_ROOT.relative_to(GIT_ROOT)   # "code/engine"
-# then scan (worktree / ENGINE_PREFIX / TARGET) instead of (worktree / TARGET)
+```bash
+uv run --extra proxy --group dev --group proxy-dev python -m pytest \
+  tests/test_litellm/pii/ \
+  tests/test_litellm/proxy/pii_endpoints/ \
+  tests/test_litellm/proxy/guardrails/ -q -n 8
 ```
 
-and set `DEFAULT_BASE = "origin/main"`. Verify with a no-op change: a clean tree must report zero added
-violations. Until this is done the budget gates cannot tell your regressions from inherited ones, so treat
-their output as meaningless rather than as a signal.
+That is **8 seconds**. The same command without `-n 8` is **326 seconds**, for the same result.
 
-**`make lint` and `make check` fetch that branch.** `Makefile` target `lint-fetch-base` runs
-`git fetch origin litellm_internal_staging`. It will fail. Change it to `origin main`, or set
-`LINT_DEP_BASE=` to skip the fetch.
+`tests/test_litellm/conftest.py` has a module-scoped autouse fixture that calls `importlib.reload(litellm)`
+and `importlib.reload(litellm.proxy.proxy_server)` once per test module. Those reloads are multi-second each,
+and the fixture skips them entirely when `PYTEST_XDIST_WORKER` is set. xdist therefore both parallelises and
+removes the reload, and the reload is most of the cost. Do not go back to serial runs for routine work.
 
-**`CLAUDE.md` still describes LiteLLM's contribution process.** Its coding conventions (section 3 below) are
-still authoritative and you must follow them. Its *process* rules are not: it says to base PRs on
-`litellm_internal_staging`, to prefix branches `litellm_`, and to follow
-`.github/pull_request_template.md`. None of that applies. Ask the maintainer what the branching and review
-convention is here rather than guessing from that file.
-
-**The git root is above you.** The engine is a subdirectory of a larger repo. `git` commands run from
-`code/engine/` operate on the whole `anonymice` repo, and there is no `.git` inside the engine. Scripts that
-compute `REPO_ROOT` from `__file__` still resolve correctly, but anything reasoning about "the repository"
-sees anonymice.
+Two failures are expected and unrelated: `test_guardrail_coverage.py::test_secret_detection_*` fail on
+`ModuleNotFoundError: No module named 'detect_secrets'`, which lives in an optional group.
 
 ---
 
-## 3. Environment
+## 3. Tooling that was broken and is now fixed
 
-No virtualenv was copied and no dependencies are installed. Set that up yourself and install whatever you
-turn out to need; the list below is a starting point, not an exhaustive one.
+The previous handover's section 2 is resolved. Do not redo this work.
+
+**The four budget gates measured the base at zero.** Each scans a git worktree at the base ref, and upstream
+the engine sat at the repository root. Here it is a subdirectory, so the scan found nothing, the base
+measured zero, and every inherited violation was blamed on your change. `scripts/engine_layout.py` now
+derives the `code/engine` prefix once and every gate scans `<worktree>/code/engine`. `DEFAULT_BASE` is
+`origin/main`. Verified on a clean tree: ruff base 19447 = head 19447, type-discipline 78757 = 78757,
+test-quality 6297 = 6297.
+
+**`budget_ratchet_check.py` and `type_discipline_gate.py` read their base budgets with
+`git show <ref>:<file>`**, which resolves from the git root. Every budget read as absent at base, so the
+ratchet guard passed unconditionally and the type-discipline ratchet treated every rule as newly seeded.
+Both now prefix the engine path.
+
+**`make lint` fetched a branch that does not exist.** The Makefile is on `origin/main` throughout.
+
+**`run_migration.py` deleted a tracked directory.** It used `schema.prisma`'s own parent as scratch space,
+which upstream was the repository root but here is `code/engine`, so its scratch path landed on
+`code/engine/migrations/` and its teardown `rmtree`'d it. It now copies the schema into a real temporary
+directory with the migrations beside it. If you see `migrations/Dockerfile` or `migrations/run.py` disappear,
+something has regressed this.
+
+**The migration freshness check now warns instead of refusing**, at the maintainer's request, because this
+repo is developed in parallel and a branch is behind `origin/main` most of the time.
+`--require-fresh-branch` restores the refusal. **The destructive-migration guard is untouched and still
+refuses outright** — that is the check that actually stops a dropped column, and an agent must not pass
+`--allow-destructive` on its own.
+
+---
+
+## 4. Environment
 
 ```bash
 cd code/engine
 uv sync --extra proxy --group dev --group proxy-dev
 ```
 
-Run tests with the same flags. The proxy extras are not optional: without them
-`import litellm.proxy.proxy_server` fails on a missing `websockets`, and without `proxy-dev` the shared
-`tests/test_litellm/proxy/conftest.py` fails on a missing `prisma`. Other groups exist in `pyproject.toml`
-(`ci`, `e2e-dev`) and individual suites pull packages from them; when something fails on a missing module,
-install it rather than treating the failure as meaningful.
+`postgresql@14` is installed via Homebrew (needed for `run_migration.py`), along with `testing.postgresql`
+in the venv. Export the path before running migrations:
 
 ```bash
-# the PII suites (fast, ~2 min)
-uv run --extra proxy --group dev --group proxy-dev python -m pytest \
-  tests/test_litellm/pii/ \
-  tests/test_litellm/proxy/pii_endpoints/ \
-  tests/test_litellm/proxy/guardrails/guardrail_hooks/pii_anonymizer/ -q
-
-# lint (ruff works as-is; the budget gates do not, see section 2)
-uv run ruff check litellm/pii/ && uv run ruff format litellm/pii/
+export PATH="/opt/homebrew/opt/postgresql@14/bin:$PATH"
+uv run python ci_cd/run_migration.py "your_migration_name"
 ```
 
-One known-unrelated failure: `tests/test_litellm/proxy/guardrails/test_guardrail_coverage.py::test_secret_detection_redacts_multimodal_text_parts`
-fails with `ModuleNotFoundError: No module named 'detect_secrets'`. That package lives in optional groups not
-installed above. It is not caused by the PII work; install the extra or ignore it.
-
-Detection needs Presidio and, optionally, an NER server. `litellm/pii/deploy/docker-compose.pii.yml` brings
-both up. Everything currently tested uses injected fakes, so you can develop without them, but see section 6.
+Detection needs Presidio and, optionally, an NER server. See section 6 for what actually works, because the
+compose file does not.
 
 ---
 
-## 4. What already exists
+## 5. What was built
 
-`litellm/pii/` is a provider-agnostic package with no imports from `litellm.proxy`, so it is unit-testable
-without a proxy.
+Seven commits on `pii-codec-implementation`. Each phase left the tree green and is independently reviewable.
+
+**Phase A, correctness.** `decode_text` was a `str.replace` fold, so once one value was restored a later
+token could rewrite inside it. It is now a single regex pass resolved through a callback. Nothing stopped a
+minted token colliding with a token-shaped literal already in the prompt, so `encode_batch` now scans every
+text in the batch first and mints at the first free ordinal, giving up with `TokenSpaceExhausted` rather than
+looping when a codec ignores the ordinal it is handed. `get_many` added across the store protocol.
+
+**Phase B, the grammar.** `AngleBracketGrammar` behind a `TokenGrammar` protocol owns the wire format; the
+codecs differ only in which variant they mint, including the masked form. Recognition is tolerant where
+minting is strict: case, internal whitespace, markdown-escaped brackets and underscores, emphasis, and
+possessive or plural suffixes all resolve to the minted token. Matching anchors on the closed entity
+vocabulary so ordinary `<LIKE_THIS>` prose is not a token, and a truncated token is never prefix-guessed.
+`canonical_tokens` is the one question encode and decode both ask.
+
+**Phase C, the ephemeral path.** Streaming never decoded at all, because `streaming_transform_mode` defaults
+to `block_only` and that silently drops text rewrites; the guardrail now opts into `incremental_diff`, sets
+`mask_response_content`, and returns `stream_holdback_chars`. `ScopeResolver` turns a key and the
+`litellm_session_id` the proxy already resolves into request or conversation scope, and conversation scope
+refuses to start without a shared cache. Tool-call arguments now share one token space with the messages.
+
+**Phase D, key management.** `PiiKeyProvider` with an HKDF-SHA256 `DerivedKeyProvider` and a
+`SecretManagerKeyProvider` over the existing `BaseSecretManager`. AES-256-GCM with AAD binding
+`token_id`, scope type, scope id, and key version, so a row copied into another scope or a token_id swapped
+between rows fails to decrypt. Rotation is lazy. Both the derived key and the AESGCM object are cached; warm,
+a seal is 2.9us and an unseal 1.8us.
+
+**Phase E, storage.** `LiteLLM_PiiTokenTable` in all three schemas with a generated migration that is pure
+`CREATE TABLE` plus indexes. `PiiVaultRepository` behind a `VaultTable` protocol so every query is testable
+against a fake, with `table_from_prisma` as the real adapter. `DatabaseTokenStore` for reads, writes,
+revocation, subject export, and the sweep. Authorization is pure and lives away from the proxy.
+
+Test count went from 194 to 395 in the PII suites, plus 107 vault tests.
+
+---
+
+## 6. What live verification found
+
+The previous handover flagged that nothing had run against real detectors and that both wire contracts were
+written from documentation. Standing them up found two defects the fake-injected tests could not.
+
+**Streaming never decoded.** Described above. A streamed response reached the caller with `<PERSON_1>` still
+in it while the identical non-streamed request came back correct.
+
+**piiranha reports the whitespace before a word as part of the entity.** Against the live model,
+`My name is Ada Lovelace` encoded to `My name is<PERSON_1>`: the separating space was inside the span, so it
+went into the mapping instead of staying in the prompt. The round trip stayed lossless but the model was
+reading mangled text, which is the thing the token format exists to prevent. Spans are now trimmed onto the
+non-whitespace they cover before overlaps resolve.
+
+**Both parsers are otherwise correct against real responses.** Presidio's `/analyze` returns a flat list of
+`{entity_type, start, end, score}` plus an ignored `analysis_explanation`. The HF token-classification server
+returns `[{entity_group, score, word, start, end}]`. Overlap resolution handles the real noise correctly: a
+credit card number that Presidio also reported as `US_BANK_NUMBER` at 0.05 and `US_DRIVER_LICENSE` at 0.01
+resolved to `CREDIT_CARD` at 1.0.
+
+**`docker-compose.pii.yml` does not work as written.** `ghcr.io/huggingface/text-inference-toolkit:latest`
+returns `denied` to anonymous pulls. Presidio's port 3000 also collides with a `parashift-studio` container
+on this machine. What worked: `docker run -d --rm --name pii-presidio-probe -p 3010:3000
+mcr.microsoft.com/presidio-analyzer:2.2.360`, and for the NER stage a 20-line uvicorn app running
+`transformers.pipeline("token-classification", model="iiiorg/piiranha-v1-detect-personal-information",
+aggregation_strategy="simple")`. The model is ~1.1GB and is now in the HuggingFace cache, so it starts
+quickly. Fixing the compose file is unclaimed work.
+
+**End-to-end through the guardrail, both detectors live:**
 
 ```
-types.py                frozen dataclasses, error unions
-detection/              PiiDetector protocol, Presidio rules stage, piiranha NER stage,
-                        cascade policy, pure span merge
-codec/                  PiiCodec protocol, placeholder / handle / encrypted codecs,
-                        action-aware wrapper, the encode+decode text transform
-store/                  PiiTokenStore protocol, request-scoped and DualCache stores, AES-GCM cipher
-service.py              PiiService: the single detect / encode / decode implementation
-config.py               settings and object graph assembly
+in  : Hi, I'm Ada Lovelace in Paris. Email ada@example.com, card 4111111111111111.
+out : Hi, I'm <PERSON_1> in <LOCATION_1>. Email <EMAIL_ADDRESS_1>, card <CREDIT_CARD_1>.
+tool: {"to": "<EMAIL_ADDRESS_1>", "who": "<PERSON_1>"}     <- same token space, valid JSON
+resp: I will contact Ada Lovelace shortly.
+mid-stream 'I will contact <PERS' -> holdback 5
 ```
 
-Two adapters sit on top, both thin, both delegating to `PiiService`:
-
-- `litellm/proxy/pii_endpoints/endpoints.py`: `POST /pii/detect`, `/pii/encode`, `/pii/decode`
-- `litellm/proxy/guardrails/guardrail_hooks/pii_anonymizer/`: the guardrail on the LLM path
-
-Plus a dashboard page at `ui/litellm-dashboard/src/app/(dashboard)/anonymization/`.
-
-**State, as measured before the move to this repo** (commit `5c02151` in the original checkout, on a tree
-byte-identical to what is here): 194 PII tests passed, ruff was clean, the type-discipline gate was clean
-against the old base, the UI added zero new type errors, and the wider
-`tests/test_litellm/proxy/guardrails/` suite passed at 2469 with the one `detect_secrets` failure above.
-
-None of that has been re-run since the move, and the budget gates cannot be meaningfully re-run until
-section 2 is fixed. Re-establishing a green baseline is your first task: install what you need, run the PII
-suites, and treat whatever you see as the real starting point rather than trusting these numbers.
+**Still not done: a real LLM provider.** No request has been encoded, sent to a model, and decoded back.
+`CLAUDE.md` is emphatic that proof of fix means curling a live proxy against a real provider, so that is
+worth doing before this is called finished.
 
 ---
 
-## 5. Start here: two real defects
+## 7. Where to pick up
 
-Phase A of the plan exists because reviewing the shipped code found two bugs. Fix these before adding
-anything. Both have failing-test-first repro described in the plan.
+Phase E's storage layer is complete and tested; what is missing is the wiring. In rough order:
 
-**Decode is a cascading substitution.** `litellm/pii/codec/transform.py`, `decode_text` folds `str.replace`
-over the resolved mapping. If one entity's restored plaintext contains another entity's token text, the later
-replace rewrites inside the already-restored value. It must be a single-pass regex substitution with a
-replacement callback.
-
-**Nothing prevents a token colliding with literal input.** If the caller's prompt already contains the string
-`<PERSON_1>` and we mint `<PERSON_1>` for a real name, decode replaces both and corrupts their text. Fix by
-scanning the source for token-shaped literals before minting and never minting one that is already present.
-
----
-
-## 6. What is not verified
-
-Be honest about this rather than assuming the green test count means more than it does.
-
-**Nothing has run against real Presidio or piiranha.** Every test injects a fake detector. The wire contracts,
-Presidio's `/analyze` response shape and the HuggingFace token-classification output shape, are written from
-documentation, not observation. Standing up the compose stack and confirming both parsers against real
-responses is high-value and cheap, and should happen early.
-
-**No end-to-end run against a real provider.** No request has actually been encoded, sent to a model, and
-decoded on the way back.
-
-**`make check` has never been run in this repo**, for the reasons in section 2.
-
-**Streaming is designed but not implemented.** See below.
+1. **Routes.** `DELETE /pii/session/{session_id}`, and the subject-scoped erasure and export routes.
+   `revoke_session`, `revoke_subject`, and `export_subject` already exist on `DatabaseTokenStore`.
+2. **Wire authorization and audit into the decode path.** `authorize_decode`, `used_break_glass`,
+   `identity_from`, and `decode_audit_entry` all exist and are tested; nothing calls them yet. `_raise_public`
+   in `pii_endpoints/endpoints.py` needs a `VaultForbidden` case mapping to 403, and the exhaustiveness tests
+   in `test_endpoints.py` and `test_pii_anonymizer_guardrail.py` enumerate the error unions, so they will tell
+   you if you miss it.
+3. **Default `subject_id` from `end_user_id`** at the route layer.
+4. **Register the expiry sweep** through `LiteLLM_CronJob`. `sweep_expired` exists on the store.
+5. **Phase F, search.** Not started. Re-read Part 7 of the plan first; the decision is a filtered exhaustive
+   scan and `entity_type` is the only search-specific column. Do not add a column derived from a value.
+6. **Phase G, UI.**
+7. **Cross-cutting:** `make check` has still never been run end to end in this repo. The individual gates
+   pass; `make check` also runs basedpyright, which needs its own owned venv and has not been exercised here.
 
 ---
 
-## 7. Non-obvious things about this codebase
+## 8. Conventions that bit hardest
 
-These took real digging to find. They will save you a lot of time.
+`CLAUDE.md` is authoritative for style. Beyond it, three things cost real time last session:
 
-**Implementing `apply_guardrail` covers every API surface.** LiteLLM has per-surface translation handlers
-(`litellm/llms/*/guardrail_translation/`) that extract texts, call your guardrail, and write results back.
-Implementing that one method gets chat completions, Anthropic messages, Responses, MCP, and realtime. Do not
-write per-surface parsing. This is why the guardrail is as small as it is.
+**`ruff format` breaks `# mutable-ok` suppressions.** The checker attributes a violation to a specific line,
+and several files carry suppressions on lines longer than 120 characters. Running `ruff format` rewraps those
+lines, the comment lands on a different line, and five previously-suppressed violations reappear as yours.
+`pii_anonymizer_guardrail.py` was in this state and has been made format-stable; other files may not be.
+Always check `git diff` after formatting a file you did not write.
 
-**Incremental streaming already exists, but is off by default.** `UnifiedLLMGuardrails`
-(`litellm/proxy/guardrails/guardrail_hooks/unified_guardrail/unified_guardrail.py`) drives any guardrail
-through a holdback protocol: you return the full mutated accumulated text plus `stream_holdback_chars`, and
-the framework emits only the forward-extension prefix minus the holdback. **`streaming_transform_mode`
-defaults to `"block_only"`, which silently discards text rewrites on the streaming path.** Your guardrail
-must set it to `"incremental_diff"`. This is the mechanism for decoding tokens split across chunks, and it is
-why we do not buffer whole responses the way the stock Presidio guardrail does.
+**Keep a suppression on a line short enough to survive formatting.** If the statement plus the comment
+exceeds 120 characters, formatting will split it and move the comment. Extract to a named variable instead.
 
-**Conversation identity already exists.** `litellm/proxy/litellm_pre_call_utils.py` populates
-`data["litellm_session_id"]` from the `x-litellm-session-id` header, Anthropic's `metadata.user_id`, or W3C
-baggage. Read it; do not invent a session concept.
+**`typing.Any` is banned (TID251) and blind `except Exception` is budgeted (BLE001), and both budgets are at
+their ceiling.** Adding one means clearing one. Narrowing a catch around a decode to
+`(InvalidTag, ValueError, TypeError)`, or validating a key length once so the encrypt genuinely cannot fail,
+are both legitimate ways to pay for a new one; that is how the vault's DB-boundary catch was funded.
 
-**Guardrails are auto-discovered.** `get_guardrail_initializer_from_hooks` scans
-`guardrail_hooks/*/__init__.py` for `guardrail_initializer_registry` and `guardrail_class_registry`. Adding a
-directory is enough; the hardcoded registry needs no edit.
-
-**Config forms are generated from Pydantic.** `GET /guardrails/ui/provider_specific_params` reflects over
-each guardrail class's `get_config_model()`, so a good config model gets you most of the settings UI free.
-
-**There is a precedent for scoped key derivation.** `litellm/proxy/plugin_routes.py` derives per-plugin keys
-as `HMAC-SHA256(LITELLM_SALT_KEY, plugin_name)`. The vault keys follow that shape, upgraded to HKDF.
-
-**Some files are force-tracked against `.gitignore`.** 192 files, including
-`ui/litellm-dashboard/package.json`, match ignore patterns but are tracked. If you ever re-add a tree, use
-`git add -f` or you will silently drop them.
+**Model failures as values.** `litellm/pii/types.py` holds the error union and both boundaries map it once
+with an exhaustive `match` plus `assert_never`. `VaultForbidden` is defined and unused, waiting for step 2
+above.
 
 ---
 
-## 8. Decisions already made
+## 9. Decisions made since the last handover
 
-Do not re-litigate these. The reasoning is in `PII_CODEC_ARCHITECTURE.md`; the conclusions are:
+Recorded so they are not re-litigated. Everything in Part 8 of the plan still stands.
 
-- **Token format stays `<PERSON_1>`.** Robustness comes from a tolerant parser, not from armouring the token.
-  Random strings are rejected because they destroy model reasoning and cost more tokens.
-- **Unresolvable tokens are left verbatim.** Never blanked, never guessed. Truncated-token prefix matching
-  (which stock Presidio does) is explicitly rejected: a wrong guess emits the wrong person's name.
-- **Decode is single-pass.** A restored value is never rescanned.
-- **Ephemeral scope defaults to request**, with conversation scope opt-in and refusing to start without a
-  shared cache.
-- **Persistent scope defaults to `key`**, the most restrictive. Widening to team or organization is a
-  deliberate per-request choice, and a caller can only mint at a scope they belong to.
-- **Retention 30 days**, filtered in the read query as well as swept.
-- **Vault encryption: per-scope HKDF-derived keys**, AES-256-GCM, AAD bound to
-  `token_id | scope_type | scope_id | key_version`, lazy version-based rotation.
-- **Admin decode is break-glass:** a separate `allow_pii_decode_any`, off by default, audited.
-- **Search is filtered exhaustive scan, not a blind index.** `entity_type` is the only column added for it.
-  Blind indexes and deterministic encryption are documented and rejected; do not add a plaintext column
-  derived from a value without re-reading section 7.4 of the plan.
-
----
-
-## 9. Coding conventions that still apply
-
-`CLAUDE.md` in this directory is authoritative for code style even though its process rules are stale. The
-ones that bite hardest here:
-
-- No comments unless they explain genuinely complex business logic, or are tool directives, or are
-  TODO/FIXME. The existing PII code follows this; match it.
-- Annotate every variable `: Final` (LIT010). Never rebind or mutate parameters (LIT011). `ReadOnly[...]` on
-  every TypedDict field (LIT012).
-- Prefer immutable construction: comprehensions into `tuple()` / `frozenset()` / `MappingProxyType()` rather
-  than seeding an empty collection and mutating (LIT001, LIT002).
-- Every suppression names its rule and carries a reason: `# mutable-ok: <reason>`, `# kwargs-ok: <reason>`.
-  `# type: ignore` is banned outright (LIT009).
-- Model failures as values and map them to exceptions once at the boundary with an exhaustive `match` plus
-  `assert_never`. `litellm/pii/types.py` and the endpoints' `_public_message` show the pattern.
-- Dependency injection over monkeypatching. The endpoint tests use FastAPI `dependency_overrides`; the
-  detector tests inject fakes. Do not reach for `monkeypatch.setattr` on a class attribute.
-- Line length 120.
-- Tests live in `tests/test_litellm/` mirroring the source path. Write tests that fail if the logic is
-  mutated, not tests that only raise coverage. The existing suite was spot-checked with deliberate mutations
-  and caught all of them; keep that bar.
-
-When you fix violations gated by the budget files, run `make lint-budget-update` so the ceilings ratchet down
-(subject to the base-branch fix in section 2).
-
----
-
-## 10. Where to start
-
-Work through `PII_CODEC_ARCHITECTURE.md` Part 6 in order. Phases A through C need no database.
-
-1. Set up the environment and install whatever the suites need until they run cleanly.
-2. Fix the section 2 tooling breakages so the budget gates produce a real signal.
-3. Phase A: the two defects in section 5, plus `get_many` on the store protocol.
-4. Stand up `docker-compose.pii.yml` and verify both detector parsers against real responses (section 6).
-5. Phase B: extract `TokenGrammar` and build the tolerant matcher.
-6. Continue through the plan.
-
-Each phase leaves the tree working and is independently reviewable. Do not start the vault (Phase E) before
-the ephemeral path is correct: it is on the critical path of every request, and the vault is not.
-
-Four open questions in the plan were answered by the maintainer and are recorded in Part 8. If you hit a
-genuine fork in the road that the plan does not cover, ask rather than picking silently.
+- **`PiiKeyProvider.key_for` is async**, where the plan sketched it sync. `BaseSecretManager`'s read is
+  async, and a sync protocol would force `SecretManagerKeyProvider` to either block the event loop or not
+  exist.
+- **`DatabaseTokenStore` is deliberately not a `PiiTokenStore`.** That protocol carries the ephemeral
+  `TokenScope`; these operations need the vault scope, the entity type, and the session id. Two object
+  graphs, as Part 1 of the plan intends, rather than one signature forced onto both.
+- **`structured_messages` needs no implementation.** No handler writes it back, and its text already arrives
+  in `texts`, which is rewritten. Writing to it would be dead code.
+- **The AAD separator is NUL**, not a literal pipe, so the parts cannot be confused by concatenation.
+- **A conversation-scoped request with no session id falls back to request scope** rather than failing. An
+  unidentified conversation is one request as far as we can tell, and refusing would break every client that
+  does not send the header.
