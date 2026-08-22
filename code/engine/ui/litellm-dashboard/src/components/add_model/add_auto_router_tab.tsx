@@ -20,6 +20,7 @@ import TeamDropdown from "../common_components/team_dropdown";
 import { type AddAutoRouterValues, handleAddAutoRouterSubmit } from "./handle_add_auto_router_submit";
 import { fetchAvailableModels } from "@/components/llm_calls/fetch_models";
 import { autoRouterListKey, fetchAllModelDeployments } from "@/app/(dashboard)/hooks/models/useModels";
+import { PRODUCT_GITHUB_URL } from "@/lib/brand";
 import ComplexityRouterConfig, {
   ComplexityRouterConfigValue,
   ComplexityTiers,
@@ -635,10 +636,7 @@ const AddAutoRouterTab: React.FC<AddAutoRouterTabProps> = ({
                 <Tooltip>
                   <TooltipTrigger
                     render={
-                      <a
-                        href="https://github.com/BerriAI/litellm/issues"
-                        className="text-sm text-primary underline-offset-4 hover:underline"
-                      >
+                      <a href={PRODUCT_GITHUB_URL} className="text-sm text-primary underline-offset-4 hover:underline">
                         Need Help?
                       </a>
                     }

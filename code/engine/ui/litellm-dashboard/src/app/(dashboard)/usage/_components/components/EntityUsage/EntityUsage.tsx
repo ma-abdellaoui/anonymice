@@ -378,7 +378,7 @@ const EntityUsage: React.FC<EntityUsageProps> = ({
   const breakdownTiles = showFlatCost && showCostBreakdown ? buildCostBreakdownTiles(spendData.metadata) : [];
   const summaryTiles = [...buildSummaryTiles(spendData.metadata, showFlatCost), ...breakdownTiles];
 
-  const modelViewTitle = modelViewType === "groups" ? "Top Public Model Names" : "Top Litellm Models";
+  const modelViewTitle = modelViewType === "groups" ? "Top Public Model Names" : "Top Anonymice Models";
 
   const costPanel = (
     <div className="grid grid-cols-2 gap-2 w-full">
@@ -478,13 +478,7 @@ const EntityUsage: React.FC<EntityUsageProps> = ({
               <h3 className="text-lg font-medium text-foreground">Spend Per {capitalizedEntityLabel}</h3>
               <p className="text-xs text-muted-foreground">Showing Top 5 by Spend</p>
               <div className="flex items-center text-sm text-muted-foreground">
-                <span>Get Started by Tracking cost per {capitalizedEntityLabel} </span>
-                <a
-                  href="https://docs.litellm.ai/docs/proxy/enterprise#spend-tracking"
-                  className="text-info hover:text-info/80 ml-1"
-                >
-                  here
-                </a>
+                <span>Track cost per {capitalizedEntityLabel} by adding the relevant metadata to requests.</span>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-6">

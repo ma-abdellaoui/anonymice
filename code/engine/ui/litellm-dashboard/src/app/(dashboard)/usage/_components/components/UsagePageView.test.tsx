@@ -1146,25 +1146,25 @@ describe("UsagePage", () => {
       // Default should be "groups" view showing "Top Public Model Names"
       expect(screen.getByText("Top Public Model Names")).toBeInTheDocument();
       expect(screen.getAllByText("Public Model Name").length).toBeGreaterThan(0);
-      expect(screen.getAllByText("Litellm Model Name").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Anonymice Model Name").length).toBeGreaterThan(0);
     });
 
-    it("should switch to Litellm Model Name view on toggle click", async () => {
+    it("should switch to Anonymice Model Name view on toggle click", async () => {
       renderWithProviders(<UsagePage {...defaultProps} />);
 
       await waitFor(() => {
         expect(mockUserDailyActivityAggregatedCall).toHaveBeenCalled();
       });
 
-      // Click the "Litellm Model Name" toggle
-      const litellmToggle = screen.getAllByText("Litellm Model Name")[0];
+      // Click the "Anonymice Model Name" toggle
+      const litellmToggle = screen.getAllByText("Anonymice Model Name")[0];
       act(() => {
         fireEvent.click(litellmToggle);
       });
 
-      // Title should change to "Top Litellm Models"
+      // Title should change to "Top Anonymice Models"
       await waitFor(() => {
-        expect(screen.getByText("Top Litellm Models")).toBeInTheDocument();
+        expect(screen.getByText("Top Anonymice Models")).toBeInTheDocument();
       });
     });
 
@@ -1176,13 +1176,13 @@ describe("UsagePage", () => {
       });
 
       // Switch to individual first
-      const litellmToggle = screen.getAllByText("Litellm Model Name")[0];
+      const litellmToggle = screen.getAllByText("Anonymice Model Name")[0];
       act(() => {
         fireEvent.click(litellmToggle);
       });
 
       await waitFor(() => {
-        expect(screen.getByText("Top Litellm Models")).toBeInTheDocument();
+        expect(screen.getByText("Top Anonymice Models")).toBeInTheDocument();
       });
 
       // Switch back to groups
@@ -1215,7 +1215,7 @@ describe("UsagePage", () => {
       });
 
       act(() => {
-        fireEvent.click(screen.getAllByText("Litellm Model Name")[0]);
+        fireEvent.click(screen.getAllByText("Anonymice Model Name")[0]);
       });
 
       await waitFor(() => {

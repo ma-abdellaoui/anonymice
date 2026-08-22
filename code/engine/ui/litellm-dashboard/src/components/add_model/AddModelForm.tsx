@@ -11,6 +11,7 @@ import { SearchSelect, type SearchSelectOption } from "@/components/shared/Searc
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { Info } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/shared/Alert";
+import { PRODUCT_GITHUB_URL } from "@/lib/brand";
 import { Button } from "@/components/ui/button";
 import React, { useEffect, useMemo, useState } from "react";
 import { FormProvider, useWatch, type UseFormReturn } from "react-hook-form";
@@ -269,15 +270,7 @@ const AddModelForm: React.FC<AddModelFormProps> = ({
                         <div className="col-span-5" />
                         <div className="col-span-5">
                           <p className="text-sm mb-5 mt-1">
-                            <strong>Optional</strong> - LiteLLM endpoint to use when health checking this model{" "}
-                            <a
-                              href="https://docs.litellm.ai/docs/proxy/health#health"
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-primary hover:underline"
-                            >
-                              Learn more
-                            </a>
+                            <strong>Optional</strong> - Anonymice endpoint to use when health checking this model
                           </p>
                         </div>
                       </div>
@@ -416,10 +409,7 @@ const AddModelForm: React.FC<AddModelFormProps> = ({
                   )}
                   <div className="flex justify-between items-center mb-4">
                     <SimpleTooltip content="Get help on our github">
-                      <a
-                        href="https://github.com/BerriAI/litellm/issues"
-                        className="text-sm text-primary hover:underline"
-                      >
+                      <a href={PRODUCT_GITHUB_URL} className="text-sm text-primary hover:underline">
                         Need Help?
                       </a>
                     </SimpleTooltip>
