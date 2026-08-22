@@ -99,6 +99,17 @@ class VaultTable(Protocol):
     async def delete_many(self, where: Mapping[str, object]) -> object: ...
 
 
+def table_from_prisma(prisma_client: object) -> VaultTable:
+    """The vault's table actions, reached through the proxy's repository base.
+
+    Kept behind ``VaultTable`` so every query above is testable against a fake
+    rather than a database.
+    """
+    from litellm.repositories.table_repositories import PiiTokenRepository
+
+    return PiiTokenRepository(prisma_client).table
+
+
 @dataclass(frozen=True, slots=True)
 class PiiVaultRepository:
     """Every read is scope-filtered and expiry-filtered in the query itself."""

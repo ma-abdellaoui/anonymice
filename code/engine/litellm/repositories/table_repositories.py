@@ -54,6 +54,10 @@ class MCPServerRepository(PrismaTableRepository):
     table_name = "litellm_mcpservertable"
 
 
+class PiiTokenRepository(PrismaTableRepository):
+    table_name = "litellm_piitokentable"
+
+
 class ManagedObjectRepository(PrismaTableRepository):
     table_name = "litellm_managedobjecttable"
 

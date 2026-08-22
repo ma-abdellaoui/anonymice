@@ -413,68 +413,81 @@ Six phases. Each leaves the tree working, is independently reviewable, and carri
 through C need no database and harden the path every request already takes; the vault does not exist until
 phase D.
 
+**Status.** Phases A, B, C, and D are complete. Phase E is complete through the storage layer (schema,
+migration, repository, store, authorization, audit entry) and still needs its routes wired and the sweep
+registered. Phases F and G are not started. Live verification against real Presidio and real piiranha found
+two defects the fake-injected tests could not: streaming never decoded at all, and piiranha's spans include
+the leading whitespace. Both are fixed and covered.
+
 ### Phase A: correctness fixes to shipped code
 
 These are defects in code already merged, not new features, so they go first.
 
-- [ ] `decode_text`: replace the `str.replace` fold with a single-pass regex substitution using a replacement
+- [x] `decode_text`: replace the `str.replace` fold with a single-pass regex substitution using a replacement
       callback, so a restored value can never be rescanned by a later token
-- [ ] Regression test: entity A whose plaintext contains entity B's literal token text round-trips correctly
-- [ ] Collision avoid-set: scan the source for token-shaped literals before minting and never mint one
-- [ ] Regression test: input containing a literal `<PERSON_1>` is not corrupted when a real name is encoded
-- [ ] `PiiTokenStore.get_many` so decode resolves N tokens in one round trip instead of N
-- [ ] `DualCacheStore.get_many`, `RequestScopedStore.get_many`
+- [x] Regression test: entity A whose plaintext contains entity B's literal token text round-trips correctly
+- [x] Collision avoid-set: scan the source for token-shaped literals before minting and never mint one
+- [x] Regression test: input containing a literal `<PERSON_1>` is not corrupted when a real name is encoded
+- [x] `PiiTokenStore.get_many` so decode resolves N tokens in one round trip instead of N
+- [x] `DualCacheStore.get_many`, `RequestScopedStore.get_many`
 
 ### Phase B: token grammar
 
-- [ ] `litellm/pii/codec/grammar.py`: `TokenGrammar` protocol, mint / parse / tolerant-match / avoid-set
-- [ ] Move format strings out of `PlaceholderCodec` and `HandleCodec` so they differ only by grammar variant
-- [ ] Tolerant matcher covering every distortion in 2.4 (case, whitespace, backslash escaping, emphasis)
-- [ ] Anchor matching on the closed entity vocabulary to keep false positives off ordinary `<LIKE_THIS>` text
-- [ ] Table-driven tests, one case per distortion row, plus negative cases that must not match
-- [ ] Explicitly assert a truncated trailing token is left verbatim and never prefix-guessed
+- [x] `litellm/pii/codec/grammar.py`: `TokenGrammar` protocol, mint / parse / tolerant-match / avoid-set
+- [x] Move format strings out of `PlaceholderCodec` and `HandleCodec` so they differ only by grammar variant
+- [x] Tolerant matcher covering every distortion in 2.4 (case, whitespace, backslash escaping, emphasis)
+- [x] Anchor matching on the closed entity vocabulary to keep false positives off ordinary `<LIKE_THIS>` text
+- [x] Table-driven tests, one case per distortion row, plus negative cases that must not match
+- [x] Explicitly assert a truncated trailing token is left verbatim and never prefix-guessed
 
 ### Phase C: ephemeral path hardening
 
-- [ ] `ScopeResolver`: `UserAPIKeyAuth` plus request to `TokenScope`
-- [ ] Read `litellm_session_id` for conversation scope rather than inventing an identity
-- [ ] `pii_mapping_scope` config: `request` (default) or `conversation`
-- [ ] Startup validation: refuse conversation scope without a shared cache, rather than diverging per worker
-- [ ] Set `streaming_transform_mode = "incremental_diff"` and `mask_response_content = True`
-- [ ] Holdback computation: longest trailing substring that could still grow into a token
-- [ ] Return `stream_holdback_chars` per choice, in the index order the texts arrived in
-- [ ] Streaming tests: split a token at every byte offset and assert the round trip
-- [ ] Streaming tests: `n > 1` choices, and a token split across the final chunk boundary
-- [ ] Extend `apply_guardrail` past `texts` to `tool_calls` and `structured_messages`
-- [ ] Test: encoding inside tool-call JSON arguments keeps the JSON valid
+- [x] `ScopeResolver`: `UserAPIKeyAuth` plus request to `TokenScope`
+- [x] Read `litellm_session_id` for conversation scope rather than inventing an identity
+- [x] `pii_mapping_scope` config: `request` (default) or `conversation`
+- [x] Startup validation: refuse conversation scope without a shared cache, rather than diverging per worker
+- [x] Set `streaming_transform_mode = "incremental_diff"` and `mask_response_content = True`
+- [x] Holdback computation: longest trailing substring that could still grow into a token
+- [x] Return `stream_holdback_chars` per choice, in the index order the texts arrived in
+- [x] Streaming tests: split a token at every byte offset and assert the round trip
+- [x] Streaming tests: `n > 1` choices, and a token split across the final chunk boundary
+- [x] Extend `apply_guardrail` past `texts` to `tool_calls`. `structured_messages` needs no work: no
+      handler writes it back, and its text already arrives in `texts`, which is rewritten
+- [x] Test: encoding inside tool-call JSON arguments keeps the JSON valid
 
 ### Phase D: key management
 
-- [ ] `PiiKeyProvider` protocol: `current_version`, `key_for(scope, version)`
-- [ ] `DerivedKeyProvider`: HKDF-SHA256 over `LITELLM_SALT_KEY`, info bound to scope and version
-- [ ] `SecretManagerKeyProvider` over the existing `BaseSecretManager`
-- [ ] AES-256-GCM with AAD = `token_id | scope_type | scope_id | key_version`
-- [ ] Test: a ciphertext moved to another scope, or another `token_id`, fails to decrypt
-- [ ] Test: a row written at version 1 still decrypts after the current version moves to 2
-- [ ] Cache the AESGCM object per `(scope, key_version)`; HKDF is the expensive part, not the cipher
+- [x] `PiiKeyProvider` protocol: `current_version`, `key_for(scope, version)`. `key_for` is async:
+      `BaseSecretManager`'s read is async, and a sync protocol would force that implementation to block
+- [x] `DerivedKeyProvider`: HKDF-SHA256 over `LITELLM_SALT_KEY`, info bound to scope and version
+- [x] `SecretManagerKeyProvider` over the existing `BaseSecretManager`
+- [x] AES-256-GCM with AAD = `token_id | scope_type | scope_id | key_version`
+- [x] Test: a ciphertext moved to another scope, or another `token_id`, fails to decrypt
+- [x] Test: a row written at version 1 still decrypts after the current version moves to 2
+- [x] Cache the AESGCM object per `(scope, key_version)`; HKDF is the expensive part, not the cipher
 
 ### Phase E: the vault
 
-- [ ] `LiteLLM_PiiTokenTable` added to all three `schema.prisma` files, verified identical
-- [ ] Migration generated per `litellm-proxy-extras/migration_runbook.md`
-- [ ] `PiiVaultRepository` on `PrismaTableRepository`
-- [ ] `DatabaseTokenStore` implementing `PiiTokenStore`, with batched `get_many`
-- [ ] Scope authorization: `key` / `user` / `team` / `organization`, minting restricted to scopes the caller
+- [x] `LiteLLM_PiiTokenTable` added to all three `schema.prisma` files, verified identical
+- [x] Migration generated per `litellm-proxy-extras/migration_runbook.md`
+- [x] `PiiVaultRepository` on `PrismaTableRepository`
+- [x] `DatabaseTokenStore` with batched `get_many`. Deliberately not a `PiiTokenStore`: that protocol carries
+      the ephemeral `TokenScope`, and these operations need the vault scope, entity type, and session id
+- [x] Scope authorization: `key` / `user` / `team` / `organization`, minting restricted to scopes the caller
       belongs to
-- [ ] Test: a key cannot mint a `team` token for a team it is not on
-- [ ] Test: each scope level resolves for members and refuses for non-members
-- [ ] `allow_pii_decode_any` break-glass, off by default, audited on every use
-- [ ] Audit entries on decode via `LiteLLM_AuditLog`
-- [ ] `expires_at` filtered in the read query, not only swept, so a late sweep never resolves a dead row
-- [ ] Expiry sweep registered through `LiteLLM_CronJob`
-- [ ] `subject_id` column defaulted from `end_user_id`, documented as opaque-only
-- [ ] `DELETE /pii/session/{session_id}` and subject-scoped erasure and export routes
-- [ ] Fail the encode request if the mapping write fails; never return an unresolvable token
+- [x] Test: a key cannot mint a `team` token for a team it is not on
+- [x] Test: each scope level resolves for members and refuses for non-members
+- [~] `allow_pii_decode_any` break-glass, off by default, audited on every use. Policy and audit entry
+      exist and are tested; not yet reached from a route
+- [~] Audit entries on decode via `LiteLLM_AuditLog`. Entry builder exists; not yet called from a route
+- [x] `expires_at` filtered in the read query, not only swept, so a late sweep never resolves a dead row
+- [~] Expiry sweep registered through `LiteLLM_CronJob`. `sweep_expired` exists on the store; the cron
+      registration is outstanding
+- [~] `subject_id` column exists and the store writes it, documented as opaque-only. Defaulting it from
+      `end_user_id` happens at the route layer, which is outstanding
+- [~] `DELETE /pii/session/{session_id}` and subject-scoped erasure and export routes. `revoke_session`,
+      `revoke_subject`, and `export_subject` exist on the store; the routes are outstanding
+- [x] Fail the encode request if the mapping write fails; never return an unresolvable token
 
 ### Phase F: search
 
@@ -497,7 +510,8 @@ These are defects in code already merged, not new features, so they go first.
 ### Cross-cutting
 
 - [ ] `make check` clean, budget files ratcheted with `make lint-budget-update`
-- [ ] Live proof against the compose stack and a real provider, not fakes
+- [~] Live proof against real Presidio and real piiranha, through the guardrail, covering encode, tool-call
+      arguments, decode, and mid-stream holdback. Not yet run against a real LLM provider
 
 ## Part 7: Searching the vault
 

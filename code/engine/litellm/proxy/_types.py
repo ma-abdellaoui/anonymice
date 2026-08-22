@@ -222,6 +222,7 @@ class LitellmTableNames(str, enum.Enum):
     CONFIG_TABLE_NAME = "LiteLLM_Config"
     SSO_CONFIG_TABLE_NAME = "LiteLLM_SSOConfig"
     UI_SETTINGS_TABLE_NAME = "LiteLLM_UISettings"
+    PII_TOKEN_TABLE_NAME = "LiteLLM_PiiTokenTable"
 
 
 class Litellm_EntityType(enum.Enum):
@@ -3208,7 +3209,8 @@ from litellm.models.spend_logs import (  # noqa: E402
 )
 from litellm.models.tag import LiteLLM_TagTable as LiteLLM_TagTable  # noqa: E402
 
-AUDIT_ACTIONS = Literal["created", "updated", "deleted", "blocked", "unblocked", "rotated"]
+# "accessed" exists for the PII vault: recording reads, not only writes, is the point of a vault.
+AUDIT_ACTIONS = Literal["created", "updated", "deleted", "blocked", "unblocked", "rotated", "accessed"]
 
 
 class LiteLLM_AuditLogs(LiteLLMPydanticObjectBase):
