@@ -407,6 +407,54 @@ Beyond the distortion table in 2.4:
 
 ---
 
+## Part 5b: Known limits of the detection stages
+
+Measured on the running stack, not inferred. Recorded here because each one is a
+place where the system under-detects rather than errs, which is the failure mode
+that does not announce itself.
+
+### 5b.1 The NER model is context-sensitive
+
+Piiranha's prediction depends on surrounding text, not just the name. The same
+name in two prompts:
+
+| Text | Result |
+|---|---|
+| `My name is Ada Lovelace and my email is ada@example.com` | `PERSON`, score 0.96 |
+| `My name is Ada Lovelace. Reply with ONLY that name spelled backwards.` | nothing |
+
+The stage ran in both cases. The model simply did not predict it in the second,
+and that prompt reached the provider carrying the real name. A bare
+`Ada Lovelace` with no sentence around it is also missed.
+
+Presidio's spaCy recognizer detects the same name at 0.85 in every one of those
+phrasings, but stage 1 deliberately excludes NER entities so a Presidio
+deployment cannot silently return model results from the rules stage (see
+`presidio_rules.py`). The two detectors have complementary blind spots and today
+only one of them is consulted for names.
+
+Three ways out, in rough order of cost. Run several model stages and take the
+union, which needs `CascadingDetector` to hold a sequence rather than one
+optional stage. Lower `LITELLM_PII_NER_SCORE_THRESHOLD`, which is cheap and
+buys recall with false positives. Or accept the limit. Nothing here is decided.
+
+### 5b.2 Swapping the model is easy; swapping its vocabulary is not
+
+`PiiDetector` is a one-method protocol and `PiiranhaDetector` speaks the generic
+HuggingFace token-classification contract, so pointing `LITELLM_PII_NER_API_BASE`
+at another server of the same shape needs no code change.
+
+The labels are the catch. `map_label` translates Piiranha's vocabulary and
+returns `None` for anything it does not recognize, and the detector drops those
+spans. A standard CoNLL model emitting `PER` / `LOC` / `ORG`, which is the most
+likely substitute, would therefore detect everything and report nothing, with no
+error anywhere. A per-model label map, and a loud unmapped label, should come
+before anyone swaps the model.
+
+Two smaller constraints alongside it: the detector is constructed in exactly one
+place with no registry (`config.py`), and `CascadingDetector` holds exactly two
+stages, so a third model cannot be added without changing that class.
+
 ## Part 6: Implementation plan
 
 Six phases. Each leaves the tree working, is independently reviewable, and carries its own tests. Phases A

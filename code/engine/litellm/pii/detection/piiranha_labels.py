@@ -41,5 +41,12 @@ def normalize_label(raw_label: str) -> str:
 
 
 def map_label(raw_label: str) -> str | None:
-    """Translate a Piiranha label to our entity vocabulary; unknown labels are dropped."""
+    """Translate a Piiranha label to our entity vocabulary; unknown labels are dropped.
+
+    This map is Piiranha's vocabulary, not a general one. A model emitting the
+    standard CoNLL labels (PER, LOC, ORG) maps to nothing here, so it would
+    detect PII and report none of it without raising. Give another model its own
+    map before pointing LITELLM_PII_NER_API_BASE at it. See Part 5b.2 of
+    PII_CODEC_ARCHITECTURE.md.
+    """
     return PIIRANHA_LABEL_MAP.get(normalize_label(raw_label))
