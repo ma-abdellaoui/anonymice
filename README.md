@@ -249,6 +249,7 @@ cd code/extensions/backend && npm run dev
 
 | Document | What |
 |---|---|
+| [`docs/JURY.md`](docs/JURY.md) | Technical summary for the bernhackt jury — focus, decisions, architecture, and what we deliberately left out |
 | [`code/extensions/SPEC.md`](code/extensions/SPEC.md) | Trust classes and the copy/paste model |
 | [`code/extensions/browser/SPEC.md`](code/extensions/browser/SPEC.md) | Browser extension design |
 | [`code/extensions/vscode/SPEC.md`](code/extensions/vscode/SPEC.md) | Editor invariant and token format |
