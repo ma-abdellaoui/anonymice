@@ -68,8 +68,12 @@ irreversible by construction rather than by remembering not to store the mapping
 
 ## Configuration
 
-Run the detection tiers with `docker compose -f litellm/pii/deploy/docker-compose.pii.yml up -d`, then add the
-guardrail:
+The quickest way to get a proxy with this layer enabled is `docker compose up -d` from `code/engine/`, which
+mounts [`litellm/proxy/dev_config.yaml`](../proxy/dev_config.yaml) and already carries the guardrail below. That
+stack runs stage one only. For stage two as well, bring up the detection tiers with
+`docker compose -f litellm/pii/deploy/docker-compose.pii.yml up -d` and point `pii_ner_api_base` at them.
+
+The guardrail block itself:
 
 ```yaml
 guardrails:

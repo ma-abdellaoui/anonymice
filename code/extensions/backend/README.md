@@ -24,6 +24,10 @@ a deployment preference; it is why:
 
 ## Run it
 
+Needs Node `>=22.18`, which runs the TypeScript sources directly. There are no
+runtime dependencies, so `npm install` is only needed for `typecheck` and the
+tests.
+
 ```sh
 npm run dev                      # loopback, `dev-token`, :8788, a drop-in for the mock
 DETECT_TOKEN=… npm start         # anything else

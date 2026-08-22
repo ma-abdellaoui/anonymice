@@ -228,45 +228,122 @@ yet the same vault.
 
 ---
 
-## Getting started
+## Quick start
 
-**Engine.** Detection tiers first, then the proxy:
-
-```bash
-docker compose -f code/engine/litellm/pii/deploy/docker-compose.pii.yml up -d
-```
-
-Then add the guardrail to your proxy config:
-
-```yaml
-guardrails:
-  - guardrail_name: pii-anonymizer
-    litellm_params:
-      guardrail: pii_anonymizer
-      mode: [pre_call, post_call]
-      presidio_analyzer_api_base: http://localhost:3000
-      pii_ner_api_base: http://localhost:8080
-      pii_ner_stage_policy: on_miss
-      pii_codec: placeholder
-      pii_entities_config:
-        CREDIT_CARD: BLOCK
-        US_SSN: MASK
-        PERSON: ENCODE
-```
-
-Set `LITELLM_PII_ENCRYPTION_KEY`, or stored values are not sealed at rest.
-
-**Browser extension:**
+**You need** Docker with Compose, Node `^22.18` or `>=24` for the extension, and
+`jq` for the examples below. The engine runs entirely in containers, so no local
+Python is required.
 
 ```bash
-cd code/extensions/browser && npm install && npm run check && npm run build
+git clone https://github.com/ma-abdellaoui/anonymice.git
+cd anonymice
 ```
 
-**Detection backend:**
+### 1. Run the engine
 
 ```bash
-cd code/extensions/backend && npm run dev
+cd code/engine
+cp .env.example .env          # required: compose reads it, and it is gitignored
+docker compose up -d          # proxy on :4000, Postgres, Presidio
 ```
+
+First run builds the image and pulls Presidio, so give it a few minutes. When
+`docker compose ps` shows `anonymice` healthy:
+
+```bash
+curl -s localhost:4000/health/liveliness
+```
+
+`docker-compose.override.yml` is committed and mounts
+[`litellm/proxy/dev_config.yaml`](code/engine/litellm/proxy/dev_config.yaml) as the
+proxy config, so the PII guardrail is already enabled and the master key is
+`sk-1234`. That file is where you change models, entity actions and codecs.
+
+### 2. Watch a value round-trip
+
+Decode hands back real PII, so it needs a key that was granted the permission
+deliberately. The master key does not carry it:
+
+```bash
+KEY=$(curl -s localhost:4000/key/generate \
+  -H 'Authorization: Bearer sk-1234' -H 'Content-Type: application/json' \
+  -d '{"permissions":{"allow_pii_decode":true}}' | jq -r .key)
+
+curl -s localhost:4000/pii/encode \
+  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+  -d '{"texts":["invoice CH93 0076 2011 6238 5295 7"]}'
+```
+
+```json
+{"texts":["invoice <IBAN_CODE:6801b8a37901e7b6>"],"session_id":"328716b2-…","tokens":[…]}
+```
+
+Feed that `texts` and `session_id` back to `/pii/decode` with the same key and the
+IBAN comes out whole. Point any OpenAI-compatible client at
+`http://localhost:4000` and the same swap happens in-band on every completion.
+
+> **Names need the second stage.** The default stack runs stage one only, which
+> is patterns and checksums, so IBANs, cards and AHV numbers are caught but
+> `PERSON` is not. Stage two is a model worth several GB, so it is opt-in:
+>
+> ```bash
+> docker compose -f litellm/pii/deploy/docker-compose.pii.yml up -d
+> ```
+>
+> then add `pii_ner_api_base: http://host.docker.internal:8080` and
+> `pii_ner_stage_policy: on_miss` to the guardrail in `dev_config.yaml` and
+> restart the proxy.
+
+Set `LITELLM_PII_ENCRYPTION_KEY` in `.env` before storing anything you care
+about, or vault values are not sealed at rest.
+
+### 3. Run the browser extension
+
+Trust class is a property of the host, so the fixtures are served under real
+hostnames rather than `localhost`. Add them once:
+
+```bash
+cd code/extensions/browser
+npm install
+npm run hosts     # prints the exact /etc/hosts line and the sudo command to add it
+```
+
+Run it, paste the line it prints, then re-run it to confirm. With that done:
+
+```bash
+npm run mock        # detection + token vault on :8788, leave it running
+```
+
+In a second terminal:
+
+```bash
+cd code/extensions/browser
+npm run build:qa    # bundles dist/ with host access and the dev policy baked in
+npm run fixtures    # serves the labelled corpus on :8787
+```
+
+Then load it:
+
+1. Open `chrome://extensions` and turn on **Developer mode**.
+2. **Load unpacked**, and select `code/extensions/browser/dist`.
+3. Visit <http://native.anonymice.test:8787/>. Sensitive spans should be
+   highlighted, and copying one puts an `ANM1-…` token on your clipboard rather
+   than the value. <http://trusted.anonymice.test:8787/> is the `TRUSTED` case,
+   where the page holds the token and you still read the value.
+
+`http://localhost:8787/` deliberately serves setup instructions rather than a
+fixture, because a page's trust class depends on its hostname.
+
+Reload the extension at `chrome://extensions` after every rebuild, or you are
+looking at a stale bundle.
+
+`npm run mock` is what serves `/v1/tokens`, so minting fails without it.
+[`code/extensions/backend/`](code/extensions/backend/) is the real detection
+service and binds the same port, so run one or the other: it does detection
+properly but does not serve the vault yet.
+
+[`docs/extensions/browser/QA.md`](docs/extensions/browser/QA.md) is the full
+walkthrough, including the expected highlight counts.
 
 ---
 

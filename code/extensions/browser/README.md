@@ -19,6 +19,32 @@ and [`../backend/`](../backend/README.md) is the service that implements it.
 | `test/` | unit tests |
 | `dev/` | build, fixture server, browser harness |
 
+## Install and load
+
+Needs Node `^22.18` or `>=24`: the scripts run the TypeScript sources directly
+through Node's type stripping, and jsdom does not support Node 23.
+
+```sh
+npm install
+npm run hosts       # prints the /etc/hosts line the fixture hostnames need
+npm run mock        # detection + token vault on :8788, leave it running
+npm run build:qa    # bundles dist/ with host access and the dev policy baked in
+npm run fixtures    # serves the labelled corpus on :8787
+```
+
+`npm run hosts` never writes to `/etc` and never invokes sudo; it prints the one
+line to paste and the command to undo it. Trust class is a property of the host,
+so `http://localhost:8787/` serves setup instructions and the fixtures live at
+`native.anonymice.test:8787` and `trusted.anonymice.test:8787`.
+
+Then open `chrome://extensions`, turn on **Developer mode**, choose **Load
+unpacked** and select `dist/`. Reload the extension there after every rebuild,
+or you are looking at a stale bundle.
+
+`npm run mock` is what serves `/v1/tokens`, so minting fails without it.
+[`../backend/`](../backend/README.md) is the real detection service and binds the
+same port, so run one or the other.
+
 ## Commands
 
 ```sh
