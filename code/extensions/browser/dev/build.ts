@@ -11,7 +11,7 @@
  *   node dev/build.ts --qa --endpoint=http://localhost:9788/v1/detect
  */
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { build } from 'esbuild';
+import { build, type BuildOptions } from 'esbuild';
 
 const root = new URL('../', import.meta.url).pathname;
 const out = `${root}dist`;
@@ -77,20 +77,13 @@ const devPolicy = qa
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 
-await build({
-  entryPoints: {
-    'service-worker': `${root}src/background/service-worker.ts`,
-    content: `${root}src/content/main.ts`,
-    // The reveal frame is its own document on the extension origin (SPEC §8.1),
-    // so it is a separate entry rather than part of the content bundle.
-    reveal: `${root}src/ui/reveal.ts`,
-    // The egress shim runs in the page's own realm (SPEC §11.2), so it shares no
-    // module instance with the content bundle and must be its own entry.
-    egress: `${root}src/content/egress-main.ts`,
-  },
+/**
+ * Everything both builds share. They differ only in `format`, and that one
+ * difference is load-bearing — see the split below.
+ */
+const common: BuildOptions = {
   outdir: out,
   bundle: true,
-  format: 'esm',
   target: 'chrome105',
   sourcemap: true,
   // Minify only the shipped build: it is what drops the `if (false)` branches a
@@ -101,6 +94,45 @@ await build({
     __DEV_POLICY__: devPolicy ? JSON.stringify(JSON.stringify(devPolicy)) : 'null',
     __BUILD_ID__: JSON.stringify(buildId),
   },
+};
+
+/**
+ * The two module contexts. The worker declares `"type": "module"` in the
+ * manifest, and `reveal.html` loads its script with `type="module"` — so both
+ * may carry the `export {}` an ESM bundle ends with.
+ */
+await build({
+  ...common,
+  entryPoints: {
+    'service-worker': `${root}src/background/service-worker.ts`,
+    // The reveal frame is its own document on the extension origin (SPEC §8.1),
+    // so it is a separate entry rather than part of the content bundle.
+    reveal: `${root}src/ui/reveal.ts`,
+  },
+  format: 'esm',
+});
+
+/**
+ * Content scripts are **classic** scripts. `chrome.scripting.registerContentScripts`
+ * gives them no module context, so a trailing `export {}` is a syntax error —
+ * and a syntax error is a *parse*-time failure, which means not one line of the
+ * file runs.
+ *
+ * `egress-main.ts` exports its seams so the tests can reach them, so building it
+ * as ESM shipped a shim that had never installed on any page, in any build. It
+ * failed silently by construction: the file that reports `health` is the file
+ * that failed to parse, so the gate's own liveness signal could not fire. Only
+ * `content.js` survived, and only because `main.ts` happens to export nothing.
+ */
+await build({
+  ...common,
+  entryPoints: {
+    content: `${root}src/content/main.ts`,
+    // The egress shim runs in the page's own realm (SPEC §11.2), so it shares no
+    // module instance with the content bundle and must be its own entry.
+    egress: `${root}src/content/egress-main.ts`,
+  },
+  format: 'iife',
 });
 
 /**

@@ -445,3 +445,49 @@ test('a pre-mint that fails is not silent', async () => {
     detach();
   }
 });
+
+/**
+ * The mint-time cache warm — SPEC §10.9.3.
+ *
+ * This is what makes reveal-on-paste synchronous. A `paste` is a user gesture
+ * and cannot await a resolve, so the pair has to already be in hand; minting is
+ * the one moment it is, for free, because the vault is being told the value
+ * rather than asked for it.
+ */
+test('minting hands the reveal cache the pair it just created', async () => {
+  const learned: Array<[string, string]> = [];
+  const minter = createRemoteMinter(
+    'source:https://example.test',
+    async (specs) => ({ tokens: specs.map((_, i) => `ANM1-IBAN-TOKEN${i}`) }),
+    (token, value) => learned.push([token, value]),
+  );
+
+  const needs = [
+    { cls: 'IBAN' as const, value: 'CH93 0076 2011 6238 5295 7', normalized: 'CH9300762011623852957', whole: true },
+    { cls: 'EMAIL' as const, value: 'a@b.test', normalized: 'a@b.test', whole: true },
+  ];
+  assert.equal((await minter.ensure(needs)).ok, true);
+
+  assert.deepEqual(learned, [
+    ['ANM1-IBAN-TOKEN0', 'CH93 0076 2011 6238 5295 7'],
+    ['ANM1-IBAN-TOKEN1', 'a@b.test'],
+  ]);
+
+  // A second ensure mints nothing, so it must not re-announce what is held.
+  await minter.ensure(needs);
+  assert.equal(learned.length, 2, 'the cache is warmed once per mint, not per ask');
+});
+
+test('a failed mint announces nothing — there is no pair to remember', async () => {
+  const learned: string[] = [];
+  const minter = createRemoteMinter(
+    'source:https://example.test',
+    async () => ({ tokens: null, reason: 'vault down' }),
+    (token) => learned.push(token),
+  );
+  const outcome = await minter.ensure([
+    { cls: 'IBAN' as const, value: 'x', normalized: 'x', whole: true },
+  ]);
+  assert.equal(outcome.ok, false);
+  assert.deepEqual(learned, []);
+});

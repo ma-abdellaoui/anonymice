@@ -57,9 +57,11 @@ test('a focused field is left alone — rewriting moves the caret', () => {
   const field = doc.getElementById('t') as HTMLTextAreaElement;
   field.value = TOKEN;
   Object.defineProperty(doc, 'activeElement', { value: field, configurable: true });
+  Object.defineProperty(doc, 'hasFocus', { value: () => true, configurable: true });
   assert.equal(revealFields(doc, { valueFor }), 0);
 
   Object.defineProperty(doc, 'activeElement', { value: doc.body, configurable: true });
+  Object.defineProperty(doc, 'hasFocus', { value: () => false, configurable: true });
   assert.equal(revealFields(doc, { valueFor }), 1);
 });
 

@@ -94,6 +94,16 @@ export interface MintReply {
 export function createRemoteMinter(
   scopeId: string,
   request: (specs: MintRequest[]) => Promise<MintReply | null>,
+  /**
+   * Called for each token as it is minted, with the value it stands for.
+   *
+   * A mint is the one moment both halves of the pair are in hand without asking
+   * anyone: the vault is being *told* the value, not asked for it. Handing that
+   * to the reveal cache here is what lets a paste resolve synchronously later —
+   * a `paste` is a user gesture and cannot await a round trip, so a cache that
+   * is only filled by `resolve` is always one trip too late (SPEC §10.9.3).
+   */
+  onMinted?: (token: string, value: string) => void,
 ): Minter {
   const held = new Map<string, string>();
   const key = (need: Need): string => `${need.cls}|${need.normalized}`;
@@ -132,7 +142,11 @@ export function createRemoteMinter(
       }
       if (!reply?.tokens) return { ok: false, ...(reply?.reason ? { reason: reply.reason } : {}) };
       const tokens = reply.tokens;
-      missing.forEach((need, i) => held.set(key(need), tokens[i]!));
+      missing.forEach((need, i) => {
+        const token = tokens[i]!;
+        held.set(key(need), token);
+        onMinted?.(token, need.value);
+      });
       return { ok: true };
     },
   };
