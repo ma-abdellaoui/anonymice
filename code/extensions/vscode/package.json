@@ -109,16 +109,16 @@
         "title": "Anonymice: Show Revealed Values"
       },
       {
-        "command": "anonymice.revealAtCursor",
-        "title": "Anonymice: Reveal Value at Cursor"
-      },
-      {
         "command": "anonymice.copyToken",
         "title": "Anonymice: Copy as Token"
       },
       {
         "command": "anonymice.revealToggleFile",
         "title": "Anonymice: Toggle Reveal for This File"
+      },
+      {
+        "command": "anonymice.resetVault",
+        "title": "Anonymice: Reset Vault (destroy all tokens)"
       }
     ],
     "keybindings": [

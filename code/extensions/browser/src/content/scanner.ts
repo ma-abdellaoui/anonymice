@@ -17,6 +17,8 @@ export interface ScanState {
   occurrences: number;
   /** Detection failed: the badge must say "not scanned", not stay silent (SPEC §3.2). */
   unscanned: boolean;
+  /** Distinct values per class, for the notification's breakdown line. */
+  byClass: Record<string, number>;
 }
 
 export interface ScannerOptions {
@@ -125,10 +127,13 @@ export class Scanner {
     this.registry.revalidate();
     const ranges = this.registry.allRanges();
     this.#painter.paint(ranges);
+    const byClass: Record<string, number> = {};
+    for (const entry of this.registry.entries()) byClass[entry.cls] = (byClass[entry.cls] ?? 0) + 1;
     const state: ScanState = {
       values: this.registry.size,
       occurrences: ranges.length,
       unscanned: this.#unscanned,
+      byClass,
     };
     this.#opts.onUpdate?.(state);
     return state;

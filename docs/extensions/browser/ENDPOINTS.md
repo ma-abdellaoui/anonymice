@@ -351,10 +351,43 @@ Two constraints from SPEC §6.7 that will shape them: a resolve failure must be
 tombstone rows are part of the response schema, not an error string. And
 retention rolls from the last successful resolve, so a resolve is a write.
 
-## 7. The mock backend
+## 7. The service
+
+`code/extensions/backend/` implements all three endpoints — dependency-free
+Node, one process, no build step. `npm run dev` there is a drop-in for the mock
+on :8788; `DETECT_TOKEN=… npm start` is everything else.
+
+What it adds over the mock is mostly the parts §0 and §2.5 say are not optional:
+
+- **No default credential.** An unset `DETECT_TOKEN` refuses to start, and the
+  bind address is loopback unless `HOST` says otherwise (with a warning that
+  raw page text crosses that socket). `DETECT_TOKEN_PREVIOUS` keeps a rotation
+  from having a closed window (§4).
+- **The §2.5 refusals, applied at the source.** The same sanitiser the client
+  runs, run over the policy file before it is served — a rejected host pattern
+  is then an error next to the file that caused it, rather than a host that
+  quietly stopped being protected on somebody's laptop. `isValidHostPattern`
+  and `MAX_HOSTS` are the client's own code, vendored and diffed.
+- **A last-good copy.** A policy file that breaks while the service is up keeps
+  serving its previous copy and logs the failure. Un-listing a host silently is
+  the outcome worth avoiding.
+- **A shared detection cache**, keyed `hash|modelVersion|policyVersion|locale`.
+  The client's hash is echoed back — it is the response-to-chunk binding — but
+  never used as the server's cache key: a client that miscomputes its hash would
+  otherwise write its spans where another client reads.
+- **`502` on a failed pass**, never a `200` with the spans that happened to
+  work. §3's "the one lie the product cannot tell", enforced in code.
+- **Logs that cannot carry page text.** The logger throws on a field name that
+  could (`text`, `spans`, `normalized`, …), so the rule holds by construction.
+
+`GET /v1/metrics` exists there too — authenticated, counters only, and
+explicitly **not** part of this contract: nothing in the extension calls it.
+
+## 8. The mock backend
 
 `code/extensions/browser/mock/` implements all three endpoints for local work
-and QA. It is a stand-in, not a reference implementation: the rule pass is real
+and QA. It is a stand-in, not a reference implementation — [§7](#7-the-service)
+is the service: the rule pass is real
 (regex plus the shared checksums), the "model" pass is a fixed gazetteer, and it
 holds no vault.
 

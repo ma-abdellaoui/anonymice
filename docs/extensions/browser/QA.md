@@ -117,7 +117,7 @@ bug.
 Site annotations need no backend at all: any element with
 `data-sensitive="PERSON"` (or `IBAN`, `CARD`, `AHV`, `PHONE`, `EMAIL`, `ADDR`,
 `ORG`, or bare `data-sensitive` for "sensitive, class unknown") is highlighted
-on its own — which is also what step 10 checks with the backend stopped.
+on its own — which is also what step 9 checks with the backend stopped.
 
 ---
 
@@ -136,11 +136,13 @@ convenience:
 - **Host access pre-granted** — `"host_permissions": ["*://*/*"]` in the built
   manifest, so you are not fighting Chrome's optional-permission prompt. This
   changes what the extension **may** read; it does **not** change where content
-  scripts are registered, which stays driven by the policy list. Step 8 is where
-  you verify exactly that.
+  scripts are registered, which stays driven by the policy list — confirm with
+  `await chrome.scripting.getRegisteredContentScripts()` in the service worker
+  console, which lists the two fixture hosts and nothing else.
 - **A dev policy baked in** — the two fixture hosts as `NATIVE` and `TRUSTED`,
   the backend on :8788, and the trust-list pull pointed at it and refreshing
-  every minute. This is why step 4 has nothing to type.
+  every minute. This is why there is no policy to set by hand before opening a
+  page.
 
 Neither applies to `npm run build`: the shipped bundle lists no hosts, asks for
 no host permission and has no policy endpoint, so it registers nothing and
@@ -149,7 +151,7 @@ the two apart in `chrome://extensions`.
 
 `npm run eval` scores the mock detector against the corpus and prints
 `GATE PASSED`. It exercises no browser code, so a green gate says nothing about
-steps 3–10; it is there to tell a detection regression apart from an extension
+steps 3–9; it is there to tell a detection regression apart from an extension
 one when something below looks wrong.
 
 ---
@@ -171,9 +173,16 @@ POST /v1/detect
 
 Leave it running. If it exits with *port 8788 is already in use*, an earlier one
 is still up — `pkill -f 'detect-serve[r].ts'` (the brackets stop the pattern
-matching your own shell), or `PORT=9788 npm run mock` and set `detectEndpoint`
-and `policyEndpoint` to match in step 4. It is a local stand-in for the backend
+matching your own shell), or `PORT=9788 npm run mock` and point the extension
+at it — `npm run build:qa -- --endpoint=http://localhost:9788/v1/detect`, or
+override `chrome.storage.local` at runtime. It is a local stand-in for the backend
 of SPEC §3.1; page text goes to `localhost` and nowhere else.
+
+The real service (`code/extensions/backend`, ENDPOINTS.md §7) is a drop-in on
+the same port — `npm run dev` there instead of `npm run mock` — and every step
+below is unchanged. Use it when the thing under test is the *backend* rather
+than the extension: it is the one that caches, sanitises the lists it serves,
+and answers `502` instead of an empty `200` when a pass fails.
 
 Sanity-check it before you go near the browser, so a later failure is not
 ambiguous:
@@ -203,180 +212,7 @@ service-worker startup failure, and it is the single most likely thing to be
 broken, since none of this has run before.
 
 ---
-
-## 4. Check where the trust lists came from
-
-This step is where the backend earns its keep, so it is worth understanding
-before clicking. The lists that decide which hosts are `NATIVE` and `TRUSTED`
-reach the extension from **two** places (`ENDPOINTS.md` §2):
-
-- a local copy — baked in by `build:qa`, or set by an administrator via managed
-  policy;
-- `GET /v1/policy` on the backend, pulled at boot and every
-  `policyRefreshMinutes` after.
-
-`build:qa` sets both, pointing the pull at the mock backend on :8788 and baking
-the same two hosts locally, so the extension works whether or not the pull
-succeeds. There is nothing to type.
-
-### 4a. Registration took
-
-On the extension card, click the **service worker** link, and in its Console:
-
-```js
-await chrome.scripting.getRegisteredContentScripts();
-```
-
-**Expected:** one entry — `id: "anonymice-content"`, `js: ["content.js"]`, and
-`matches` holding **both** fixture hosts:
-
-```js
-["*://native.anonymice.test/*", "*://trusted.anonymice.test/*"]
-```
-
-**If it is `[]` or threw** — likely `Cannot add script relating to a host it does
-not have access to`, meaning the QA manifest did not take. Check
-`(await chrome.permissions.getAll()).origins` shows `*://*/*`, and that you
-loaded `dist` *after* running `build:qa`.
-
-### 4b. The lists came from the backend, not the baked default
-
-Registration alone cannot tell you which source won — both name the same hosts
-on purpose, so that a broken pull does not look like a broken extension. Ask:
-
-```js
-await chrome.runtime.sendMessage({ type: 'anonymice:diagnostics' });
-```
-
-**Expected:**
-
-| field | value | meaning |
-|---|---|---|
-| `policyStatus` | `'fresh'` or `'not-modified'` | the pull succeeded |
-| `policyVersion` | `'2026-08-22'` | from `mock/policy.json`, **not** the built-in default |
-| `rejected` | `[]` | nothing in the response was refused |
-| `registrationError` | `null` | every listed host was actually registered |
-| `native` / `trusted` | the two fixture hosts | the resolved lists |
-
-The mock backend's terminal should show a matching `[policy] 200 …` line, then
-`[policy] 304 not modified` on later refreshes.
-
-**`policyStatus: 'disabled'`** means no `policyEndpoint` was configured — you
-are testing the baked lists only, and 4c and 4d will do nothing.
-**`'error'` or `'expired'`** means the pull failed; check the backend is up and
-that step 2's `curl` returned the lists.
-
-### 4c. A list change on the backend reaches the browser
-
-The point of the pull. With everything still running, edit
-`code/extensions/browser/mock/policy.json` and drop the trusted host:
-
-```json
-"trusted": []
-```
-
-No restart — the file is re-read per request. The QA build refreshes every
-minute; to skip the wait, reload the extension on `chrome://extensions`.
-
-**Expected:** `getRegisteredContentScripts()` now lists
-`*://native.anonymice.test/*` only, and a page on `trusted.anonymice.test`
-reloaded afterwards has no `content.js` in DevTools → Sources → Content scripts.
-
-Put the host back and confirm it returns. **This is the whole feature**: a host
-was added and removed from a running browser with no rebuild, no console and no
-managed-policy push.
-
-### 4d. A bad list is refused, not registered
-
-The lists are interpolated into content-script match patterns, so a junk entry
-must never reach registration. Put one in `mock/policy.json`:
-
-```json
-"native": ["native.anonymice.test", "*", "http://evil.example/x"]
-```
-
-Reload the extension and ask for diagnostics again.
-
-**Expected:** `native` is still just `["native.anonymice.test"]`, and `rejected`
-names both bad entries. The worker console carries a matching
-`anonymice: policy values rejected` warning.
-
-**A `*` that survives into `matches` is the most serious failure in this
-document** — it would register the extension on every site there is. Restore the
-file afterwards.
-
-### 4e. The backend going away does not un-protect a host
-
-Stop the mock backend and reload the extension.
-
-**Expected:** `policyStatus` is `'cached'` and the lists are unchanged — the last
-good copy is held until it expires (`max-age`, 300s in `mock/policy.json`, then
-24h by default; see `ENDPOINTS.md` §2.3). Detection itself will fail, which is
-step 10; the *lists* surviving is what matters here.
-
-An empty list the moment the backend hiccups would silently stop protecting
-every host, which is the failure this caching exists to prevent.
-
-Restart the backend before continuing.
-
-### Testing a different host
-
-Rebuild — no console, no reload of anything but the extension:
-
-```sh
-npm run build:qa -- --native=crm.example,*.clinic.example
-```
-
-Bare hostnames, no port and no scheme. `example.org` matches that host exactly;
-`*.example.org` matches it and its subdomains. Other flags: `--endpoint=`,
-`--token=`, `--locale=`, `--painter=overlay`, `--trusted=`,
-`--policy-endpoint=` (empty disables the pull), `--policy-refresh=`. The build
-prints what it baked. Reload the extension on `chrome://extensions` afterwards.
-
-Note that a pulled list **outranks** a baked one, so if the pull is on, editing
-`mock/policy.json` is the faster way to change hosts.
-
-### Overriding without rebuilding
-
-`chrome.storage.local` outranks both the baked policy and the pull, so the
-worker console still works when you want a one-off:
-
-```js
-await chrome.storage.local.set({
-  policy: { native: ['native.anonymice.test', 'crm.example'] },
-});
-```
-
-Registration re-runs on the storage change. Clear it again with
-`await chrome.storage.local.remove('policy')`.
-
-### The real mechanism
-
-None of the above is how this ships. SPEC §1 puts the trust list in
-`chrome.storage.managed`, distributed by an administrator and not user-editable
-— and managed values outrank the baked policy, the pull, and `storage.local`
-alike. In a real deployment managed policy carries the **enrollment** (where to
-pull from, the credential, the detect origin) and the pull carries the lists.
-
-To exercise that path, generate the enterprise policy file:
-
-```sh
-npm run policy -- <extension-id> --native=native.anonymice.test
-```
-
-The id is on `chrome://extensions` with Developer mode on. The command prints
-the JSON on stdout and the install instructions on stderr; installing it needs
-root, so the script deliberately does not do it for you. Worth one pass before
-this goes anywhere real, because the managed path is otherwise untested.
-
-Precedence is worth one check while you are there: a `native` list in the
-managed file must win over whatever `mock/policy.json` says, because an
-administrator who states the list is not overridable from the network
-(`ENDPOINTS.md` §2.4).
-
----
-
-## 5. The NATIVE page
+## 4. The NATIVE page
 
 Open <http://native.anonymice.test:8787/> and **reload once**. Dynamic
 registration only injects on navigations after registration, so a tab that was
@@ -389,6 +225,7 @@ already open shows nothing until reloaded.
 | the page | every sensitive value filled light-red (`#ffdada`) |
 | toolbar badge | red `11` |
 | badge tooltip | *anonymice: 11 sensitive value(s) on this page* |
+| desktop notification | *Sensitive data on this page* — "11 sensitive values in 13 places on native.anonymice.test:8787", with `4 IBAN · 3 PERSON · …` underneath |
 | mock backend terminal | a line like `[native] 12 chunk(s), … locale de-CH` |
 
 That last line is the host class travelling with the request, decided by the
@@ -401,9 +238,31 @@ the same IBAN is highlighted in both of its spellings, because two occurrences
 of one value collapse into a single registry entry (SPEC §5.1). A badge of 13
 means collapsing is broken.
 
+### The notification fires once, not on every scan
+
+Reload the page: it appears again, because a navigation is a new page. Now force
+a re-scan that does not change the count — in the page console:
+
+```js
+document.body.appendChild(document.createElement('p'));
+```
+
+**Expected: no second notification.** The badge and the highlights are ambient
+state that keeps up with the page; the notification is the one-shot "this page
+has something on it". A page that mutates constantly would otherwise notify on
+every tick and train you to dismiss it.
+
+It fires again only when the same page turns out to hold **more** than was
+announced — step 8 checks that. To silence it, set `notifications` to `off` in
+the policy (managed, `storage.local`, or `--notifications=off` at build time).
+
+If nothing appears at all, check Chrome's notification settings and the OS
+do-not-disturb state before suspecting the extension: `notifications.create`
+fails silently when either suppresses it.
+
 ---
 
-## 6. Check what is *not* highlighted
+## 5. Check what is *not* highlighted
 
 Still on the NATIVE page, scroll to the **Never scanned** block. Every value in
 it sits somewhere SPEC §3.5 forbids scanning:
@@ -420,13 +279,15 @@ them: on `NATIVE` we never touch editable regions at all.
 
 ---
 
-## 6b. The TRUSTED page
+## 6. The TRUSTED page
 
 Open <http://trusted.anonymice.test:8787/> and reload once.
 
 **Expected: nothing highlighted, badge empty** — even though the page carries an
 annotated name, an annotated AHV, a valid IBAN, an email and a phone number, and
-even though a content script *is* registered for this host (step 4a).
+even though a content script *is* registered for this host —
+`await chrome.scripting.getRegisteredContentScripts()` in the worker console
+lists it.
 
 Scanning is `NATIVE`-only today: `policy.scanTrusted` is `off`, and only `off`
 is implemented (SPEC §1). Confirm the script is present rather than absent:
@@ -438,8 +299,8 @@ document.querySelector('style[data-anonymice="highlight-style"]')   // -> null, 
 
 and in DevTools → **Sources → Content scripts**, `content.js` **is** listed for
 this page. Registered, injected, and deliberately doing nothing is the correct
-state — that is the difference between this page and step 8's, where no script
-exists at all. A highlight here means the class gate is not holding.
+state — that is the difference between this page and a host in neither list,
+where no script is registered at all. A highlight here means the class gate is not holding.
 
 In the target state this page would highlight, and its two form inputs would
 hold tokens while a clone showed the real value (SPEC §1, §8). Neither is built.
@@ -483,35 +344,10 @@ page.
 If highlights appear with `overlay` but not with `auto`, that confirms the
 isolated-world problem above. Set it back to `auto` afterwards.
 
----
-
-## 8. Check the extension stays off unlisted hosts
-
-This is the gate the whole trust model rests on (SPEC §1): a host in no list is
-never touched at all, rather than touched and then let go.
-
-Open `http://localhost:8787/` — the same server and port as the fixtures,
-differing only in name — and any real site, say `example.com`.
-
-| check | expected |
-|---|---|
-| the page | no highlights |
-| badge | empty |
-| page console: `document.querySelector('[data-anonymice]')` | `null` — nothing of ours in the DOM |
-| DevTools → Sources → Content scripts | no `content.js` for this page |
-| worker console: `await chrome.scripting.getRegisteredContentScripts()` | still only your listed host |
-
-`localhost` is the sharper half of this check: same server, same port, same
-content — only the name differs, so a sloppy match pattern shows up there rather
-than on a site that differs in every respect.
-
-**A `content.js` present on an unlisted host is the most serious failure in this
-document.** It would mean the gate is an early return rather than a registration
-boundary.
 
 ---
 
-## 9. Check a live page change is picked up
+## 8. Check a live page change is picked up
 
 On the NATIVE page (11 values to start from), in the **page** console:
 
@@ -521,8 +357,9 @@ p.textContent = 'Nachtrag: CH56 0483 5012 3456 7800 9 von Claudia Weber.';
 document.body.appendChild(p);
 ```
 
-**Expected:** within ~1 second, both values are highlighted and the badge rises
-to **12** — not 13. That IBAN already appears on the page split across six
+**Expected:** within ~1 second, both values are highlighted, the badge rises to
+**12** — not 13 — and a second notification appears reading *1 more sensitive
+value on this page*. That IBAN already appears on the page split across six
 elements, so it is a second *occurrence* of a known value; only `Claudia Weber`
 is new. Patches go 13 → 15.
 
@@ -545,7 +382,7 @@ p.remove();
 
 ---
 
-## 10. Check failure is loud, not silent
+## 9. Check failure is loud, not silent
 
 Stop the mock backend (Ctrl-C in that terminal), then reload the page.
 
@@ -570,8 +407,9 @@ Restart the backend and reload; the count should come back to 11.
 
 Not built. Please don't file these:
 
-- **No popup.** Clicking the toolbar icon does nothing; the badge and tooltip
-  are the entire UI. The in-page pill and popup list are [#6].
+- **No popup.** Clicking the toolbar icon does nothing. The badge, the tooltip
+  and the notification are the whole UI; the in-page pill and the popup list of
+  what was found are still [#6].
 - **No clipboard or token behaviour.** Copying a highlighted value copies the
   value. Minting, `ANM1-…` tokens and the vault are SPEC §6–§7, unbuilt.
 - **No reveal / input replacement.** SPEC §8, unbuilt.
@@ -600,7 +438,7 @@ Capture, in this order:
    `(await chrome.permissions.getAll()).origins`.
 5. The page you were testing, or enough of it to reproduce.
 
-Steps 3–6 failing is the expected shape of a first run. Steps 7–10 failing means
+Steps 3–6 failing is the expected shape of a first run. Steps 7–9 failing means
 the pipeline logic is wrong, which would be more surprising — that part has
 tests behind it.
 

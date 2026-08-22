@@ -31,7 +31,11 @@ async function main(): Promise<void> {
     locale: info.locale,
     painterBackend: info.painter ?? 'auto',
     onUpdate: (state) => {
-      void chrome.runtime.sendMessage({ type: 'anonymice:state', ...state });
+      void chrome.runtime.sendMessage({
+        type: 'anonymice:state',
+        ...state,
+        url: location.href,
+      });
     },
   });
 

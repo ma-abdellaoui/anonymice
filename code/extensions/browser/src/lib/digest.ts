@@ -1,10 +1,25 @@
 /** SHA-256 helpers. Used for chunk hashes (SPEC §3.2) and spanIds (SPEC §5). */
 
+import { sha256Bytes } from './sha256.ts';
+
 const encoder = new TextEncoder();
 
+/**
+ * WebCrypto where it exists, a JS implementation where it does not.
+ *
+ * A content script inherits the page's security context, and `crypto.subtle` is
+ * undefined in an insecure one — so on an internal `NATIVE` site served over
+ * plain HTTP this would otherwise throw on the first chunk and scan nothing.
+ * Both paths produce the same digest, which `test/sha256.test.ts` asserts.
+ */
 async function sha256Hex(input: string): Promise<string> {
-  const buf = await crypto.subtle.digest('SHA-256', encoder.encode(input));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  const bytes = encoder.encode(input);
+  const subtle = globalThis.crypto?.subtle;
+  if (subtle) {
+    const buf = await subtle.digest('SHA-256', bytes);
+    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  return sha256Bytes(bytes);
 }
 
 /** Cache key, response binding and staleness guard, all from one hash (SPEC §3.2). */

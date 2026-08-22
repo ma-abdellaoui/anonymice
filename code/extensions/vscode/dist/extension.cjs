@@ -1113,6 +1113,27 @@ async function activate(context) {
       refreshAll();
       void vscode4.window.setStatusBarMessage(`$(shield) Tokenized ${summary}`, 4e3);
     }),
+    /**
+     * Destroy every token and every value in the vault. Exists because vault
+     * state is persisted (globalState + SecretStorage) and therefore survives a
+     * window reload and an uninstall — without this there is no way back to a
+     * clean slate for a repeatable test pass.
+     */
+    vscode4.commands.registerCommand("anonymice.resetVault", async () => {
+      const counts = Object.keys(vault.state.records).length;
+      const go = await vscode4.window.showWarningMessage(
+        `Anonymice: destroy the vault? ${counts} value(s) and every token minted from them become unresolvable. Tokens already written into files will stay in those files and will no longer resolve.`,
+        { modal: true },
+        "Destroy vault"
+      );
+      if (go !== "Destroy vault") return;
+      await context.globalState.update(STATE_KEY, emptyState());
+      await context.workspaceState.update("anonymice.optedIn", []);
+      await context.secrets.delete(KEY_SECRET);
+      void vscode4.window.showInformationMessage(
+        "Anonymice: vault destroyed. Reload the window (Developer: Reload Window) to start clean."
+      );
+    }),
     vscode4.commands.registerCommand("anonymice.revealToggleFile", () => {
       const editor = vscode4.window.activeTextEditor;
       if (!editor) return;
@@ -1121,11 +1142,7 @@ async function activate(context) {
       else optedIn.add(uri);
       rememberOptIn();
       refreshAll();
-    }),
-    vscode4.commands.registerCommand(
-      "anonymice.revealAtCursor",
-      () => vscode4.commands.executeCommand("anonymice.revealToggleFile")
-    )
+    })
   );
   refreshAll();
 }

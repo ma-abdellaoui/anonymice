@@ -3,7 +3,8 @@
 Implements [`SPEC.md`](./SPEC.md). This slice covers detection and highlighting
 on `NATIVE` hosts — SPEC §1–§5 — plus the eval that gates them. What it needs
 from a server is
-[`docs/extensions/browser/ENDPOINTS.md`](../../../docs/extensions/browser/ENDPOINTS.md).
+[`docs/extensions/browser/ENDPOINTS.md`](../../../docs/extensions/browser/ENDPOINTS.md),
+and [`../backend/`](../backend/README.md) is the service that implements it.
 
 ## Layout
 
@@ -12,7 +13,7 @@ from a server is
 | `src/lib/` | pure core: normalisation, span algebra, projection, annotations, registry, policy, wire contract |
 | `src/content/` | scanner loop and painter (Custom Highlight API, overlay fallback) |
 | `src/background/` | service worker: policy-driven script registration, the only thing that talks to the backend |
-| `mock/` | dev stand-in for the backend of SPEC §3.1 — `/v1/health`, `/v1/policy`, `/v1/detect`; real rule pass, gazetteer instead of an LLM |
+| `mock/` | dev stand-in for the backend of SPEC §3.1 — `/v1/health`, `/v1/policy`, `/v1/detect`; real rule pass, gazetteer instead of an LLM. The service itself is [`../backend/`](../backend/README.md) |
 | `eval/` | corpus, scorer, regression gate (SPEC §9) |
 | `test/` | unit tests |
 | `dev/` | build, fixture server, browser harness |

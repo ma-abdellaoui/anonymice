@@ -1,0 +1,18 @@
+{
+  "name": "anonymice-backend",
+  "private": true,
+  "type": "module",
+  "description": "Anonymice detection backend — /v1/health, /v1/policy, /v1/detect (docs/extensions/browser/ENDPOINTS.md)",
+  "scripts": {
+    "start": "node src/main.ts",
+    "dev": "node src/main.ts --dev",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test 'test/*.test.ts'",
+    "parity": "for f in checksums normalize policy protocol types; do diff ../browser/src/lib/$f.ts src/lib/$f.ts || exit 1; done && echo 'shared libs: backend == browser'",
+    "check": "npm run typecheck && npm test && npm run parity"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^7.0.2"
+  }
+}

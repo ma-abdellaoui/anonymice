@@ -6,6 +6,7 @@ window reads. You see the real value, rendered through a surface no other
 extension can read back.
 
 Full design: [`SPEC.md`](./SPEC.md).
+Manual test pass: [`docs/extensions/vscode/QA.md`](../../../docs/extensions/vscode/QA.md).
 
 ## The invariant
 

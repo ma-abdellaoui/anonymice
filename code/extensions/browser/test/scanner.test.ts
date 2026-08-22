@@ -30,7 +30,13 @@ test('a scan reports distinct values and painted occurrences separately', async 
   const doc = domFrom('<p>Anna Meier</p><p>Anna Meier</p><p>IBAN CH93 0076 2011 6238 5295 7</p>');
   const scanner = withDocument(doc, () => new Scanner({ detector: backend, root: doc.body, locale: 'de-CH' }));
   const state = await scanner.scan();
-  assert.deepEqual(state, { values: 2, occurrences: 3, unscanned: false });
+  assert.deepEqual(state, {
+    values: 2,
+    occurrences: 3,
+    unscanned: false,
+    // Distinct values per class — what the notification's breakdown line reads.
+    byClass: { PERSON: 1, IBAN: 1 },
+  });
 });
 
 test('re-scanning a mutated block does not stack duplicate highlights', async () => {
@@ -51,6 +57,7 @@ test('a value removed from the page stops being painted', async () => {
   doc.getElementById('p')!.textContent = 'nichts hier';
   const state = await scanner.rescan([doc.getElementById('p')!]);
   assert.deepEqual([state.values, state.occurrences], [0, 0]);
+  assert.deepEqual(state.byClass, {}, 'nothing left to break down');
 });
 
 test('a failed detection surfaces as unscanned, not as silence', async () => {

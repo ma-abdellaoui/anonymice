@@ -18,6 +18,7 @@ import {
 } from '../lib/policy.ts';
 import type { DetectChunkRequest, DetectResponse } from '../lib/protocol.ts';
 import { createSerializer } from '../lib/serialize.ts';
+import { planNotification, type Notified } from '../lib/notify.ts';
 
 const SCRIPT_ID = 'anonymice-content';
 const POLICY_ALARM = 'anonymice:policy-refresh';
@@ -55,6 +56,8 @@ export interface StateMessage {
   values: number;
   occurrences: number;
   unscanned: boolean;
+  byClass: Record<string, number>;
+  url: string;
 }
 
 type Message =
@@ -191,15 +194,45 @@ chrome.storage.onChanged.addListener((changes, area) => {
   void requestBoot('cached');
 });
 
+/**
+ * A desktop notification the first time a page turns out to hold sensitive data,
+ * and again only when it holds more than was announced. The badge is always-on
+ * ambient state; this is the one-shot "you should know about this page".
+ */
+function notifyIfWorthIt(tabId: number, state: StateMessage): void {
+  if (policy.notifications === 'off' || !chrome.notifications) return;
+  const plan = planNotification(announced.get(tabId) ?? null, {
+    values: state.values,
+    occurrences: state.occurrences,
+    unscanned: state.unscanned,
+    byClass: state.byClass ?? {},
+    url: state.url ?? '',
+  });
+  if (!plan) return;
+  announced.set(tabId, plan.notified);
+  chrome.notifications.create(`anonymice:${tabId}`, {
+    type: 'basic',
+    iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
+    title: plan.title,
+    message: plan.message,
+    contextMessage: plan.contextMessage,
+    priority: 0,
+  });
+}
+
 chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) => {
   if (message.type === 'anonymice:detect') {
     // The class is derived from the sender's own URL, not from anything the page
     // said, so a page cannot talk its way into a different trust class.
     const senderHost = sender.tab?.url ? new URL(sender.tab.url).hostname : '';
-    const hostClass = classifyHost(senderHost, policy).toLowerCase() as 'native' | 'trusted' | 'untrusted';
     // The content script never fetches: the worker holds the credential.
-    client
-      .detect(message.chunks, hostClass)
+    ready
+      .then(() =>
+        client.detect(
+          message.chunks,
+          classifyHost(senderHost, policy).toLowerCase() as 'native' | 'trusted' | 'untrusted',
+        ),
+      )
       .then((response: DetectResponse | null) => sendResponse(response))
       .catch(() => sendResponse(null));
     return true; // async
@@ -209,6 +242,7 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     const tabId = sender.tab?.id;
     if (tabId !== undefined) {
       const { values, unscanned } = message;
+      void ready.then(() => notifyIfWorthIt(tabId, message));
       // "Not scanned" must be visible; silence would read as "nothing here".
       chrome.action.setBadgeText({ tabId, text: unscanned ? '?' : values ? String(values) : '' });
       chrome.action.setBadgeBackgroundColor({ tabId, color: unscanned ? '#8a6d3b' : '#c0392b' });
@@ -223,26 +257,74 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
   }
 
   if (message.type === 'anonymice:diagnostics') {
-    sendResponse({
-      ...health,
-      policyEndpoint: policy.policyEndpoint,
-      detectEndpoint: policy.detectEndpoint,
-      native: policy.native,
-      trusted: policy.trusted,
-    });
-    return false;
+    void ready.then(() =>
+      sendResponse({
+        ...health,
+        policyEndpoint: policy.policyEndpoint,
+        detectEndpoint: policy.detectEndpoint,
+        native: policy.native,
+        trusted: policy.trusted,
+      }),
+    );
+    return true; // async
   }
 
   if (message.type === 'anonymice:policy') {
     const host = sender.tab?.url ? new URL(sender.tab.url).hostname : '';
-    sendResponse({
-      hostClass: classifyHost(host, policy),
-      locale: policy.locale,
-      painter: policy.painter,
-    });
-    return false;
+    void ready.then(() =>
+      sendResponse({
+        hostClass: classifyHost(host, policy),
+        locale: policy.locale,
+        painter: policy.painter,
+      }),
+    );
+    return true; // async — answering before boot would classify everything UNTRUSTED
   }
   return false;
 });
 
-void requestBoot('cached');
+/**
+ * The worker is killed when idle and revived by the very message it has to
+ * answer. Top-level code runs, listeners attach, and boot starts — but boot is
+ * async, so without this gate a handler can reply while `policy` is still the
+ * empty default: every host classifies UNTRUSTED, the content script returns
+ * early, and the page is silently never scanned.
+ */
+/**
+ * What each tab has already been told. Without it a page that mutates would
+ * notify on every re-scan, and the user would learn to dismiss us on sight.
+ */
+const announced = new Map<number, Notified>();
+chrome.tabs?.onRemoved.addListener((tabId) => announced.delete(tabId));
+
+const ready: Promise<void> = requestBoot('cached');
+
+/**
+ * QA builds only. `chrome.runtime.sendMessage` from the worker's own console
+ * does not reach the worker's own listener, so the diagnostics message is
+ * unusable from exactly the place you want it. This exposes the same state
+ * directly: `await anonymice.state()` in the service worker console.
+ */
+// `typeof __DEV_POLICY__` is replaced at bundle time, so a shipped build drops
+// this branch entirely rather than carrying it as dead code.
+if (typeof __DEV_POLICY__ === 'string') {
+  Object.assign(globalThis, {
+    anonymice: {
+      async state() {
+        await ready;
+        return {
+          ...health,
+          policy: {
+            native: policy.native,
+            trusted: policy.trusted,
+            detectEndpoint: policy.detectEndpoint,
+            policyEndpoint: policy.policyEndpoint,
+            painter: policy.painter,
+          },
+          registeredNow: await chrome.scripting.getRegisteredContentScripts(),
+        };
+      },
+      reboot: () => requestBoot('refresh'),
+    },
+  });
+}

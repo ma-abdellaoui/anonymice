@@ -36,6 +36,7 @@ const devPolicy = qa
       policyRefreshMinutes: Number(argValue('policy-refresh', '1')),
       locale: argValue('locale', 'de-CH'),
       painter: argValue('painter', 'auto'),
+      notifications: argValue('notifications', 'on'),
     }
   : null;
 
@@ -52,6 +53,9 @@ await build({
   format: 'esm',
   target: 'chrome105',
   sourcemap: true,
+  // Minify only the shipped build: it is what drops the `if (false)` branches a
+  // QA-only define leaves behind, and the QA bundle stays readable in DevTools.
+  minify: !qa,
   logLevel: 'info',
   define: {
     __DEV_POLICY__: devPolicy ? JSON.stringify(JSON.stringify(devPolicy)) : 'null',
@@ -76,6 +80,7 @@ if (qa) {
 }
 writeFileSync(`${out}/manifest.json`, JSON.stringify(manifest, null, 2));
 cpSync(`${root}platform/chrome/managed-schema.json`, `${out}/managed-schema.json`);
+cpSync(`${root}platform/chrome/icons`, `${out}/icons`, { recursive: true });
 
 if (devPolicy) {
   console.log(`built -> ${out} (QA build)`);

@@ -44,6 +44,20 @@
         "readonly",
         "full"
       ]
+    },
+    "painter": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "overlay"
+      ]
+    },
+    "notifications": {
+      "type": "string",
+      "enum": [
+        "on",
+        "off"
+      ]
     }
   }
 }
