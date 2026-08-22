@@ -1239,7 +1239,7 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                             Guardrails{" "}
                             <SimpleTooltip content="Apply safety guardrails to this key to filter content or enforce policies">
                               <a
-                                href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start"
+                                href="https://github.com/ma-abdellaoui/anonymice"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()} // Prevent accordion from collapsing when clicking link
@@ -1278,7 +1278,7 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                             Disable Global Guardrails{" "}
                             <SimpleTooltip content="When enabled, this key will bypass any guardrails configured to run on every request (global guardrails)">
                               <a
-                                href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start"
+                                href="https://github.com/ma-abdellaoui/anonymice"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()} // Prevent accordion from collapsing when clicking link
@@ -1313,7 +1313,7 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                               Policies{" "}
                               <SimpleTooltip content="Apply policies to this key to control guardrails and other settings">
                                 <a
-                                  href="https://docs.litellm.ai/docs/proxy/guardrails/guardrail_policies"
+                                  href="https://github.com/ma-abdellaoui/anonymice"
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   onClick={(e) => e.stopPropagation()} // Prevent accordion from collapsing when clicking link
@@ -1354,7 +1354,7 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                               Prompts{" "}
                               <SimpleTooltip content="Allow this key to use specific prompt templates">
                                 <a
-                                  href="https://docs.litellm.ai/docs/proxy/prompt_management"
+                                  href="https://github.com/ma-abdellaoui/anonymice"
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   onClick={(e) => e.stopPropagation()} // Prevent accordion from collapsing when clicking link
@@ -1415,7 +1415,7 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                             Allowed Pass Through Routes{" "}
                             <SimpleTooltip content="Allow this key to use specific pass through routes">
                               <a
-                                href="https://docs.litellm.ai/docs/proxy/pass_through"
+                                href="https://github.com/ma-abdellaoui/anonymice"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()} // Prevent accordion from collapsing when clicking link
@@ -1611,9 +1611,9 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                           className="w-full"
                           content={
                             <span>
-                              Key-level logging settings is an enterprise feature, get in touch -
-                              <a href="https://www.litellm.ai/enterprise" target="_blank">
-                                https://www.litellm.ai/enterprise
+                              Key-level logging settings is an enterprise feature. Visit the Anonymice repository -
+                              <a href="https://github.com/ma-abdellaoui/anonymice" target="_blank">
+                                https://github.com/ma-abdellaoui/anonymice
                               </a>
                             </span>
                           }

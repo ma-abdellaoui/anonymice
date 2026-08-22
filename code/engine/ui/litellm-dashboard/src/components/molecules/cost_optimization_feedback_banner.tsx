@@ -4,7 +4,7 @@ import { ExternalLink, MessageSquare, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const STORAGE_KEY = "hideCostOptimizationFeedbackBanner";
-const DISCUSSION_URL = "https://github.com/BerriAI/litellm/discussions/32172";
+const DISCUSSION_URL = "https://github.com/ma-abdellaoui/anonymice";
 
 const CostOptimizationFeedbackBanner: React.FC = () => {
   const [dismissed, setDismissed] = useState(() => {

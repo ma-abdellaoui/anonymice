@@ -108,7 +108,7 @@ describe("old usage page", () => {
       renderUsage();
 
       const link = await screen.findByRole("link", { name: "View Usage Guide" });
-      expect(link).toHaveAttribute("href", "https://docs.litellm.ai/docs/proxy/cost_tracking");
+      expect(link).toHaveAttribute("href", "https://github.com/ma-abdellaoui/anonymice");
       expect(link).toHaveAttribute("target", "_blank");
     });
 

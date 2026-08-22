@@ -41,7 +41,7 @@ describe("TransformRequestPanel", () => {
 
     expect(screen.getByRole("link", { name: /here/i })).toHaveAttribute(
       "href",
-      "https://github.com/BerriAI/litellm/issues",
+      "https://github.com/ma-abdellaoui/anonymice",
     );
   });
 

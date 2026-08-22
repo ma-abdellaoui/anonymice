@@ -324,7 +324,7 @@ describe("LogDetailContent", () => {
 
     expect(await screen.findByRole("link", { name: "Docs" })).toHaveAttribute(
       "href",
-      "https://docs.litellm.ai/docs/proxy/caching",
+      "https://github.com/ma-abdellaoui/anonymice",
     );
   });
 
@@ -349,7 +349,7 @@ describe("LogDetailContent", () => {
 
     expect(await screen.findByRole("link", { name: "Docs" })).toHaveAttribute(
       "href",
-      "https://docs.litellm.ai/docs/completion/prompt_caching",
+      "https://github.com/ma-abdellaoui/anonymice",
     );
   });
 

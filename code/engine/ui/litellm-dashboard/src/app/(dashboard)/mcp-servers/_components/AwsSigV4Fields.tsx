@@ -134,7 +134,7 @@ const AwsSigV4Fields: React.FC = () => (
       {(control) => (
         <Input
           {...textControl(control)}
-          placeholder="litellm-prod (optional, auto-generated if blank)"
+          placeholder="anonymice-prod (optional, auto-generated if blank)"
           className={fieldClassName}
         />
       )}

@@ -282,7 +282,7 @@ const CreateSearchTool: React.FC<CreateSearchToolProps> = ({
                     render={
                       <a
                         className="text-sm text-info hover:underline"
-                        href="https://github.com/BerriAI/litellm/issues"
+                        href="https://github.com/ma-abdellaoui/anonymice"
                         target="_blank"
                         rel="noopener noreferrer"
                       >

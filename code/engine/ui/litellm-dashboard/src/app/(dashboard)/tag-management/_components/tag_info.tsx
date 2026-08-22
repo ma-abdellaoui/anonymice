@@ -119,7 +119,7 @@ const TagEditForm: React.FC<TagEditFormProps> = ({ tag, seedBudgetFields, userMo
             <p className="text-sm text-muted-foreground">
               TPM/RPM limits for tags are not currently supported. If you need this feature, please{" "}
               <a
-                href="https://github.com/BerriAI/litellm/issues/new"
+                href="https://github.com/ma-abdellaoui/anonymice"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-info underline hover:text-info/80"

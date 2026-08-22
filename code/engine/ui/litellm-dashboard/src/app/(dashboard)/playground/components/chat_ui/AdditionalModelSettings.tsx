@@ -165,7 +165,7 @@ const AdditionalModelSettings: React.FC<AdditionalModelSettingsProps> = ({
               <p>
                 Behavior can differ when keys, teams, or router settings are configured.{" "}
                 <a
-                  href="https://docs.litellm.ai/docs/proxy/keys_teams_router_settings"
+                  href="https://github.com/ma-abdellaoui/anonymice"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-info hover:text-info/80"

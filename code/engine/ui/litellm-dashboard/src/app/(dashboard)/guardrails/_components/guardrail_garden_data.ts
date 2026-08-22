@@ -18,7 +18,7 @@ export interface GuardrailCardInfo {
   providerKey?: string;
 }
 
-const litellmContentFilterLogo = guardrailLogoMap["LiteLLM Content Filter"];
+const litellmContentFilterLogo = guardrailLogoMap["Anonymice Content Filter"];
 
 export const LITELLM_CONTENT_FILTER_CARDS: GuardrailCardInfo[] = [
   {

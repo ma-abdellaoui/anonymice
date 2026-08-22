@@ -105,11 +105,11 @@ describe("CacheDashboard cache analytics charts", () => {
     expect(await screen.findByText(/is not shown here/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "response cache" })).toHaveAttribute(
       "href",
-      "https://docs.litellm.ai/docs/proxy/caching",
+      "https://github.com/ma-abdellaoui/anonymice",
     );
     expect(screen.getByRole("link", { name: "prompt caching" })).toHaveAttribute(
       "href",
-      "https://docs.litellm.ai/docs/completion/prompt_caching",
+      "https://github.com/ma-abdellaoui/anonymice",
     );
     expect(screen.queryByText("Cached Tokens")).not.toBeInTheDocument();
     expect(screen.getAllByText("Cached Completion Tokens").length).toBeGreaterThan(0);

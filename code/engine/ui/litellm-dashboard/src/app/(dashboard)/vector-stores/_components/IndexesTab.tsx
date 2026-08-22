@@ -68,7 +68,7 @@ const IndexesTab: React.FC<IndexesTabProps> = ({ accessToken, vectorStores, onVi
       <p className="mb-4 text-sm text-muted-foreground">
         Vector store indexes registered on this proxy via the <code>/v1/indexes</code> API. See the{" "}
         <a
-          href="https://docs.litellm.ai/docs/providers/azure_ai/azure_ai_vector_stores_passthrough"
+          href="https://github.com/ma-abdellaoui/anonymice"
           target="_blank"
           rel="noopener noreferrer"
           className="text-info hover:underline"
@@ -78,7 +78,7 @@ const IndexesTab: React.FC<IndexesTabProps> = ({ accessToken, vectorStores, onVi
         for how this works. Index passthrough is supported for Azure AI Search and Milvus today; support for more
         providers can be added, so please{" "}
         <a
-          href="https://github.com/BerriAI/litellm/issues"
+          href="https://github.com/ma-abdellaoui/anonymice"
           target="_blank"
           rel="noopener noreferrer"
           className="text-info hover:underline"

@@ -1463,7 +1463,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                     label={labelWithDocsHint(
                       "Guardrails",
                       "Select which guardrails apply to this team. Global guardrails are enabled by default, uncheck to opt out. Other guardrails are opt-in.",
-                      "https://docs.litellm.ai/docs/proxy/guardrails/quick_start",
+                      "https://github.com/ma-abdellaoui/anonymice",
                     )}
                   >
                     {({ id, value, onChange }) => (
@@ -1511,7 +1511,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                       label={labelWithDocsHint(
                         "Policies",
                         "Apply policies to this team to control guardrails and other settings",
-                        "https://docs.litellm.ai/docs/proxy/guardrails/guardrail_policies",
+                        "https://github.com/ma-abdellaoui/anonymice",
                       )}
                     >
                       {({ id, value, onChange }) => (
@@ -1682,7 +1682,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                         ref={ref}
                         value={value ?? ""}
                         rows={6}
-                        placeholder='{"namespace": "admin", "mount": "secret", "path_prefix": "litellm"}'
+                        placeholder='{"namespace": "admin", "mount": "secret", "path_prefix": "anonymice"}'
                         disabled={!premiumUser}
                       />
                     )}

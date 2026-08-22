@@ -124,7 +124,7 @@ describe("SearchConnectionTest", () => {
 
     render(<SearchConnectionTest {...defaultProps} />);
 
-    const docLink = await screen.findByRole("link", { name: /View Search Documentation/i });
-    expect(docLink).toHaveAttribute("href", "https://docs.litellm.ai/docs/search");
+    const docLink = await screen.findByRole("link", { name: /View Anonymice on GitHub/i });
+    expect(docLink).toHaveAttribute("href", "https://github.com/ma-abdellaoui/anonymice");
   });
 });

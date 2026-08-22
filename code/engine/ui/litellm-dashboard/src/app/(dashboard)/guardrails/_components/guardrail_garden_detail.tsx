@@ -126,7 +126,7 @@ const GuardrailDetailView: React.FC<GuardrailDetailViewProps> = ({ card, onBack,
             {/* Guardrail ID */}
             <div style={{ marginBottom: 28 }}>
               <div style={{ fontSize: 12, color: "#5f6368", marginBottom: 4 }}>Guardrail ID</div>
-              <div style={{ fontSize: 13, color: "#202124", wordBreak: "break-all" }}>litellm/{card.id}</div>
+              <div style={{ fontSize: 13, color: "#202124", wordBreak: "break-all" }}>anonymice/{card.id}</div>
             </div>
 
             {/* Type */}

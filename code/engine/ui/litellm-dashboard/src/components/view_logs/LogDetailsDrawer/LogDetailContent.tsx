@@ -346,8 +346,8 @@ function getUncachedInputTextTokens(metadata: Record<string, any>): number | und
 
 const RESPONSE_CACHE_TOOLTIP =
   "Whether this request was served from Anonymice's response cache (e.g. Redis / in-memory), skipping the LLM provider call entirely. This is separate from provider prompt caching; a Miss here does not mean prompt caching failed.";
-const RESPONSE_CACHE_DOCS_URL = "https://docs.litellm.ai/docs/proxy/caching";
-const PROMPT_CACHE_DOCS_URL = "https://docs.litellm.ai/docs/completion/prompt_caching";
+const RESPONSE_CACHE_DOCS_URL = "https://github.com/ma-abdellaoui/anonymice";
+const PROMPT_CACHE_DOCS_URL = "https://github.com/ma-abdellaoui/anonymice";
 
 function MetricLabel({ label, tooltip, docsUrl }: { label: string; tooltip: string; docsUrl: string }) {
   return (
