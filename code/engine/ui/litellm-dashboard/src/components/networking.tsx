@@ -8397,3 +8397,44 @@ export const streamPiiActivity = async (
     }
   }
 };
+
+// ---------------------------------------------------------------------------
+// ChatGPT subscription sign-in (/chatgpt/login)
+// ---------------------------------------------------------------------------
+
+export interface ChatgptLoginStatus {
+  signed_in: boolean;
+  account_id: string | null;
+  expires_at: number | null;
+}
+
+export interface ChatgptLoginStart {
+  verification_url: string;
+  user_code: string;
+  device_auth_id: string;
+  interval_seconds: number;
+}
+
+export interface ChatgptLoginPoll {
+  status: "pending" | "complete";
+  account_id: string | null;
+}
+
+export const chatgptLoginStatusCall = async (accessToken: string): Promise<ChatgptLoginStatus> =>
+  apiClient.get<ChatgptLoginStatus>("/chatgpt/login", { accessToken });
+
+export const chatgptLoginStartCall = async (accessToken: string): Promise<ChatgptLoginStart> =>
+  apiClient.post<ChatgptLoginStart>("/chatgpt/login/start", { accessToken });
+
+export const chatgptLoginPollCall = async (
+  accessToken: string,
+  deviceAuthId: string,
+  userCode: string,
+): Promise<ChatgptLoginPoll> =>
+  apiClient.post<ChatgptLoginPoll>("/chatgpt/login/poll", {
+    accessToken,
+    body: { device_auth_id: deviceAuthId, user_code: userCode },
+  });
+
+export const chatgptSignOutCall = async (accessToken: string): Promise<ChatgptLoginStatus> =>
+  apiClient.delete<ChatgptLoginStatus>("/chatgpt/login", { accessToken });
