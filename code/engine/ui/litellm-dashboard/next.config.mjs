@@ -15,7 +15,7 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  basePath: "",
+  basePath: "/ui",
   assetPrefix: "/litellm-asset-prefix",
   trailingSlash: true,
   turbopack: {
