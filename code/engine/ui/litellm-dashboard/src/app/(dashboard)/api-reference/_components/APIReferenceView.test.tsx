@@ -46,13 +46,16 @@ describe("APIReferenceView", () => {
     expect(renderedCode).not.toContain(proxyUrl);
   });
 
-  it("renders the page title and Anonymice compatibility blurb without an upstream link", () => {
+  it("renders the page title, compatibility blurb, and Anonymice GitHub link", () => {
     render(<APIReferenceView proxySettings={{ PROXY_BASE_URL: "https://proxy.litellm.test" }} />);
 
     expect(screen.getByText("OpenAI Compatible Proxy: API Reference")).toBeInTheDocument();
     expect(screen.getByText(/Anonymice is OpenAI compatible/)).toBeInTheDocument();
 
-    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Anonymice on GitHub/ })).toHaveAttribute(
+      "href",
+      "https://github.com/ma-abdellaoui/anonymice",
+    );
   });
 
   it("exposes the three SDK tabs with the first selected by default", () => {
