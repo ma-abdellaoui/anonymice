@@ -129,9 +129,10 @@ also loaded an NLP engine would return NER entities from the stage we treat as
 high precision. Stage two is
 [`piiranha`](https://huggingface.co/iiiorg/piiranha-v1-detect-personal-information),
 a token-classification model, for what patterns cannot catch: `PERSON`,
-`LOCATION`, `ORGANIZATION`. `ner_stage_policy` decides when stage two runs. The
-default, `on_miss`, only calls it when the rule stage found nothing, so most
-requests pay for the cheap pass alone.
+`LOCATION`, `ORGANIZATION`. `ner_stage_policy` decides when stage two runs, and
+it defaults to `always`. The older `on_miss` default skipped the model whenever
+the rule stage matched anything, so a single email address in the text was
+enough to let every name beside it through untouched.
 
 Overlaps resolve deterministically: higher score wins, ties go to the rule stage,
 then to the longer span.
@@ -271,28 +272,35 @@ KEY=$(curl -s localhost:4000/key/generate \
 
 curl -s localhost:4000/pii/encode \
   -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
-  -d '{"texts":["invoice CH93 0076 2011 6238 5295 7"]}'
+  -d '{"texts":["My name is Ada Lovelace and my email is ada@example.com"]}'
 ```
 
 ```json
-{"texts":["invoice <IBAN_CODE:6801b8a37901e7b6>"],"session_id":"328716b2-…","tokens":[…]}
+{"texts":["My name is <PERSON:d0af67e1b89835dd> and my email is <EMAIL_ADDRESS:f06a2dd5194a1e5d>"],
+ "session_id":"124f7666-…","tokens":[…]}
 ```
 
 Feed that `texts` and `session_id` back to `/pii/decode` with the same key and the
-IBAN comes out whole. Point any OpenAI-compatible client at
+values come out whole. Point any OpenAI-compatible client at
 `http://localhost:4000` and the same swap happens in-band on every completion.
 
-> **Names need the second stage.** The default stack runs stage one only, which
-> is patterns and checksums, so IBANs, cards and AHV numbers are caught but
-> `PERSON` is not. Stage two is a model worth several GB, so it is opt-in:
+> **The first build is heavy.** The NER stage bakes the model weights into its
+> image at build time rather than fetching them on start, so a container can
+> never come up silently model-less. That image is around 3.3 GB and the build
+> pulls PyTorch and Transformers, so budget ten minutes and a few GB of disk on
+> the first `docker compose up`. Later runs reuse it.
 >
-> ```bash
-> docker compose -f litellm/pii/deploy/docker-compose.pii.yml up -d
-> ```
->
-> then add `pii_ner_api_base: http://host.docker.internal:8080` and
-> `pii_ner_stage_policy: on_miss` to the guardrail in `dev_config.yaml` and
-> restart the proxy.
+> It is not optional. Stage one is patterns and checksums only, so without the
+> NER stage no name is ever detected, and the guardrail refuses every request
+> rather than forwarding text it could not scan. `LITELLM_PII_REQUIRE_NER=false`
+> accepts rules-only if you genuinely want it.
+
+Name detection is context-sensitive: the model reads the sentence around a name,
+not just the name, so some phrasings are missed and a bare name with no sentence
+around it usually is. Part 5b of
+[`PII_CODEC_ARCHITECTURE.md`](code/engine/PII_CODEC_ARCHITECTURE.md) records what
+was measured and the three ways out. Pattern entities like IBAN, card and AHV do
+not depend on the model and are caught either way.
 
 Set `LITELLM_PII_ENCRYPTION_KEY` in `.env` before storing anything you care
 about, or vault values are not sealed at rest.

@@ -76,10 +76,10 @@
   <text class="t" x="368" y="254">stage 2 · piiranha</text>
   <text class="s" x="368" y="271">TOKEN-CLASSIFICATION</text>
   <text class="s" x="368" y="285">PERSON, LOCATION, ORG</text>
-  <text class="s" x="368" y="305">RUNS on_miss BY</text>
-  <text class="s" x="368" y="319">DEFAULT</text>
+  <text class="s" x="368" y="305">REQUIRED, RUNS ON</text>
+  <text class="s" x="368" y="319">EVERY REQUEST</text>
   <path class="wire" marker-end="url(#a)" stroke-dasharray="3 3" d="M316 288 H352"/>
-  <text class="edge" x="334" y="280" text-anchor="middle">miss</text>
+  <text class="edge" x="334" y="280" text-anchor="middle">then</text>
 
   <path class="wire" marker-end="url(#a)" d="M486 136 V168 H318 V196"/>
   <text class="edge" x="404" y="162" text-anchor="middle">1 · detect</text>
