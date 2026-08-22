@@ -4,6 +4,8 @@
 
 **Sensitive data never leaves your boundary. The model still gets a sentence it can reason about.**
 
+[Website](https://ma-abdellaoui.github.io/anonymice/) · [Jury summary](docs/JURY.md) · [Architecture](code/engine/PII_CODEC_ARCHITECTURE.md)
+
 </div>
 
 ---
@@ -12,8 +14,8 @@
 
 Every useful LLM workflow ends with a person pasting something into a model they
 do not control. A support ticket with a customer's IBAN. A `.env` file with a
-live key. A patient note. Redacting it (`***`) destroys the shape of the text and
-the model's answer with it. Not redacting it means the data is gone.
+live key. A patient note. Redacting it to `***` destroys the shape of the text,
+and the model's answer along with it. Leaving it alone means the data is gone.
 
 ## What Anonymice does
 
@@ -31,8 +33,8 @@ you see       I've drafted a note to Anna Meier regarding CH93 0076 2011 6238 52
 ```
 
 The real values stay in a vault on our side of the boundary. The provider only
-ever sees `<PERSON_1>`. The token is *typed*, so the model still knows a person is
-a person and an IBAN is an IBAN — which is exactly what an opaque hash like
+ever sees `<PERSON_1>`. The token is *typed*, so the model still knows a person
+is a person and an IBAN is an IBAN, which is exactly what an opaque hash like
 `a3f9c2e1` destroys.
 
 Three properties hold throughout:
@@ -40,7 +42,7 @@ Three properties hold throughout:
 | | |
 |---|---|
 | **Reversible by us, opaque to them** | Only our layer can resolve a token back to a value |
-| **Irreversible where we say so** | Entities marked `MASK` become a bare `<PERSON>` that the token grammar deliberately does not match — masking is irreversible by construction, not by remembering not to store the mapping |
+| **Irreversible where we say so** | Entities marked `MASK` become a bare `<PERSON>` that the token grammar deliberately does not match. Masking is irreversible by construction rather than by remembering not to store the mapping |
 | **Fail closed** | A detector we cannot reach is an error, never an empty result. "No PII found" from a scanner that is down is the one failure mode that silently leaks |
 
 ---
@@ -50,45 +52,30 @@ Three properties hold throughout:
 ```
 anonymice/
 ├── code/
-│   ├── engine/          the LLM proxy — an extension of LiteLLM
+│   ├── engine/          the LLM proxy, an extension of LiteLLM
 │   └── extensions/      where data is captured, before it reaches any model
-│       ├── browser/     Chrome extension: highlight + tokenize on the page
-│       ├── vscode/      VS Code extension: tokenize in the editor and on disk
-│       └── backend/     detection service the extensions call
-└── docs/                specs, endpoint contracts, QA walkthroughs
+│       ├── browser/     Chrome extension: highlight, tokenize on copy, reveal on paste
+│       └── backend/     detection service the extension calls
+├── docs/                specs, endpoint contracts, QA walkthroughs
+└── site/                the landing page, deployed to GitHub Pages
 ```
 
-Two layers, one idea. The **extensions** catch sensitive data at the surfaces
+Two layers, one idea. The **extension** catches sensitive data at the surface
 people actually work in. The **engine** catches whatever reaches the API anyway,
 and is what any application, agent, or SDK points at instead of the provider.
 
 ---
 
-## The engine — an extension of LiteLLM
+## How it works
 
-[`code/engine/`](code/engine/) is [LiteLLM](https://github.com/BerriAI/litellm)
-(BerriAI, MIT) with a reversible PII layer added on top. We chose it because it
-already solves the boring, unavoidable parts — 100+ providers behind one API,
-virtual keys, budgets, rate limits, an admin dashboard, and a guardrail hook
-interface that every request surface already routes through.
+Both surfaces answer the same question in the same order: find the sensitive
+spans, replace them with a typed token, keep the mapping behind, and let only the
+token cross.
 
-**Our additions are purely additive.** New packages, plus two lines in
-`proxy_server.py`. Nothing upstream is rewritten, so tracking a newer LiteLLM
-stays cheap.
+<img src="docs/assets/architecture.svg" alt="The API path: an app calls the gateway, the pii_anonymizer guardrail detects sensitive spans through a two-stage cascade, encodes them into the token store, and only tokenized text crosses the boundary to the provider and back. The browser path: a value copied from a NATIVE page is minted into a token vault on copy and resolved on paste, so a TRUSTED page holds the token while the user still sees the real value, and an UNTRUSTED page across the boundary only ever holds the token." width="100%">
 
-| Path | What we added |
-|---|---|
-| [`litellm/pii/`](code/engine/litellm/pii/) | The core: detection, codecs, token stores, `PiiService`. Provider-agnostic, no `litellm.proxy` imports, unit-testable without a proxy |
-| [`litellm/proxy/guardrails/guardrail_hooks/pii_anonymizer/`](code/engine/litellm/proxy/guardrails/guardrail_hooks/pii_anonymizer/) | The in-band guardrail: encode on the way to the provider, decode on the way back |
-| [`litellm/proxy/pii_endpoints/`](code/engine/litellm/proxy/pii_endpoints/) | Standalone `POST /pii/detect`, `/pii/encode`, `/pii/decode` for the extensions |
-| [`gateway/`](code/engine/gateway/), [`backend/`](code/engine/backend/) | Split entrypoints: the data plane and the admin plane trim the same app's route table to their own surface, so management endpoints do not ride on the pods that see prompts |
-
-There is **one** implementation of detect / encode / decode — `PiiService`. The
-guardrail and the REST endpoints are both thin adapters over it, so what a
-browser extension gets from `/pii/encode` is by construction what an in-flight
-completion gets.
-
-### How a request flows
+<details>
+<summary>The previous Mermaid version of the API path, kept for comparison</summary>
 
 ```mermaid
 flowchart LR
@@ -104,79 +91,120 @@ flowchart LR
     GR --> C
 ```
 
+</details>
+
+---
+
+## The engine, an extension of LiteLLM
+
+[`code/engine/`](code/engine/) is [LiteLLM](https://github.com/BerriAI/litellm)
+(BerriAI, MIT) with a reversible PII layer added on top. We chose it because it
+already solves the boring, unavoidable parts: 100+ providers behind one API,
+virtual keys, budgets, rate limits, an admin dashboard, and a guardrail hook
+interface that every request surface already routes through.
+
+**Our additions are purely additive.** New packages, plus two lines in
+`proxy_server.py`. Nothing upstream is rewritten, so tracking a newer LiteLLM
+stays cheap, and `code/engine/README.md` is still LiteLLM's own.
+
+| Path | What we added |
+|---|---|
+| [`litellm/pii/`](code/engine/litellm/pii/) | The core: detection, codecs, token stores, the vault, `PiiService`. Provider-agnostic, no `litellm.proxy` imports, unit-testable without a proxy |
+| [`litellm/proxy/guardrails/guardrail_hooks/pii_anonymizer/`](code/engine/litellm/proxy/guardrails/guardrail_hooks/pii_anonymizer/) | The in-band guardrail: encode on the way to the provider, decode on the way back |
+| [`litellm/proxy/pii_endpoints/`](code/engine/litellm/proxy/pii_endpoints/) | Standalone `/pii/detect`, `/pii/encode`, `/pii/decode`, plus session and subject revocation, export, and search |
+| [`gateway/`](code/engine/gateway/), [`backend/`](code/engine/backend/) | Split entrypoints. The data plane and the admin plane trim the same app's route table to their own surface, so management endpoints do not ride on the pods that see prompts |
+
+There is **one** implementation of detect, encode and decode, in `PiiService`.
+The guardrail and the REST endpoints are both thin adapters over it, so what the
+browser extension gets from `/pii/encode` is by construction what an in-flight
+completion gets.
+
+### Detection and encoding
+
 **Detection is two-staged.** Stage one is Presidio pinned to its pattern and
-checksum recognizers — deterministic, no model, low latency, and it covers
-~40 entity types including IBAN, credit card, AHV/NINO/SSN and the other national
-identifiers. Stage two is
+checksum recognizers: deterministic, no model, low latency, and it covers around
+40 entity types including IBAN, credit card, AHV, NINO, SSN and the other
+national identifiers. Pinning the entity list matters, because an analyzer that
+also loaded an NLP engine would return NER entities from the stage we treat as
+high precision. Stage two is
 [`piiranha`](https://huggingface.co/iiiorg/piiranha-v1-detect-personal-information),
 a token-classification model, for what patterns cannot catch: `PERSON`,
-`LOCATION`, `ORGANIZATION`. `ner_stage_policy` decides when stage two runs —
-the default, `on_miss`, only calls it when the rule stage found nothing, so most
-requests pay only for the cheap pass.
+`LOCATION`, `ORGANIZATION`. `ner_stage_policy` decides when stage two runs. The
+default, `on_miss`, only calls it when the rule stage found nothing, so most
+requests pay for the cheap pass alone.
 
 Overlaps resolve deterministically: higher score wins, ties go to the rule stage,
 then to the longer span.
 
 **Encoding has two lifetimes**, deliberately different:
 
-| | LLM path (guardrail) | Endpoint path (extensions) |
+| | LLM path (guardrail) | Endpoint path (extension) |
 |---|---|---|
 | Lives | one request | until the TTL expires |
-| Store | request metadata, dies with the request | Redis-backed cache, values sealed with AES-256-GCM |
+| Store | request metadata, dies with the request | the vault, values sealed with AES-256-GCM |
 | Token | `<PERSON_1>` | `<PERSON:3f9c2e1b8d4a7f60>` |
 | Why | short typed placeholders keep answer quality high | a random handle carries no information about the value, and deleting the entry kills the token permanently |
 
-Per-entity actions are configurable: `BLOCK` rejects the request, `MASK` redacts
-irreversibly, `ENCODE` is the reversible path.
+Per-entity actions are configurable. `BLOCK` rejects the request, `MASK` redacts
+irreversibly, and `ENCODE` is the reversible path.
 
 Decode returns real data, so it is gated on the `allow_pii_decode` key permission
-and scoped to the calling key — a valid `session_id` alone never reads another
-key's tokens.
+and scoped to the calling key. A valid `session_id` on its own never reads
+another key's tokens.
 
 Full design: [`PII_ANONYMIZATION_PLAN.md`](code/engine/PII_ANONYMIZATION_PLAN.md)
 and [`PII_CODEC_ARCHITECTURE.md`](code/engine/PII_CODEC_ARCHITECTURE.md).
 
 ---
 
-## The extensions
+## The extension
 
-Catching data at the API is necessary but late — by then someone has already
-pasted it. These catch it at the surface.
+Catching data at the API is necessary but late. By then someone has already
+pasted it. This catches it at the surface.
 
-### Browser — [`code/extensions/browser/`](code/extensions/browser/)
+### Browser, [`code/extensions/browser/`](code/extensions/browser/)
 
 Every host has a trust class, distributed by managed policy:
 
 | Class | Behaviour |
 |---|---|
-| `NATIVE` | Your own systems. Values stay as they are; sensitive spans are highlighted so people can see what they are about to copy |
-| `TRUSTED` | Values are shown to the user but the DOM holds tokens |
-| `UNTRUSTED` | Everything else. A pasted token stays a token; real values never enter the DOM |
+| `NATIVE` | Your own systems. Values stay as they are, and sensitive spans are highlighted so people can see what they are about to copy |
+| `TRUSTED` | The page holds the token. The user still sees the real value, rendered through a clone the page itself cannot read |
+| `UNTRUSTED` | Everything else. A pasted token stays a token, and real values never enter the DOM |
 
-Copying a highlighted value mints a token in the vault and puts *the token* on
-the clipboard. Paste it into ChatGPT and the model gets `ANM1-PERSON-…`; paste it
-back into a trusted system and it resolves.
+#### Encoding and decoding on the fly
 
-### VS Code — [`code/extensions/vscode/`](code/extensions/vscode/)
+There is no "anonymize" button. The swap happens inside the two events a person
+already performs.
 
-One invariant: *a sensitive value is never present in any `TextDocument`, and
-never in any file inside the workspace, at any instant.*
+**On copy, it encodes.** `clipboard.ts` installs a guard on `copy` and `cut`. It
+takes the selection, projects it back onto the spans the scanner already found,
+mints a token per distinct value, and rewrites the clipboard payload before the
+event completes. What lands on the clipboard is `ANM1-PERSON-…`, so every
+destination from that point on, including one Anonymice has never heard of, gets
+the token. Paste into a public chat and the model sees the token.
 
-VS Code has no per-resource reader isolation — Copilot and agents attach to the
-window, not the file — so the only place to enforce anything is the text itself.
-`DB_PASSWORD=ANM1-SECRET-K3F9QW2MX7VBNC4H8` is what the completion provider, the
-chat `#file` attachment, the agent's `read_file`, and the agent shelling out to
-`cat` all see. You see the real value, rendered through a surface no other
-extension can read back.
+**On paste, it decodes, but only where it is allowed to.** A `TRUSTED` page
+receives the token in its DOM and stores the token. The real value is painted
+back for the reader through a clone element that the page cannot read, so the
+person sees `Anna Meier` while the site's own storage, telemetry and scripts only
+ever hold `ANM1-PERSON-…`. On an `UNTRUSTED` page nothing is revealed and the
+token stays exactly as it is.
 
-### Detection backend — [`code/extensions/backend/`](code/extensions/backend/)
+The ordering matters more than it looks. A `paste` is a user gesture and cannot
+await a network round trip, so a cache filled only by `resolve` would always be
+one trip too late. The mint is the one moment both halves of the pair are in hand
+without asking anyone, so the reveal cache is filled there instead, and the paste
+resolves synchronously.
+
+### Detection backend, [`code/extensions/backend/`](code/extensions/backend/)
 
 `/v1/health`, `/v1/policy`, `/v1/detect` on one origin behind one bearer
 credential. It receives raw page text and decides which pages get read at all, so
 it sits inside the same trust boundary as the vault. That single constraint is
 why it binds to loopback by default, refuses to start without a credential, has
-**zero dependencies**, and cannot log page text — `log.ts` throws on a field name
-that could carry it, so the rule is enforced rather than remembered.
+**zero runtime dependencies**, and cannot log page text. `log.ts` throws on a
+field name that could carry it, so the rule is enforced rather than remembered.
 
 Classes: `IBAN`, `AHV`, `CARD`, `EMAIL`, `PHONE`, `PERSON`, `ORG`, `SECRET`.
 
@@ -186,14 +214,17 @@ Classes: `IBAN`, `AHV`, `CARD`, `EMAIL`, `PHONE`, `PERSON`, `ORG`, `SECRET`.
 
 | Component | State |
 |---|---|
-| Engine — detection, codecs, stores, `PiiService` | Implemented, unit-tested |
-| Engine — guardrail + `/pii` endpoints | Implemented |
-| Engine — streaming decode | **Not wired.** The guardrail does not set `streaming_transform_mode = "incremental_diff"`, so SSE responses arrive still tokenized |
-| Engine — persistent vault (DB table, revocation, audit) | Designed, not built |
-| Browser — detection + highlighting (SPEC §1–§5) | Implemented, 68 unit tests, eval gate |
-| Browser — clipboard, tokens, replacement (SPEC §6–§8) | Not built |
-| VS Code — tokenize selection, on disk and in buffer | Implemented |
-| Extensions ↔ engine wiring | **Not connected yet.** The extensions talk to `code/extensions/backend/`; the engine's `/pii/*` endpoints are the same contract and are where the two converge |
+| Engine, detection, codecs, stores, `PiiService` | Implemented, unit-tested |
+| Engine, guardrail and `/pii` endpoints | Implemented |
+| Engine, streaming decode | Implemented. The guardrail sets `streaming_transform_mode = "incremental_diff"`, so SSE responses are decoded as they arrive |
+| Engine, persistent vault | Implemented. `LiteLLM_PiiTokenTable`, with revocation, subject export and audit |
+| Browser, detection and highlighting (SPEC §1 to §5) | Implemented |
+| Browser, clipboard, tokens and reveal (SPEC §6 to §10) | Implemented. 271 unit tests pass, including the vault contract and cross-trust-class reveal |
+| Detection backend | Implemented. 50 tests, zero runtime dependencies |
+| Extension ↔ engine wiring | **Not connected.** The extension mints against `/v1/tokens`, which today only `browser/mock/` serves. The engine's `/pii/*` endpoints are the same idea and are where the two are meant to converge |
+
+The last row is the honest gap. Each half has a working vault, and they are not
+yet the same vault.
 
 ---
 
@@ -228,13 +259,7 @@ Set `LITELLM_PII_ENCRYPTION_KEY`, or stored values are not sealed at rest.
 **Browser extension:**
 
 ```bash
-cd code/extensions/browser && npm run check && npm run build
-```
-
-**VS Code extension:**
-
-```bash
-cd code/extensions/vscode && npm install && npm run check && npm run build
+cd code/extensions/browser && npm install && npm run check && npm run build
 ```
 
 **Detection backend:**
@@ -249,11 +274,10 @@ cd code/extensions/backend && npm run dev
 
 | Document | What |
 |---|---|
-| [`docs/JURY.md`](docs/JURY.md) | Technical summary for the bernhackt jury — focus, decisions, architecture, and what we deliberately left out |
+| [`docs/JURY.md`](docs/JURY.md) | Technical summary for the BärnHäckt jury: focus, decisions, architecture, and what we deliberately left out |
 | [`code/extensions/SPEC.md`](code/extensions/SPEC.md) | Trust classes and the copy/paste model |
-| [`code/extensions/browser/SPEC.md`](code/extensions/browser/SPEC.md) | Browser extension design |
-| [`code/extensions/vscode/SPEC.md`](code/extensions/vscode/SPEC.md) | Editor invariant and token format |
-| [`docs/extensions/browser/ENDPOINTS.md`](docs/extensions/browser/ENDPOINTS.md) | The three-endpoint backend contract |
+| [`code/extensions/browser/SPEC.md`](code/extensions/browser/SPEC.md) | Browser extension design, including the vault in §10 |
+| [`docs/extensions/browser/ENDPOINTS.md`](docs/extensions/browser/ENDPOINTS.md) | The backend contract |
 | [`docs/extensions/browser/DETECTION.md`](docs/extensions/browser/DETECTION.md) | Detection semantics |
 | [`code/engine/litellm/pii/README.md`](code/engine/litellm/pii/README.md) | The PII layer, close up |
 | [`code/engine/PII_CODEC_ARCHITECTURE.md`](code/engine/PII_CODEC_ARCHITECTURE.md) | Token format, encryption, the vault design |
