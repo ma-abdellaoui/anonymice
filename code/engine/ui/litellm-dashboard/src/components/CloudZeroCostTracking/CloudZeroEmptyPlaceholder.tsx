@@ -12,7 +12,7 @@ export default function CloudZeroEmptyPlaceholder({ startCreation }: CloudZeroEm
         <Inbox className="size-10 text-muted-foreground" aria-hidden />
         <h4 className="text-base font-semibold">No CloudZero Integration Found</h4>
         <p className="mx-auto max-w-md text-sm text-muted-foreground">
-          Connect your CloudZero account to start tracking and analyzing your cloud costs directly from LiteLLM.
+          Connect your CloudZero account to start tracking and analyzing your cloud costs directly from Anonymice.
         </p>
         <Button size="lg" onClick={startCreation} className="mt-4">
           Add CloudZero Integration

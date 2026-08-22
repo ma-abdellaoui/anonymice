@@ -23,13 +23,10 @@ describe("NoRedisWarningBanner", () => {
     expect(screen.getByText(/more than one worker/i)).toBeInTheDocument();
   });
 
-  it("should link to the docs page listing what breaks without Redis", () => {
+  it("should not link to upstream product documentation", () => {
     mockDetails({ status: "healthy", show_no_redis_warning: true });
     renderWithProviders(<NoRedisWarningBanner accessToken="token" />);
-    expect(screen.getByRole("link", { name: /does not work without Redis/i })).toHaveAttribute(
-      "href",
-      "https://docs.litellm.ai/docs/proxy/redis_requirements",
-    );
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
   it("should name the env var that suppresses it", () => {

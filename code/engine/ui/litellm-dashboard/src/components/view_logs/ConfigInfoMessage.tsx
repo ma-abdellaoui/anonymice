@@ -29,7 +29,7 @@ export const ConfigInfoMessage: React.FC<ConfigInfoMessageProps> = ({ show }) =>
       <div>
         <h4 className="text-sm font-medium text-info">Request/Response Data Not Available</h4>
         <p className="text-sm text-info mt-1">
-          To view request and response details, enable prompt storage in your LiteLLM configuration by adding the
+          To view request and response details, enable prompt storage in your Anonymice configuration by adding the
           following to your <code className="bg-info/15 px-1 py-0.5 rounded-sm">proxy_config.yaml</code> file, or toggle
           the setting in <strong>Admin Settings → Logging Settings</strong>.
         </p>

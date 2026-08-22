@@ -4,8 +4,6 @@ import React from "react";
 import { TriangleAlert } from "lucide-react";
 import { useHealthReadinessDetails } from "@/app/(dashboard)/hooks/healthReadiness/useHealthReadinessDetails";
 
-const REDIS_DOCS_URL = "https://docs.litellm.ai/docs/proxy/redis_requirements";
-
 interface NoRedisWarningBannerProps {
   accessToken: string | null;
 }
@@ -28,11 +26,8 @@ export const NoRedisWarningBanner: React.FC<NoRedisWarningBannerProps> = ({ acce
         <p>
           This proxy is running more than one worker (or the worker count could not be verified). Without Redis, rate
           limits, budgets, router state, and cache invalidation are per worker, so limits are enforced once per worker
-          and spend can overshoot.{" "}
-          <a className="underline" href={REDIS_DOCS_URL} target="_blank" rel="noreferrer">
-            See everything that does not work without Redis
-          </a>
-          . Set <code className="font-mono">LITELLM_DISABLE_NO_REDIS_WARNING=true</code> to hide this banner anyway.
+          and spend can overshoot. Set <code className="font-mono">LITELLM_DISABLE_NO_REDIS_WARNING=true</code> to hide
+          this banner anyway.
         </p>
       </div>
     </div>
