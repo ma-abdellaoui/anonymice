@@ -160,32 +160,6 @@ darauf angelegt, das zu bestrafen.
 - **Nur Deutsch und Englisch.** Andere Sprachen sind im Analyzer-Image nicht
   registriert und würden die Anfrage ablehnen.
 
-## Was die Messung ausserdem gefunden hat
-
-Der Korpus hat zwei Fehler aufgedeckt, die im Betrieb geleckt oder blockiert hätten;
-beide sind behoben:
-
-1. **Lange Eingaben liefen in einen Timeout.** Die Kosten der Attention wachsen
-   quadratisch mit der Eingabe: 4 k Zeichen in 0.8 s, 13 k Zeichen in 13.9 s — über
-   dem Timeout des Detektors. Bei `fail closed` wurde die Anfrage damit abgewiesen.
-   Dokument DOC-021 (13'168 Zeichen) ging von *503* auf **2.5 s**. Der Korpus scannt
-   jetzt 49 von 49 Dokumenten fehlerfrei.
-
-2. **Deutsch war nicht erreichbar.** Der Sprachparameter existierte in jeder
-   Detektor-Signatur, wurde aber nirgends durchgereicht; unabhängig davon registriert
-   das Standard-Presidio-Image nur Englisch und lehnt `de` ab. Beides behoben — wobei
-   Deutsch die Erkennungsrate **nicht** verbessert hat (siehe unten).
-
-### Ehrlichkeitsnotiz zur Sprachunterstützung
-
-Der Vergleich `de` gegen `en` über den gesamten Korpus ergibt **identische** Werte,
-61.5 % in beiden Fällen. Grund: Stufe 1 fragt nur Muster-Entitäten ab, und die sind
-sprachunabhängige reguläre Ausdrücke; Namen kommen ausschliesslich aus der
-NER-Stufe, die den Sprachparameter ignoriert. Die Sprachunterstützung ist korrekt und
-war vorher tatsächlich defekt — sie hat die Zahl aber nicht bewegt. Ihr eigentlicher
-Wert liegt darin, dass sie Presidios deutsche Namenserkennung überhaupt erst
-verfügbar macht, siehe Empfehlung oben.
-
 ## Messungen wiederholen
 
 ```bash
