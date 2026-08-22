@@ -1,5 +1,5 @@
 import hashlib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, Protocol, runtime_checkable
 
@@ -33,3 +33,11 @@ class PiiTokenStore(Protocol):
     async def put_many(self, scope: TokenScope, entries: Mapping[str, str]) -> None | StoreError: ...
 
     async def get(self, scope: TokenScope, token: str) -> str | None | StoreError: ...
+
+    async def get_many(self, scope: TokenScope, tokens: Sequence[str]) -> Mapping[str, str] | StoreError:
+        """Resolve every token this scope knows in one round trip.
+
+        Unknown tokens are absent from the result rather than mapped to ``None``,
+        so a miss stays distinguishable from an outage, which is a ``StoreError``.
+        """
+        ...

@@ -1,10 +1,8 @@
 """Where the engine sits inside its repository, for the budget gates.
 
-Upstream the engine was the repository root, so a gate could scan a base worktree
-at its top level. Here the engine is a subdirectory of a larger repo, and scanning
-the worktree root finds no source at all: the base measures zero violations and
-every inherited violation in the tree is blamed on the change under test. Each
-gate therefore scans `<worktree>/<engine_prefix()>` rather than `<worktree>`.
+Upstream the engine was the repository root. Here it is a subdirectory, so a gate
+scanning a base worktree at its top level finds no source, measures zero
+violations, and blames every inherited one on the change under test.
 """
 
 import subprocess

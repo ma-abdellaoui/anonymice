@@ -20,6 +20,7 @@ from litellm.pii.types import (
     KeyUnavailable,
     StoreError,
     StoreUnavailable,
+    TokenSpaceExhausted,
     UnknownToken,
 )
 from litellm.types.guardrails import GuardrailEventHooks, PiiAction
@@ -60,6 +61,8 @@ def _public_message(error: DetectionError | CodecError | StoreError) -> str:
             return f"PII token could not be decoded: {reason}"
         case UnknownToken(token=token):
             return f"Unknown PII token: {token}"
+        case TokenSpaceExhausted(entity_type=entity_type):
+            return f"No free PII token remained for {entity_type}"
         case _:
             assert_never(error)
 

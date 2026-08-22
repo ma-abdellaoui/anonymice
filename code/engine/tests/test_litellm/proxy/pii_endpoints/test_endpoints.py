@@ -2,8 +2,10 @@
 
 import os
 import sys
+from typing import get_args
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.abspath("../../../.."))
@@ -12,9 +14,22 @@ import litellm.proxy.proxy_server as ps
 from litellm.pii.detection.cascade import CascadingDetector, NerStagePolicy
 from litellm.pii.service import PiiService
 from litellm.pii.store.dual_cache import DualCacheStore
-from litellm.pii.types import DetectorKind, DetectorUnavailable, PiiSpan
+from litellm.pii.types import (
+    CodecError,
+    DecodeFailed,
+    DetectionError,
+    DetectorInvalidResponse,
+    DetectorKind,
+    DetectorUnavailable,
+    KeyUnavailable,
+    PiiSpan,
+    StoreError,
+    StoreUnavailable,
+    TokenSpaceExhausted,
+    UnknownToken,
+)
 from litellm.proxy._types import LiteLLMRoutes, LitellmUserRoles, UserAPIKeyAuth
-from litellm.proxy.pii_endpoints.endpoints import get_pii_service
+from litellm.proxy.pii_endpoints.endpoints import _raise_public, get_pii_service
 from litellm.proxy.proxy_server import app
 
 DECODE_KEY = UserAPIKeyAuth(
@@ -46,6 +61,9 @@ class FakeCache:
 
     async def async_get_cache(self, key, **kwargs):
         return self.entries.get(key)
+
+    async def async_batch_get_cache(self, keys, **kwargs):
+        return [self.entries.get(key) for key in keys]
 
 
 class SubstringDetector:
@@ -239,3 +257,33 @@ class TestUnconfigured:
         monkeypatch.delenv("PRESIDIO_ANALYZER_API_BASE", raising=False)
         as_key(NO_DECODE_KEY)
         assert client.post("/pii/detect", json={"texts": ["hello"]}).status_code == 501
+
+
+ERROR_SAMPLES = {
+    DetectorUnavailable: DetectorUnavailable(detector=DetectorKind.RULES, reason="down"),
+    DetectorInvalidResponse: DetectorInvalidResponse(detector=DetectorKind.NER, reason="not json"),
+    UnknownToken: UnknownToken(token="<PERSON_9>"),
+    KeyUnavailable: KeyUnavailable(reason="no key configured"),
+    DecodeFailed: DecodeFailed(reason="ciphertext corrupt"),
+    TokenSpaceExhausted: TokenSpaceExhausted(entity_type="PERSON"),
+    StoreUnavailable: StoreUnavailable(reason="redis down"),
+}
+
+
+def error_variants():
+    return tuple(
+        variant for union in (DetectionError, CodecError, StoreError) for variant in (get_args(union) or (union,))
+    )
+
+
+class TestPublicErrorContract:
+    """The boundary must stay exhaustive: a new error variant has to be mapped here."""
+
+    def test_every_error_variant_has_a_sample(self):
+        assert set(error_variants()) == set(ERROR_SAMPLES)
+
+    @pytest.mark.parametrize("variant", error_variants(), ids=lambda v: v.__name__)
+    def test_every_variant_maps_to_an_http_status(self, variant):
+        with pytest.raises(HTTPException) as raised:
+            _raise_public(ERROR_SAMPLES[variant])
+        assert 400 <= raised.value.status_code < 600

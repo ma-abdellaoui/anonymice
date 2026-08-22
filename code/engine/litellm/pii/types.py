@@ -86,7 +86,15 @@ class DecodeFailed:
     kind: Literal["decode_failed"] = "decode_failed"
 
 
-CodecError: TypeAlias = UnknownToken | KeyUnavailable | DecodeFailed
+@dataclass(frozen=True, slots=True)
+class TokenSpaceExhausted:
+    """No ordinal was free: every candidate already appeared literally in the source."""
+
+    entity_type: str
+    kind: Literal["token_space_exhausted"] = "token_space_exhausted"
+
+
+CodecError: TypeAlias = UnknownToken | KeyUnavailable | DecodeFailed | TokenSpaceExhausted
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Final, TypeAlias
@@ -113,19 +113,13 @@ class PiiService:
             return batch
         return EncodedText(text=batch.texts[0], tokens=batch.tokens, session_id=batch.session_id)
 
-    async def _resolve(self, token: str, scope: TokenScope) -> tuple[str, str] | StoreError | None:
-        recovered: Final = self.codec.recover(token)
-        if isinstance(recovered, str):
-            return (token, recovered)
-        if recovered is not None:
-            return None
+    def _self_contained(self, tokens: Sequence[str]) -> Mapping[str, str]:
+        """Values the codec recovers from the token alone, needing no store.
 
-        stored: Final = await self.store.get(scope, token)
-        if stored is None:
-            return None
-        if isinstance(stored, str):
-            return (token, stored)
-        return stored
+        A codec error is not propagated: an unopenable token is left verbatim.
+        """
+        recovered: Final = tuple((token, self.codec.recover(token)) for token in tokens)
+        return MappingProxyType({token: value for token, value in recovered if isinstance(value, str)})
 
     async def decode(self, texts: Sequence[str], scope: TokenScope) -> tuple[str, ...] | DecodeFailure:
         """Restore original values for every token this scope can resolve.
@@ -136,18 +130,17 @@ class PiiService:
         is different and does surface, since silently returning tokenized text
         would look like success.
         """
-        candidates: Final = frozenset(found.token for text in texts for found in find_tokens(text))
+        candidates: Final = tuple(sorted(frozenset(found.token for text in texts for found in find_tokens(text))))
         if not candidates:
             return tuple(texts)
 
-        resolutions: Final = await asyncio.gather(*(self._resolve(token, scope) for token in sorted(candidates)))
-        outage: Final = next((r for r in resolutions if not isinstance(r, (tuple, type(None)))), None)
-        if outage is not None:
-            return outage
+        recovered: Final = self._self_contained(candidates)
+        deferred: Final = tuple(token for token in candidates if token not in recovered)
+        stored: Final = await self.store.get_many(scope, deferred)
+        if not isinstance(stored, Mapping):
+            return stored
 
-        resolved: Final = MappingProxyType(
-            {token: value for token, value in (r for r in resolutions if isinstance(r, tuple))}
-        )
+        resolved: Final = MappingProxyType({**recovered, **stored})
         return tuple(decode_text(text, resolved) for text in texts)
 
     async def decode_one(self, text: str, scope: TokenScope) -> str | DecodeFailure:

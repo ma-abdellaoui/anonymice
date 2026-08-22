@@ -24,6 +24,7 @@ from litellm.pii.types import (
     KeyUnavailable,
     StoreError,
     StoreUnavailable,
+    TokenSpaceExhausted,
     UnknownToken,
 )
 from litellm.proxy._types import UserAPIKeyAuth
@@ -89,6 +90,11 @@ def _raise_public(error: DetectionError | CodecError | StoreError) -> None:
             raise HTTPException(status_code=400, detail=_detail(f"PII token could not be decoded: {reason}"))
         case UnknownToken(token=token):
             raise HTTPException(status_code=404, detail=_detail(f"Unknown PII token: {token}"))
+        case TokenSpaceExhausted(entity_type=entity_type):
+            raise HTTPException(
+                status_code=422,
+                detail=_detail(f"No free PII token remained for {entity_type}"),
+            )
         case _:
             assert_never(error)
 

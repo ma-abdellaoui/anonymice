@@ -1,4 +1,4 @@
-from collections.abc import Mapping, MutableMapping
+from collections.abc import Mapping, MutableMapping, Sequence
 from types import MappingProxyType
 from typing import Final
 
@@ -25,6 +25,10 @@ class RequestScopedStore:
 
     async def get(self, scope: TokenScope, token: str) -> str | None | StoreError:
         return self._backing.get(token)
+
+    async def get_many(self, scope: TokenScope, tokens: Sequence[str]) -> Mapping[str, str] | StoreError:
+        found: Final = tuple((token, self._backing.get(token)) for token in tokens)
+        return MappingProxyType({token: value for token, value in found if value is not None})
 
     def snapshot(self) -> Mapping[str, str]:
         return MappingProxyType(dict(self._backing))  # mutable-ok: defensive copy before freezing

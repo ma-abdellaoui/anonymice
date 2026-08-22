@@ -1,15 +1,48 @@
 """Tests for the reversible PII anonymizer guardrail on the LLM path."""
 
+from typing import get_args
+
 import pytest
 
 from litellm.exceptions import BlockedPiiEntityError, GuardrailRaisedException
 from litellm.pii.detection.cascade import CascadingDetector, NerStagePolicy
-from litellm.pii.types import DetectorKind, DetectorUnavailable, PiiSpan
+from litellm.pii.types import (
+    CodecError,
+    DecodeFailed,
+    DetectionError,
+    DetectorInvalidResponse,
+    DetectorKind,
+    DetectorUnavailable,
+    KeyUnavailable,
+    PiiSpan,
+    StoreError,
+    StoreUnavailable,
+    TokenSpaceExhausted,
+    UnknownToken,
+)
 from litellm.proxy.guardrails.guardrail_hooks.pii_anonymizer import (
     PiiAnonymizerGuardrail,
     guardrail_initializer_registry,
 )
+from litellm.proxy.guardrails.guardrail_hooks.pii_anonymizer.pii_anonymizer_guardrail import _public_message
 from litellm.types.guardrails import PiiAction, SupportedGuardrailIntegrations
+
+
+ERROR_SAMPLES = {
+    DetectorUnavailable: DetectorUnavailable(detector=DetectorKind.RULES, reason="down"),
+    DetectorInvalidResponse: DetectorInvalidResponse(detector=DetectorKind.NER, reason="not json"),
+    UnknownToken: UnknownToken(token="<PERSON_9>"),
+    KeyUnavailable: KeyUnavailable(reason="no key configured"),
+    DecodeFailed: DecodeFailed(reason="ciphertext corrupt"),
+    TokenSpaceExhausted: TokenSpaceExhausted(entity_type="PERSON"),
+    StoreUnavailable: StoreUnavailable(reason="redis down"),
+}
+
+
+def error_variants():
+    return tuple(
+        variant for union in (DetectionError, CodecError, StoreError) for variant in (get_args(union) or (union,))
+    )
 
 
 class SubstringDetector:
@@ -40,9 +73,7 @@ class SubstringDetector:
 def guardrail(mapping=None, error=None, entities_config=None, codec_id="placeholder"):
     return PiiAnonymizerGuardrail(
         guardrail_name="pii-anonymizer",
-        detector=CascadingDetector(
-            rules=SubstringDetector(mapping, error), ner=None, policy=NerStagePolicy.NEVER
-        ),
+        detector=CascadingDetector(rules=SubstringDetector(mapping, error), ner=None, policy=NerStagePolicy.NEVER),
         codec_id=codec_id,
         pii_entities_config=entities_config,
     )
@@ -186,3 +217,17 @@ class TestFailureModes:
     async def test_missing_detector_passes_through_instead_of_crashing(self):
         guard = PiiAnonymizerGuardrail(guardrail_name="g", detector=None)
         assert await run(guard, ["hello Ada"], {}, "request") == ["hello Ada"]
+
+
+class TestPublicMessage:
+    """The boundary must stay exhaustive: a new error variant has to be mapped here."""
+
+    def test_every_error_variant_has_a_sample(self):
+        assert set(error_variants()) == set(ERROR_SAMPLES)
+
+    @pytest.mark.parametrize("variant", error_variants(), ids=lambda v: v.__name__)
+    def test_every_variant_maps_to_a_message(self, variant):
+        assert _public_message(ERROR_SAMPLES[variant]).strip()
+
+    def test_the_message_does_not_leak_the_stored_value(self):
+        assert "Ada" not in _public_message(UnknownToken(token="<PERSON_9>"))
