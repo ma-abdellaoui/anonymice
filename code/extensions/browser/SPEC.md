@@ -1316,11 +1316,14 @@ Stated plainly, in the manner of §8.8, because each one bounds the guarantee.
   destination (a form POST, an autosave) there is no prefix problem at all. A
   destination where the prefix itself is unacceptable needs the collab socket
   suppressed while an editable holds a partial match, which is not built.
-- **Only bodies we can read as text are gated.** A `Blob`, an `ArrayBuffer`, a
-  `FormData` or a `ReadableStream` body passes through unexamined. This is a
-  known gap and is deliberately not a silent block — blocking every binary
-  upload would make the feature unshippable, and pretending to inspect one would
-  be worse.
+- **Only bodies we can read as text are gated.** An `ArrayBuffer` or a typed
+  array **is** read: it is decoded as UTF-8 and gated like text if it
+  round-trips and carries no control characters, which catches a JSON payload
+  someone chose to send as bytes and rejects gzip on its `1f 8b` magic. A
+  `Blob`, a `FormData` or a `ReadableStream` still passes unexamined — none can
+  be read synchronously, and §10.3 is why that is decisive. Deliberately not a
+  silent block: blocking every binary upload would make the feature
+  unshippable, and pretending to inspect one would be worse.
 - **Compressed or encrypted payloads are opaque.** A destination that gzips in
   JavaScript before sending, or that end-to-end encrypts, defeats the gate
   entirely.
@@ -1351,6 +1354,119 @@ which owns the surfaces:
 The audit entry records the class, the transport, the destination origin, a hash
 of the value rather than the value, and the verdict — the same shape as §8.5's
 declassification entry, and for the same reason.
+
+### 10.9 Ingress, and the `reveal: 'dom'` mode
+
+§8 keeps plaintext out of the page and shows it through a surface the page
+cannot read. This mode does the opposite: **the page holds the real value, and
+the gate keeps tokens on the wire.**
+
+It is the mode that makes a destination we cannot integrate with — a rich
+editor, a canvas-rendered document, anything whose internals we do not own —
+work with no per-application code at all. It is also a deliberate downgrade of
+§8.1's invariant, and §10.11 is the price list.
+
+Egress alone is not enough for it. A value typed once goes out as a token, and
+the destination hands that token back on the next load — so without the return
+path the user reads `ANM1-IBAN-…` where they typed an IBAN. **Seamless needs
+both directions.**
+
+#### 10.9.1 Four places a token arrives
+
+| arrives via | rewritten where | can it await? |
+|---|---|---|
+| `fetch` response | the shim, before the app parses it | **yes** |
+| `XMLHttpRequest` response | `responseText` shadowed per instance | no — warm cache |
+| WebSocket frame | the `message` listener is wrapped | no — warm cache |
+| the document itself (SSR, `__INITIAL_STATE__`) | a DOM text-node pass | no — warm cache |
+
+`fetch` being able to await is what makes an initial page load correct: the
+application's own API calls resolve against the vault before it ever parses
+them, which warms the cache for everything that follows.
+
+#### 10.9.2 The length rule, and why a collab stream is off limits
+
+A token is 29 characters. A value is whatever length it is. **Every substitution
+moves the offset of everything after it.**
+
+For a request/response body that is free — it is re-parsed whole. For a
+*positional* protocol it is fatal: a collaborative editor addresses its document
+by offset, so a client whose document is three characters shorter than the
+server's corrupts it on the next edit.
+
+So a body that looks positional — ProseMirror `steps`, a `retain`, an `ops`
+array, a `clientID` — is **never rewritten, in either direction**. On egress
+such a body carrying a value is *held*, not substituted: forwarding it leaks and
+rewriting it corrupts, and holding is the only arm that is merely inconvenient.
+
+This is the constraint that decides how far this mode reaches. It covers a
+destination's REST surface, its autosaves and its page loads. **It does not
+cover live collaborative editing**, and it cannot be made to without a
+length-preserving token format, which §6.4 rules out for other reasons.
+
+#### 10.9.3 Unresolved tokens
+
+A token we hold no value for is **left showing**. It is the honest thing to
+render for every non-`value` arm of §6.7 — dead, revoked, from another vault —
+and inventing anything else would be worse.
+
+Each unresolved token is reported once to the bridge, which resolves it and
+pushes the value down; the DOM pass then re-runs. Asked **once**: retrying on
+every frame of a collab stream would be a request storm on the case already
+known to fail.
+
+#### 10.9.4 The DOM pass
+
+The network hooks cover what an application fetches, not what arrived in the
+document. Server-rendered HTML has its tokens in the tree before any of our code
+runs, so a text-node walk plus a coalesced `MutationObserver` covers the rest.
+
+It runs in the **isolated** world — it needs no page JS, and the plaintext it
+writes is going into the page DOM anyway, which is this mode's whole premise.
+
+It skips `script`, `style`, `textarea`, `input`, our own UI, and **any editable
+that currently has focus** — rewriting text under a live caret moves the caret,
+and a user mid-word loses their place.
+
+### 10.10 Form and navigation submits
+
+A `<form method="POST">` submit is a browser navigation. No JS API is on its
+path, so none of §10.2's patches see it.
+
+With a token in the field that did not matter. With `reveal: 'dom'` it is the
+shortest leak there is, so the gate takes the `submit` event in the **capture**
+phase — ahead of the application's own handlers, for the same reason §8.3's
+paste handler captures.
+
+Fields are rewritten **in place** rather than the submit being rebuilt. The
+browser serialises the form itself, and any attempt to reproduce that encoding
+is a bug waiting for a `multipart` boundary. A field we cannot tokenise cancels
+the submit outright.
+
+### 10.11 What `reveal: 'dom'` gives up
+
+§8.1 concluded that plaintext cannot live in the page. That conclusion still
+holds — this mode does not refute it, it **accepts the cost** in exchange for
+working everywhere. The cost is exactly:
+
+- **Other extensions read it.** Grammarly, translators, spell and grammar
+  checkers read editable content and ship it from their own extension context.
+  That is not the page's realm and no patch of ours is on its path. **There is no
+  technical answer to this** — it is a managed-extension-allowlist decision, and
+  it is the single strongest argument for keeping §8's iframe where §8 can be
+  made to work.
+- **Session replay reads it.** FullStory, Hotjar, LogRocket and Datadog RUM
+  serialise the DOM continuously. The gate sees their requests, but they
+  routinely compress in JavaScript first, and §10.7's opaque-body gap then
+  applies to exactly the traffic that matters most.
+- **Anything the gate cannot read leaks.** §10.7's list stops being a footnote
+  and becomes the primary threat, because now the DOM it is guarding is full of
+  plaintext rather than tokens.
+- **Live collaborative editing is not covered** (§10.9.2).
+
+Ship rule: `reveal: 'dom'` is per host, never a fleet default, and only where
+`egress` is `enforce`. Where §8's reveal frame works, it is the better answer;
+this is for the destinations where it does not.
 
 ## 11. Open
 
@@ -1384,6 +1500,14 @@ validation in §8.7, the `TRUSTED` rollout in §1. What is left is genuinely ope
   and would also make the editor feel broken while typing. Nobody has decided
   which destinations, if any, warrant that; measure a real editing trace first.
 - **Non-text bodies (§10.7).** `FormData` and `ReadableStream` are the two that
-  a real destination is most likely to use for something worth gating. Whether
-  either is worth reading — and at what cost to every upload on the host — is
-  unmeasured.
+  a real destination is most likely to use for something worth gating. Neither
+  can be read synchronously, so covering them means either an async-only gate on
+  `fetch` — which §10.3 rejects for consistency — or blocking them outright.
+  Unmeasured, and the decision wants a real destination's traffic first.
+- **Whether `reveal: 'dom'` is ever the right default anywhere.** §10.11 says
+  per host and never fleet-wide. That is a judgement, not a measurement, and it
+  rests on how many managed fleets run a DOM-reading extension like Grammarly.
+- **The positional denylist of §10.9.2 is a guess.** It recognises ProseMirror,
+  OT and Yjs shapes. A protocol it does not recognise would be rewritten and the
+  document corrupted, which is the worst failure this design can produce — it
+  wants a real destination's traffic before anyone trusts it.

@@ -59,13 +59,19 @@ export interface Need {
   whole: boolean;
 }
 
+export interface MintOutcome {
+  ok: boolean;
+  /** Why not, in a sentence — printed where the person who copied can see it. */
+  reason?: string;
+}
+
 export interface Minter {
   /** The scope these tokens are minted under — `(source origin, session)` (§6.3). */
   readonly scopeId: string;
   /** The token for this need if it is already held, else null. Synchronous. */
   get(need: Need): string | null;
-  /** Mint whatever is missing. Resolves false if the vault could not be reached. */
-  ensure(needs: readonly Need[]): Promise<boolean>;
+  /** Mint whatever is missing. `ok: false` carries why. */
+  ensure(needs: readonly Need[]): Promise<MintOutcome>;
 }
 
 export interface MintRequest {
@@ -80,9 +86,14 @@ export interface MintRequest {
  * re-copying the same value costs nothing, but never *invented* here: an entry
  * absent from this cache means the vault has not spoken yet.
  */
+export interface MintReply {
+  tokens: string[] | null;
+  reason?: string;
+}
+
 export function createRemoteMinter(
   scopeId: string,
-  request: (specs: MintRequest[]) => Promise<string[] | null>,
+  request: (specs: MintRequest[]) => Promise<MintReply | null>,
 ): Minter {
   const held = new Map<string, string>();
   const key = (need: Need): string => `${need.cls}|${need.normalized}`;
@@ -101,21 +112,37 @@ export function createRemoteMinter(
         seen.add(k);
         missing.push(need);
       }
-      if (missing.length === 0) return true;
+      if (missing.length === 0) return { ok: true };
 
-      const tokens = await request(
-        missing.map((need) => ({
-          cls: need.cls,
-          value: need.value,
-          normalized: need.normalized,
-          scopeId,
-        })),
-      );
-      if (!tokens) return false;
+      let reply: MintReply | null = null;
+      try {
+        reply = await request(
+          missing.map((need) => ({
+            cls: need.cls,
+            value: need.value,
+            normalized: need.normalized,
+            scopeId,
+          })),
+        );
+      } catch (err) {
+        // `chrome.runtime.sendMessage` rejects when the worker is gone or the
+        // extension was reloaded under a live page. That is a different failure
+        // from "the vault said no", and it has a different remedy.
+        return { ok: false, reason: reloadHint(err) };
+      }
+      if (!reply?.tokens) return { ok: false, ...(reply?.reason ? { reason: reply.reason } : {}) };
+      const tokens = reply.tokens;
       missing.forEach((need, i) => held.set(key(need), tokens[i]!));
-      return true;
+      return { ok: true };
     },
   };
+}
+
+function reloadHint(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  return /context invalidated|receiving end does not exist/i.test(raw)
+    ? 'the extension was reloaded — reload this page'
+    : raw;
 }
 
 /** Null when the two ranges do not overlap. Touching is not overlapping. */
@@ -314,6 +341,11 @@ export interface ClipboardGuardOptions {
   /** ISO-3166 alpha-2, for normalising a partial PHONE (SPEC §5.1). */
   country?: string;
   onCopy?: (plan: CopyPlan) => void;
+  /**
+   * A copy was cancelled and nothing could be put in its place. The clipboard is
+   * safe and empty, which is invisible — so this exists to make it not be.
+   */
+  onFailure?: (reason: string) => void;
   /** How long after the selection settles before tokens are requested. */
   preMintDelayMs?: number;
 }
@@ -350,7 +382,16 @@ export function attachClipboardGuard(doc: Document, opts: ClipboardGuardOptions)
         if (ranges.length === 0) return;
         const { hits } = collectHits(ranges, opts.registry, opts.country);
         if (hits.length === 0) return;
-        void opts.minter.ensure(hits);
+        void opts.minter.ensure(hits).then((outcome) => {
+          // Silence here is what made a later empty clipboard inexplicable: the
+          // vault was already unreachable while the user was still selecting.
+          if (!outcome.ok) {
+            console.warn(
+              `anonymice: cannot mint for this selection — ${outcome.reason ?? 'the vault did not answer'}. ` +
+                'Copying it will leave the clipboard empty rather than in the clear.',
+            );
+          }
+        });
       } catch (err) {
         // Pre-minting is an optimisation. A stale Range or a registry mid-
         // revalidation must cost the copy a round-trip, not throw out of a timer
@@ -427,9 +468,13 @@ function finishLate(
 ): void {
   void (async () => {
     const { hits } = collectHits(ranges, opts.registry, opts.country);
-    const ok = await opts.minter.ensure(hits);
-    if (!ok) {
-      console.error('anonymice: no token from the vault — clipboard left empty rather than in the clear');
+    const outcome = await opts.minter.ensure(hits);
+    if (!outcome.ok) {
+      const reason = outcome.reason ?? 'the vault did not answer';
+      console.error(
+        `anonymice: clipboard left empty rather than in the clear — ${reason}`,
+      );
+      opts.onFailure?.(reason);
       return;
     }
     const plan = planCopy(ranges, native, opts.registry, opts.minter, opts.country);

@@ -48,10 +48,16 @@ export type Verdict =
   /** Every match had a token in hand; forward this instead. */
   | { kind: 'substituted'; body: string; replaced: EgressMatch[] }
   /**
-   * At least one match had no token. The request does not go out (§10.4).
-   * `missing` is what the vault still owes us, so the caller can mint and retry.
+   * The request does not go out (§10.4). Either the vault still owes us a token
+   * — `missing` says which — or the body is positional and substituting into it
+   * would corrupt the destination's document (§10.9.2).
    */
-  | { kind: 'blocked'; missing: EgressMatch[]; replaced: EgressMatch[] };
+  | {
+      kind: 'blocked';
+      reason: 'no-token' | 'positional';
+      missing: EgressMatch[];
+      replaced: EgressMatch[];
+    };
 
 /**
  * Candidate shapes, deliberately loose. Each one is only a way to find
@@ -168,10 +174,20 @@ export function inspect(
   body: string,
   known: readonly KnownValue[],
   tokenFor: (normalized: string, cls: Cls) => string | undefined,
-  opts: { country?: string } = {},
+  opts: { country?: string; allowSubstitute?: boolean } = {},
 ): Verdict {
   const matches = findSensitive(body, known, opts);
   if (matches.length === 0) return { kind: 'clean' };
+
+  /**
+   * A positional body carrying a value has no good outcome: forwarding it leaks,
+   * and substituting a 29-character token for a value of another length moves
+   * every offset after it and corrupts the destination's document. Holding it is
+   * the only arm that is merely inconvenient (§10.9.2).
+   */
+  if (opts.allowSubstitute === false) {
+    return { kind: 'blocked', reason: 'positional', missing: matches, replaced: [] };
+  }
 
   const replaced: EgressMatch[] = [];
   const missing: EgressMatch[] = [];
@@ -192,6 +208,6 @@ export function inspect(
 
   // Fail closed: a body we could only partly tokenise still carries the part we
   // could not, so it is not a body that may leave (§10.4).
-  if (missing.length > 0) return { kind: 'blocked', missing, replaced };
+  if (missing.length > 0) return { kind: 'blocked', reason: 'no-token', missing, replaced };
   return { kind: 'substituted', body: out, replaced };
 }

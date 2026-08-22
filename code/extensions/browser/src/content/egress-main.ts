@@ -20,6 +20,7 @@
  * see in the page's own outbound body ever crosses into it.
  */
 import { inspect, type EgressMatch, type KnownValue, type Verdict } from '../lib/egress.ts';
+import { detokenize, safeToSubstitute, tokensIn } from '../lib/detokenize.ts';
 import { sha256Bytes } from '../lib/sha256.ts';
 import type { Cls } from '../lib/types.ts';
 
@@ -33,16 +34,26 @@ export interface EgressConfig {
   /** `sha256(normalized + '|' + cls)` → token. Never a plaintext key. */
   tokens: Record<string, string>;
   country?: string;
+  /**
+   * `dom` turns on ingress: a token arriving in a response is rewritten to its
+   * value before the application sees it, so the page renders real data while
+   * the wire carries tokens (SPEC §10.9). `off` leaves responses untouched.
+   */
+  reveal?: 'off' | 'dom';
+  /** token → value, for ingress. Only ever tokens this page has already received. */
+  values?: Record<string, string>;
 }
 
 export type ToShim = { channel: typeof CHANNEL; kind: 'config'; config: EgressConfig };
 
+export type Transport = 'fetch' | 'xhr' | 'websocket' | 'beacon' | 'form';
+
 export type FromShim =
   | { channel: typeof CHANNEL; kind: 'blocked'; url: string; transport: Transport; missing: Owed[] }
   | { channel: typeof CHANNEL; kind: 'sent'; url: string; transport: Transport; replaced: number }
-  | { channel: typeof CHANNEL; kind: 'health'; patched: Transport[] };
-
-export type Transport = 'fetch' | 'xhr' | 'websocket' | 'beacon';
+  | { channel: typeof CHANNEL; kind: 'health'; patched: Transport[] }
+  /** Tokens seen on the way in that we hold no value for (SPEC §10.9.3). */
+  | { channel: typeof CHANNEL; kind: 'unresolved'; tokens: string[] };
 
 /** What the vault still owes us for a blocked body (§10.4). */
 export interface Owed {
@@ -61,11 +72,41 @@ export function digestOf(normalized: string, cls: Cls): string {
 const owed = (matches: EgressMatch[]): Owed[] =>
   matches.map((m) => ({ cls: m.cls, value: m.value, normalized: m.normalized }));
 
-/** Only bodies we can read as text are bodies we can gate (§10.7). */
+/**
+ * Bodies we can read **synchronously**. `WebSocket.send`, `XHR.send` and
+ * `sendBeacon` cannot await, so for them this is the whole story (§10.3).
+ */
 function asText(body: unknown): string | null {
   if (typeof body === 'string') return body;
   if (body instanceof URLSearchParams) return body.toString();
+  // Bytes are readable without awaiting; whether they are *text* is decided by
+  // whether the decode round-trips, which rejects gzip and other binary framing.
+  if (body instanceof ArrayBuffer) return decodeIfText(new Uint8Array(body));
+  if (ArrayBuffer.isView(body)) {
+    const view = body as ArrayBufferView;
+    return decodeIfText(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+  }
   return null;
+}
+
+const decoder = new TextDecoder('utf-8', { fatal: true });
+
+/**
+ * A body is text if it decodes as UTF-8 without error and carries no control
+ * characters. gzip starts `1f 8b`, so it fails on the first count; a protobuf or
+ * a JPEG fails on one or the other. This is what turns §10.7's "binary bodies
+ * pass unexamined" from a blanket hole into one that only covers genuinely
+ * opaque payloads.
+ */
+function decodeIfText(bytes: Uint8Array): string | null {
+  if (bytes.byteLength === 0) return '';
+  try {
+    const text = decoder.decode(bytes);
+    // eslint-disable-next-line no-control-regex
+    return /[\u0000-\u0008\u000e-\u001f]/.test(text) ? null : text;
+  } catch {
+    return null;
+  }
 }
 
 export interface ShimHandle {
@@ -99,7 +140,13 @@ export function installEgressShim(win: Window & typeof globalThis): ShimHandle {
   const decide = (body: string, url: string, transport: Transport): string | null => {
     let verdict: Verdict;
     try {
-      verdict = inspect(body, config.known, tokenFor, { country: config.country });
+      verdict = inspect(body, config.known, tokenFor, {
+        country: config.country,
+        // Substituting into a positional payload corrupts the destination's
+        // document, so such a body may be forwarded clean or held, never
+        // rewritten (SPEC §10.9.2).
+        allowSubstitute: safeToSubstitute(body),
+      });
     } catch {
       // A gate that throws is a gate that is not gating. In `enforce` that means
       // the send does not happen (§10.4); in `report` it means we got out of the way.
@@ -118,6 +165,31 @@ export function installEgressShim(win: Window & typeof globalThis): ShimHandle {
     return null;
   };
 
+  /**
+   * Ingress. Rewrites a token back to its value before the application sees it.
+   *
+   * Only ever applied to a body `safeToSubstitute` accepts, for the same offset
+   * reason as egress — a collab step stream is read-only to us in both
+   * directions (SPEC §10.9.2).
+   */
+  const reveal = (body: string): string => {
+    if (config.reveal !== 'dom') return body;
+    if (!safeToSubstitute(body)) return body;
+    const values = config.values ?? {};
+    const result = detokenize(body, (token) => values[token]);
+    if (result.unresolved.length) {
+      report({ channel: CHANNEL, kind: 'unresolved', tokens: result.unresolved });
+    }
+    return result.text;
+  };
+
+  /** What the bridge should go and resolve, whether or not we could rewrite now. */
+  const noteTokens = (body: string): void => {
+    if (config.reveal !== 'dom') return;
+    const seen = tokensIn(body).filter((t) => !(config.values ?? {})[t]);
+    if (seen.length) report({ channel: CHANNEL, kind: 'unresolved', tokens: seen });
+  };
+
   // --- fetch -------------------------------------------------------------
   // The one transport that could await a round trip. It deliberately does not:
   // one decision path is worth more than one transport's extra capability, and
@@ -133,15 +205,44 @@ export function installEgressShim(win: Window & typeof globalThis): ShimHandle {
         if (decided === null) {
           return Promise.reject(new DOMException('Blocked by anonymice (SPEC §10.4)', 'AbortError'));
         }
-        if (decided !== text) return originalFetch.call(this, input, { ...init, body: decided });
+        if (decided !== text) {
+          return withReveal(originalFetch.call(this, input, { ...init, body: decided }));
+        }
       }
-      return originalFetch.call(this, input, init);
+      return withReveal(originalFetch.call(this, input, init));
     } as typeof win.fetch;
     patched.push('fetch');
     undo.push(() => {
       win.fetch = originalFetch;
     });
   }
+
+  /**
+   * `fetch` is the one place ingress can *await*, which is what makes an initial
+   * page load render real values rather than tokens: the document's own API
+   * calls are resolved before the application ever parses them (§10.9.3).
+   */
+  const withReveal = (promise: Promise<Response>): Promise<Response> => {
+    if (config.reveal !== 'dom') return promise;
+    return promise.then(async (response) => {
+      const type = response.headers?.get?.('content-type') ?? '';
+      if (!/json|text|javascript|xml/i.test(type)) return response;
+      let text: string;
+      try {
+        text = await response.clone().text();
+      } catch {
+        return response;
+      }
+      noteTokens(text);
+      const revealed = reveal(text);
+      if (revealed === text) return response;
+      return new Response(revealed, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
+    });
+  };
 
   // --- XMLHttpRequest ----------------------------------------------------
   const xhrProto = win.XMLHttpRequest?.prototype;
@@ -154,7 +255,38 @@ export function installEgressShim(win: Window & typeof globalThis): ShimHandle {
       // eslint-disable-next-line prefer-rest-params
       return originalOpen.apply(this, arguments as never);
     } as typeof xhrProto.open;
-    xhrProto.send = function patchedSend(this: XMLHttpRequest, body?: Document | XMLHttpRequestBodyInit | null) {
+    /**
+     * `responseText` is a readonly accessor on the prototype, so ingress here
+     * means shadowing it per instance once the response has landed. The
+     * application reads the property, not the network, so this is the same
+     * substitution `fetch` does — just at the only place XHR exposes.
+     */
+    const shadowResponse = (xhr: XMLHttpRequest): void => {
+      let text: string;
+      try {
+        text = xhr.responseType === '' || xhr.responseType === 'text' ? xhr.responseText : '';
+      } catch {
+        return;
+      }
+      if (!text) return;
+      noteTokens(text);
+      const revealed = reveal(text);
+      if (revealed === text) return;
+      Object.defineProperty(xhr, 'responseText', { value: revealed, configurable: true });
+      Object.defineProperty(xhr, 'response', { value: revealed, configurable: true });
+    };
+    const originalAdd = xhrProto.addEventListener;
+    xhrProto.send = function patchedSendWithReveal(
+      this: XMLHttpRequest,
+      body?: Document | XMLHttpRequestBodyInit | null,
+    ) {
+      if (config.reveal === 'dom') {
+        // Ahead of any handler the application registers later, because a
+        // `readystatechange` listener added after ours still runs after ours.
+        originalAdd.call(this, 'readystatechange', () => {
+          if (this.readyState === 4) shadowResponse(this);
+        });
+      }
       const text = asText(body);
       if (text !== null) {
         const decided = decide(text, urls.get(this) ?? '', 'xhr');
@@ -188,9 +320,64 @@ export function installEgressShim(win: Window & typeof globalThis): ShimHandle {
       }
       return originalWsSend.call(this, data);
     };
+    /**
+     * Incoming frames. `MessageEvent.data` is readonly, so the handler is
+     * wrapped and handed a shallow stand-in rather than the event being edited.
+     *
+     * Ingress here uses only the warm cache — a listener cannot await. In
+     * practice that is enough, because the tokens a collab stream carries were
+     * almost always resolved during the page's own initial load (§10.9.3).
+     */
+    const originalWsAdd = wsProto.addEventListener;
+    const wrapped = new WeakMap<object, EventListener>();
+    const wrap = (listener: EventListener): EventListener => {
+      const existing = wrapped.get(listener);
+      if (existing) return existing;
+      const fn: EventListener = (event) => {
+        const data = (event as MessageEvent).data;
+        if (config.reveal !== 'dom' || typeof data !== 'string') return listener(event);
+        noteTokens(data);
+        const revealed = reveal(data);
+        if (revealed === data) return listener(event);
+        return listener(
+          new Proxy(event as MessageEvent, {
+            get: (target, prop) => (prop === 'data' ? revealed : Reflect.get(target, prop, target)),
+          }),
+        );
+      };
+      wrapped.set(listener, fn);
+      return fn;
+    };
+    wsProto.addEventListener = function patchedWsAdd(
+      this: WebSocket,
+      type: string,
+      listener: EventListenerOrEventListenerObject | null,
+      options?: boolean | AddEventListenerOptions,
+    ) {
+      if (type === 'message' && typeof listener === 'function') {
+        return originalWsAdd.call(this, type, wrap(listener as EventListener), options);
+      }
+      return originalWsAdd.call(this, type, listener as EventListener, options);
+    } as typeof wsProto.addEventListener;
+
+    const onmessageDescriptor = Object.getOwnPropertyDescriptor(wsProto, 'onmessage');
+    if (onmessageDescriptor?.set && onmessageDescriptor.get) {
+      const { get, set } = onmessageDescriptor;
+      Object.defineProperty(wsProto, 'onmessage', {
+        configurable: true,
+        enumerable: onmessageDescriptor.enumerable ?? true,
+        get,
+        set(this: WebSocket, listener: unknown) {
+          set.call(this, typeof listener === 'function' ? wrap(listener as EventListener) : listener);
+        },
+      });
+    }
+
     patched.push('websocket');
     undo.push(() => {
       wsProto.send = originalWsSend;
+      wsProto.addEventListener = originalWsAdd;
+      if (onmessageDescriptor) Object.defineProperty(wsProto, 'onmessage', onmessageDescriptor);
     });
   }
 
@@ -220,6 +407,63 @@ export function installEgressShim(win: Window & typeof globalThis): ShimHandle {
    * up from an embedded iframe. A null source is accepted because a same-window
    * post reports one only in a real browser; jsdom leaves it null.
    */
+  // --- form submit / navigation ------------------------------------------
+  /**
+   * A `<form method="POST">` submit is a browser navigation, not a JS API call,
+   * so none of the patches above are on its path. With a token in the field that
+   * did not matter; with plaintext in the DOM (`reveal: 'dom'`) it is the
+   * shortest leak there is (SPEC §10.10).
+   *
+   * Capture phase, so the decision is made before the application's own
+   * `submit` handlers run — the same reason §8.3's paste handler captures.
+   *
+   * Fields are rewritten in place rather than the submit being rebuilt: the
+   * browser serialises the form itself, and any attempt to reproduce that
+   * encoding is a bug waiting for a `multipart` boundary.
+   */
+  const onSubmit = (event: Event): void => {
+    if (config.mode === undefined) return;
+    const form = event.target as HTMLFormElement | null;
+    if (!form || typeof form.elements === 'undefined') return;
+
+    const fields = [...form.elements].filter(
+      (el): el is HTMLInputElement | HTMLTextAreaElement =>
+        (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') &&
+        typeof (el as HTMLInputElement).value === 'string' &&
+        (el as HTMLInputElement).value !== '',
+    );
+
+    const held: Owed[] = [];
+    for (const field of fields) {
+      const verdict = inspect(field.value, config.known, tokenFor, {
+        country: config.country,
+        allowSubstitute: true,
+      });
+      if (verdict.kind === 'clean') continue;
+      if (verdict.kind === 'substituted') {
+        field.value = verdict.body;
+        continue;
+      }
+      held.push(...owed(verdict.missing));
+    }
+
+    if (held.length === 0) return;
+    report({
+      channel: CHANNEL,
+      kind: 'blocked',
+      url: form.action || win.location.href,
+      transport: 'form',
+      missing: held,
+    });
+    if (config.mode === 'enforce') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  };
+  win.addEventListener('submit', onSubmit, true);
+  patched.push('form');
+  undo.push(() => win.removeEventListener('submit', onSubmit, true));
+
   const onMessage = (event: MessageEvent): void => {
     const data = event.data as ToShim | null;
     if (event.source && event.source !== win) return;

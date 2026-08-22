@@ -51,7 +51,7 @@ test('a PERSON is only findable through the registry — it has no shape to anch
 });
 
 test('a token in the body is left alone — that is the system working', () => {
-  const body = 'ref ANM1-IBAN-K3F9QW2MX7VBNC4H8 confirmed';
+  const body = 'ref ANM1-IBAN-KH9YRPPR6V0BX38ZS confirmed';
   assert.deepEqual(findSensitive(body, []), []);
   assert.equal(inspect(body, [], empty).kind, 'clean');
 });

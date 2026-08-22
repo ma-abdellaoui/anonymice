@@ -81,6 +81,14 @@ interface Collected {
   at: string;
 }
 const collected: Collected[] = [];
+
+/**
+ * A stand-in for the destination's own storage. `POST /doc` stores whatever
+ * arrives; `GET /doc` hands it back. That round trip is the only way to see the
+ * ingress half of SPEC §10.9 — the page saves, reloads, and should read its own
+ * real values back out of a store that only ever held tokens.
+ */
+let stored = '{"title":"Zahlungsauftrag","body":"IBAN: (empty)"}';
 const collect = (transport: string, body: string): void => {
   collected.push({ transport, body, at: new Date().toISOString() });
   if (collected.length > 200) collected.shift();
@@ -109,6 +117,20 @@ const server = createServer((req, res) => {
         res.writeHead(200, { ...cors, 'content-type': TYPES['.json']! }).end('{"ok":true}');
       });
       return;
+    }
+
+    if (path === '/doc') {
+      if (req.method === 'POST') {
+        const chunks: Buffer[] = [];
+        req.on('data', (c: Buffer) => chunks.push(c));
+        req.on('end', () => {
+          stored = Buffer.concat(chunks).toString('utf8');
+          collect('doc-save', stored);
+          res.writeHead(200, { ...cors, 'content-type': TYPES['.json']! }).end('{"ok":true}');
+        });
+        return;
+      }
+      return void res.writeHead(200, { ...cors, 'content-type': TYPES['.json']! }).end(stored);
     }
 
     if (path === '/collected') {
@@ -239,5 +261,6 @@ server.listen(PORT, () => {
   console.log(`  TRUSTED  http://${HOSTS.trusted}:${PORT}/`);
   console.log(`  setup    http://localhost:${PORT}/`);
   console.log(`  egress   POST /collect · ws /collab · GET|DELETE /collected`);
+  console.log(`  reveal   GET|POST /doc  (the destination's own store, for §10.9)`);
   void warnIfPortEightyAnswers();
 });

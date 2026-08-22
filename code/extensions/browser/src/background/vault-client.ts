@@ -34,6 +34,13 @@ export type Resolution =
   | { kind: 'damaged'; cls: string | null }
   | { kind: 'none' };
 
+export interface MintResult {
+  /** Positional, or null when nothing was minted. */
+  tokens: string[] | null;
+  /** Short, human, and safe to print in a page console — never a value. */
+  reason?: string;
+}
+
 export interface ResolveReply {
   resolution: Resolution;
   /** The destination's own alias, when a `scopeId` was sent (SPEC §6.3). */
@@ -60,6 +67,22 @@ export function vaultEndpointFor(detectEndpoint: string): string {
   return new URL('/v1/tokens', detectEndpoint).href;
 }
 
+/**
+ * A sentence someone can act on. `TypeError: Failed to fetch` is what Chrome
+ * says when nothing is listening, and "the vault is not running" is what that
+ * means — the endpoint is included because the usual cause is that it is not
+ * the one you thought.
+ */
+function describe(err: unknown, endpoint: string): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  if (/failed to fetch|networkerror|load failed/i.test(raw)) {
+    return `no vault at ${endpoint} — is the backend running?`;
+  }
+  if (/\b404\b/.test(raw)) return `${endpoint} has no vault — the backend is out of date`;
+  if (/\b401\b|\b403\b/.test(raw)) return 'the vault rejected our credential';
+  return raw;
+}
+
 export class VaultClient {
   readonly #policy: Policy;
   readonly #fetch: typeof fetch | undefined;
@@ -72,15 +95,19 @@ export class VaultClient {
   }
 
   /**
-   * Tokens for these values, positionally. Null on any failure.
+   * Tokens for these values, positionally — or why not.
    *
-   * Null must stay null all the way to the clipboard: a locally invented token
-   * would be one the vault never recorded, so nothing could ever resolve it and
-   * the value it stands for would be gone. An empty clipboard is recoverable;
-   * that is not.
+   * A failure must stay a failure all the way to the clipboard: a locally
+   * invented token would be one the vault never recorded, so nothing could ever
+   * resolve it and the value it stands for would be gone. An empty clipboard is
+   * recoverable; that is not.
+   *
+   * The `reason` is the whole point of the shape. This runs in the worker, so a
+   * bare null leaves the only useful sentence — `mint 404`, `Failed to fetch` —
+   * in a console the person who just pressed Ctrl+C is not looking at.
    */
-  async mint(specs: MintSpec[]): Promise<string[] | null> {
-    if (specs.length === 0) return [];
+  async mint(specs: MintSpec[]): Promise<MintResult> {
+    if (specs.length === 0) return { tokens: [] };
     const doFetch = this.#fetch ?? fetch;
     const endpoint = vaultEndpointFor(this.#policy.detectEndpoint);
 
@@ -101,16 +128,17 @@ export class VaultClient {
           throw new Error('mint: malformed response');
         }
         if (tokens.some((t) => typeof t !== 'string')) throw new Error('mint: malformed response');
-        return tokens as string[];
+        return { tokens: tokens as string[] };
       } catch (err) {
         if (attempt === this.#maxAttempts) {
-          console.error('anonymice: mint failed — no token will be put on the clipboard', err);
-          return null;
+          const reason = describe(err, endpoint);
+          console.error(`anonymice: mint failed (${reason}) — no token will reach the clipboard`, err);
+          return { tokens: null, reason };
         }
         await new Promise((r) => setTimeout(r, 100 * attempt));
       }
     }
-    return null;
+    return { tokens: null, reason: 'unreachable' };
   }
 
   /**

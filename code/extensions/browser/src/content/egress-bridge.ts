@@ -21,6 +21,12 @@ export interface BridgeOptions {
   registry: SpanRegistry;
   minter: Minter;
   mode: 'enforce' | 'report';
+  /** `dom` turns on ingress in both the shim and the DOM pass (SPEC §10.9). */
+  reveal?: 'off' | 'dom';
+  /** Resolve tokens to values. Returns only what the vault answered for. */
+  resolve?: (tokens: string[]) => Promise<Record<string, string>>;
+  /** Called when new values land, so a DOM pass can be re-run (SPEC §10.9.4). */
+  onValues?: (values: Record<string, string>) => void;
   country?: string;
   /** Badge, pill and audit all hang off this (SPEC §10.8). */
   onBlocked?: (event: { url: string; transport: string; missing: Owed[] }) => void;
@@ -68,11 +74,18 @@ export function attachEgressBridge(win: Window, opts: BridgeOptions) {
   /** Tokens for values that were never in the registry — the typed-in-place case. */
   const extra = new Map<string, string>();
 
+  /** token → value, for ingress. Only tokens this page has actually received. */
+  const values = new Map<string, string>();
+  /** Asked about already, so a token the vault will not answer for is asked once. */
+  const asked = new Set<string>();
+
   function push(): void {
     const config: EgressConfig = {
       mode: opts.mode,
       known: known(),
       tokens: tokens(),
+      ...(opts.reveal ? { reveal: opts.reveal } : {}),
+      ...(opts.reveal === 'dom' ? { values: Object.fromEntries(values) } : {}),
       ...(opts.country ? { country: opts.country } : {}),
     };
     const message: ToShim = { channel: CHANNEL, kind: 'config', config };
@@ -98,6 +111,32 @@ export function attachEgressBridge(win: Window, opts: BridgeOptions) {
     push();
   }
 
+  /**
+   * Ingress cache. The shim and the DOM pass both read synchronously, so this is
+   * what makes that possible: resolve once, hold, push down (SPEC §10.9.3).
+   *
+   * A token the vault will not answer for is asked about exactly once. Retrying
+   * on every frame of a collab stream would be a request storm on the one case
+   * that is already known to fail — a dead token (§6.7).
+   */
+  async function warm(tokens: string[]): Promise<void> {
+    if (opts.reveal !== 'dom' || !opts.resolve) return;
+    const fresh = tokens.filter((t) => !values.has(t) && !asked.has(t));
+    if (fresh.length === 0) return;
+    for (const token of fresh) asked.add(token);
+
+    const resolved = await opts.resolve(fresh);
+    let learned = false;
+    for (const [token, value] of Object.entries(resolved)) {
+      if (!value) continue;
+      values.set(token, value);
+      learned = true;
+    }
+    if (!learned) return;
+    push();
+    opts.onValues?.(Object.fromEntries(values));
+  }
+
   /** Same frame filter as the shim's, and the same caveat (SPEC §10.2). */
   const onMessage = (event: MessageEvent): void => {
     const data = event.data as FromShim | null;
@@ -116,6 +155,9 @@ export function attachEgressBridge(win: Window, opts: BridgeOptions) {
       case 'sent':
         opts.onSent?.({ url: data.url, transport: data.transport, replaced: data.replaced });
         break;
+      case 'unresolved':
+        void warm(data.tokens);
+        break;
     }
   };
 
@@ -124,6 +166,8 @@ export function attachEgressBridge(win: Window, opts: BridgeOptions) {
   return {
     /** Call when the registry changes — a scan completing, a mutation settling. */
     refresh: push,
+    /** Resolve these tokens and push the values down (SPEC §10.9.4). */
+    warm,
     detach(): void {
       win.removeEventListener('message', onMessage);
     },

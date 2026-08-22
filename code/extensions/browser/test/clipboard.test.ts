@@ -41,8 +41,8 @@ function testMinter(scopeId = 'source:https://crm.internal.example'): TestMinter
   const issued = new Map<string, string>();
   const minter = createRemoteMinter(scopeId, async (specs) => {
     batches.push(specs);
-    if (state.fail) return null;
-    return specs.map((spec) => {
+    if (state.fail) return { tokens: null, reason: 'no vault in this test' };
+    return { tokens: specs.map((spec) => {
       const key = `${spec.scopeId}|${spec.cls}|${spec.normalized}`;
       let token = issued.get(key);
       if (!token) {
@@ -50,7 +50,7 @@ function testMinter(scopeId = 'source:https://crm.internal.example'): TestMinter
         issued.set(key, token);
       }
       return token;
-    });
+    }) };
   });
   const state = Object.assign(minter, { batches, fail: false }) as TestMinter;
   return state;
@@ -244,7 +244,7 @@ test('a vault that cannot be reached mints nothing locally', async () => {
   minter.fail = true;
   const range = selectContents(doc, '#a');
 
-  assert.equal(await minter.ensure(collectHits([range], registry).hits), false);
+  assert.equal((await minter.ensure(collectHits([range], registry).hits)).ok, false);
   const p = planCopy([range], range.toString(), registry, minter)!;
   assert.equal(p.ready, false);
   assert.equal(p.text, '');
@@ -374,4 +374,74 @@ test('detaching puts the page back exactly as it was', async () => {
 
   const state = fireCopy(doc, [range]);
   assert.equal(state.prevented, false);
+});
+
+// --- when the vault does not answer -----------------------------------------
+
+test('a failed mint carries its reason, so the page console explains itself', async () => {
+  const minter = createRemoteMinter('source:test', async () => ({
+    tokens: null,
+    reason: 'no vault at http://localhost:8788/v1/tokens — is the backend running?',
+  }));
+  const outcome = await minter.ensure([
+    { cls: 'IBAN', value: IBAN, normalized: 'CH9300762011623852957', whole: true },
+  ]);
+  assert.equal(outcome.ok, false);
+  assert.match(outcome.reason!, /is the backend running/);
+});
+
+test('a reloaded extension is named as such, because the remedy is different', async () => {
+  const minter = createRemoteMinter('source:test', async () => {
+    throw new Error('Extension context invalidated.');
+  });
+  const outcome = await minter.ensure([
+    { cls: 'IBAN', value: IBAN, normalized: 'CH9300762011623852957', whole: true },
+  ]);
+  assert.equal(outcome.ok, false);
+  assert.match(outcome.reason!, /reload this page/);
+});
+
+test('a rejecting worker does not escape as an unhandled rejection', async () => {
+  const minter = createRemoteMinter('source:test', async () => {
+    throw new Error('Could not establish connection.');
+  });
+  // The whole point: `ensure` resolves, so the copy path can report and move on.
+  await assert.doesNotReject(() =>
+    minter.ensure([{ cls: 'IBAN', value: IBAN, normalized: 'x', whole: true }]),
+  );
+});
+
+test('an empty clipboard tells someone, rather than just being empty', async () => {
+  const { doc, registry, minter } = await scanned(`<p id="a">IBAN ${IBAN}</p>`);
+  minter.fail = true;
+  const reasons: string[] = [];
+  const detach = attachClipboardGuard(doc, {
+    registry,
+    minter,
+    preMintDelayMs: 10_000,
+    onFailure: (reason) => void reasons.push(reason),
+  });
+
+  const state = fireCopy(doc, [selectContents(doc, '#a')]);
+  assert.equal(state.written['text/plain'], '', 'still fails closed');
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(reasons, ['no vault in this test'], 'and says why');
+  detach();
+});
+
+test('a pre-mint that fails is not silent', async () => {
+  const { doc, registry, minter } = await scanned(`<p id="a">IBAN ${IBAN}</p>`);
+  minter.fail = true;
+  const warnings: unknown[][] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => void warnings.push(args);
+  const detach = attachClipboardGuard(doc, { registry, minter, preMintDelayMs: 1 });
+  try {
+    await settle(doc, [selectContents(doc, '#a')]);
+    assert.equal(warnings.length, 1, 'the vault was already unreachable while selecting');
+    assert.match(String(warnings[0]![0]), /cannot mint for this selection/);
+  } finally {
+    console.warn = original;
+    detach();
+  }
 });

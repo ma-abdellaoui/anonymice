@@ -5,7 +5,7 @@ import { CHANNEL, digestOf, installEgressShim, type EgressConfig, type FromShim 
 import { normalizeValue } from '../src/lib/normalize.ts';
 
 const IBAN = 'CH93 0076 2011 6238 5295 7';
-const IBAN_TOKEN = 'ANM1-IBAN-K3F9QW2MX7VBNC4H8';
+const IBAN_TOKEN = 'ANM1-IBAN-KH9YRPPR6V0BX38ZS';
 
 /**
  * jsdom has no real network, so every transport is stubbed before the shim
@@ -60,7 +60,7 @@ const vaultHas = (): Record<string, string> => ({
 
 test('the shim reports which transports it managed to patch', () => {
   const { handle } = harness();
-  assert.deepEqual(handle.patched.sort(), ['beacon', 'fetch', 'websocket', 'xhr']);
+  assert.deepEqual(handle.patched.sort(), ['beacon', 'fetch', 'form', 'websocket', 'xhr']);
 });
 
 test('a clean body is forwarded untouched', async () => {

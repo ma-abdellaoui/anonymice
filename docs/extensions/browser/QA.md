@@ -9,13 +9,13 @@ Nothing else is built yet (see [Out of scope](#out-of-scope) before filing
 anything).
 
 **Read this first.** Steps 0–7 have been through a real browser once, and four
-bugs were found doing it. **Steps 8, 11–13 and 14 have not.** The copy path and the
+bugs were found doing it. **Steps 8, 11–13, 14 and 15 have not.** The copy path and the
 whole of SPEC §8 — the reveal frame, the clone, child tokens, declassification —
 exist only as unit tests: 183 across the extension, including a cross-extension
 contract test driving the real vault endpoints. But jsdom has no `ClipboardEvent`
 and no cross-origin iframes, so the `copy` event, the `chrome-extension://` frame,
 its `MessageChannel`, and every pixel of positioning are **faked in those tests
-and unverified in a browser**. Treat a failure in 8, 11–13 or 14 as expected
+and unverified in a browser**. Treat a failure in 8, 11–13, 14 or 15 as expected
 information, not as something surprising.
 
 **Step 14 is the newest and the least exercised.** The egress gate has 23 unit
@@ -140,7 +140,7 @@ on its own — which is also what step 10 checks with the backend stopped.
 ```sh
 cd code/extensions/browser
 npm install          # first time only
-npm test             # expect: 223 pass, 0 fail
+npm test             # expect: 254 pass, 0 fail
 npm run build:qa     # prints the hosts and backend it baked in
 ```
 
@@ -701,7 +701,7 @@ The gate is `off` in a shipped build (SPEC §10.6). `build:qa` bakes it to
 
 ```sh
 cd code/extensions/browser
-npm test                 # expect: 223 pass, 0 fail
+npm test                 # expect: 254 pass, 0 fail
 npm run build:qa         # prints: egress : enforce
 npm run fixtures         # prints: egress   POST /collect · ws /collab · GET|DELETE /collected
 ```
@@ -898,6 +898,245 @@ Egress section on the NATIVE fixture, and there should be no shim either.
 - **No real collaborative destination has been tried.** The WebSocket here is a
   40-line echo in the fixture server, not Confluence. Whether a real editor
   survives a dropped frame is unmeasured.
+
+## 15. `reveal: dom` — real values in the DOM, tokens on the wire
+
+Step 14 proves nothing sensitive leaves. This one proves the user still sees
+real data while that is true (SPEC §10.9). It is the mode to use when the
+destination is something we cannot integrate with — Confluence, a canvas editor,
+anything whose internals we do not own.
+
+**Read §10.11 before running this.** The mode deliberately puts plaintext in the
+page DOM. That is readable by other extensions and by session-replay scripts, and
+there is no code fix for the first one. It is a per-host decision, not a default.
+
+### Setup
+
+```sh
+npm run build:qa -- --reveal=dom      # prints: reveal : dom
+```
+
+Reload the extension and open `http://trusted.anonymice.test:8787/`.
+
+### 15.1 The round trip
+
+The **Round trip** section on the fixture page. `POST /doc` is the destination's
+store; `GET /doc` hands back whatever it holds.
+
+1. Leave the default document — it contains a real IBAN.
+2. Click **Save**.
+3. Click **what the store holds**.
+
+**Expected:** the store received a body with `ANM1-IBAN-…` in it and **no IBAN**.
+That is egress, as in step 14.
+
+4. Click **Load**.
+
+**Expected — and this is the whole point:** the blue line reads
+`the page renders: IBAN: CH93 0076 2011 6238 5295 7`. The store holds a token;
+the page shows the value. The application never sees the token — the shim
+rewrites the response before `r.text()` resolves (SPEC §10.9.1).
+
+5. Reload the whole page and click **Load** again.
+
+**Expected:** same. It survives a reload, which is what separates this from a
+one-shot substitution.
+
+### 15.2 Where the value actually is
+
+With the page rendering the IBAN, in the page console:
+
+```js
+document.body.innerText.includes('CH93 0076 2011 6238 5295 7')
+```
+
+**Expected: `true`.** That is not a bug — it is the mode. Compare with step 11's
+`false` on the reveal-frame path, and note that this is the difference §10.11
+prices.
+
+### 15.3 An unresolvable token stays a token
+
+1. In the **Round trip** textarea, replace the body value with a token that is
+   valid in shape but not in the vault:
+   `{"title":"x","body":"IBAN: ANM1-IBAN-KH9YRPPR6V0BX38ZS"}` — then edit one
+   character of the payload so the check character no longer matches, e.g. change
+   the final `S` to `T`.
+2. **Save**, then **Load**.
+
+**Expected:** the page shows the token, unchanged. A token we cannot resolve is
+the honest thing to render (SPEC §10.9.3), and a *damaged* one is not even
+recognised as a token. Nothing should crash and nothing should blank out.
+
+### 15.4 The form submit gate
+
+The **Form submit** section is a plain `<form method="post">` — a browser
+navigation with no JavaScript on its path (SPEC §10.10).
+
+1. Leave the pre-filled IBAN and memo.
+2. Click **Submit (navigates)**.
+
+**Expected:** the browser navigates to `/collect` and the JSON response is shown.
+Go back, then check `what the server got` in the Egress section.
+
+**Expected:** the recorded body is `iban=ANM1-IBAN-…&memo=invoice+12` — the IBAN
+tokenised, the memo untouched.
+
+3. Now change the IBAN to a *different* valid one — `CH56 0483 5012 3456 7800 9`
+   — and submit again **without** doing anything else first.
+
+**Expected:** the navigation **does not happen**. The page stays put. The console
+carries a `form ... held` warning. Submit a second time and it goes through
+tokenised — same mint-then-retry as 14.2.
+
+> This is the step most likely to surprise you: a cancelled submit looks exactly
+> like a broken button, because §10.8's pill does not exist yet.
+
+### 15.5 A positional payload is held, never rewritten
+
+This is the constraint that decides whether a real collaborative editor can work
+(SPEC §10.9.2).
+
+In the **Egress** section, put a ProseMirror-shaped step in the body:
+
+```json
+{"clientID":7,"steps":[{"stepType":"replace","from":11,"to":11,"slice":{"content":[{"type":"text","text":"CH93 0076 2011 6238 5295 7"}]}}]}
+```
+
+Click **fetch**.
+
+**Expected:** rejected, and the server got nothing — **even after a retry**. It is
+not held for want of a token; it is held because substituting a 29-character
+token for a 26-character value would move every offset after it and corrupt the
+destination's document.
+
+**What this means for Confluence:** its REST surface and its autosaves are
+covered by this mode. Its live collaborative step stream is **not** — every frame
+carrying a freshly typed value will be dropped, and the editing session will
+desynchronise. Do not expect real-time co-editing to work.
+
+### 15.6 Confluence, if you want to point it at one
+
+```sh
+npm run build:qa -- --reveal=dom --trusted='*.atlassian.net'
+```
+
+Reload the extension. Expect, in rough order of likelihood:
+
+- **Page loads render values** where the stored content holds tokens — the REST
+  path, and the part most likely to just work.
+- **Typing a new value into the editor** is caught on the frame that completes
+  it, and that frame is dropped (§15.5). The editor will get out of step.
+- **The prefix already left.** Frames carrying the first two-thirds of the IBAN
+  went out before it was recognisable as one (SPEC §10.7).
+
+Check the network panel, not the page: filter for the collab socket and confirm
+no frame carries a complete value. That is the assertion. The editor being unhappy
+is expected, and is §10.9.2 doing its job rather than a bug to file.
+
+### What is not built here
+
+- **Still no pill, badge or audit entry** (§10.8). In this mode that gap is worse:
+  a cancelled form submit and a dropped collab frame both look like the site is
+  broken, with nothing to tell the user why.
+- **`Blob`, `FormData` and `ReadableStream` bodies pass unexamined** (§10.7).
+  With plaintext in the DOM this is now the primary leak path, not a footnote.
+- **Nothing addresses other extensions reading the DOM** (§10.11). Grammarly and
+  friends see everything this mode renders. There is no code fix; it is an
+  allowlist decision.
+- **The positional denylist is a guess.** It knows ProseMirror, OT and Yjs
+  shapes. A protocol it does not recognise gets rewritten and the destination's
+  document corrupted — the worst failure this design can produce.
+
+## 16. Debugging when nothing happens
+
+Every gate in §14 and §15 is a conjunction, so "nothing happened" has six causes
+that look identical from the page. A QA build now prints a banner at each one
+(`--debug=off` to silence). Read them in order — the first that is wrong is the
+answer.
+
+```sh
+npm run build:qa -- --reveal=dom --trusted='*.atlassian.net'
+```
+
+### The banners, in the order they should appear
+
+**1. `ANONYMICE — content script running`** — in the *page* console.
+
+| row | what a wrong value means |
+|---|---|
+| `build` | does not match the `build id` the last `build:qa` printed → **you are looking at a stale extension**. Reload it at `chrome://extensions`, then reload the page. Check this first; it costs nothing and it is the most common cause |
+| `hostClass` | not `TRUSTED` → nothing below can run. The host is not in the trusted list; rebuild with `--trusted=` |
+| `policy.egress` | `off` → no gate, no shim, no DOM reveal |
+| `policy.reveal` | `off` → the gate runs but the page keeps showing tokens |
+| `egress gate active` | `NO` → the conjunction above failed |
+| `DOM reveal active` | `NO` → gate is up but `reveal` is not `dom` |
+
+**No banner at all** means the content script never ran — and the single most
+likely cause is **the policy pull replacing your host list**. The pull outranks
+the baked list by design (ENDPOINTS.md §2), and the mock serves the two fixture
+hosts, so a build targeting a real destination would register and then silently
+*unregister* about a minute later. From the page that is indistinguishable from
+a broken extension.
+
+Naming hosts on the command line now turns the pull off, and the build says so:
+
+```
+policy pull : (off — baked lists only)
+note        : pull disabled (hosts named on the command line), so the list above is final
+```
+
+If your build says `a pulled list OUTRANKS the baked one above`, that is the
+bug. Rebuild with `--trusted=` naming your host, or add it to
+`mock/policy.json`. The service worker console also carries
+`ANONYMICE — the policy pull REMOVED n host(s)…` when it happens.
+
+Check `chrome://extensions` for errors, then in the service worker console:
+
+```js
+(await chrome.scripting.getRegisteredContentScripts()).map(s => [s.id, s.world, s.matches])
+await chrome.runtime.sendMessage({ type: 'anonymice:diagnostics' })
+```
+
+**2. `ANONYMICE — egress shim up`** — lists the transports it patched and any it
+missed. A transport under `missing` means the application got its reference
+first, and that transport is ungated.
+
+**3. `ANONYMICE — DOM reveal armed`** — `tokens found in page`.
+
+- **`(none)`** and you can see a token on screen → the token is somewhere the
+  pass does not look. It walks text nodes, plus `textarea` and `input` values.
+  It skips `script`, `style`, our own UI, and **any focused field**. Click
+  elsewhere and reload.
+- **Tokens listed** → it found them; go to banner 4.
+
+**4. `ANONYMICE — vault resolve`** — `asked` vs `resolved`.
+
+- **`resolved: 0`** → the vault does not know these tokens. Almost always this:
+  the mock vault holds them **in memory** and dies with the process, so tokens
+  minted before a restart resolve as `foreign`. Re-mint them.
+- **`unresolved` lists some** → those specific tokens are dead, revoked, or from
+  another vault (SPEC §6.7). They stay showing as tokens, by design.
+
+Then `ANONYMICE · values landed (N held) — DOM nodes rewritten: M`. **`M: 0`
+with `N > 0`** means resolution worked but nothing was rewritten — the tokens
+moved, or they are inside a focused field.
+
+### Known: the title is a `<textarea>`
+
+Confluence's page title is a `<textarea name="livepages-title">`, and the
+breadcrumb mirrors it. Its content is a *value*, not a text node, so before
+`revealFields` existed the text walk stepped straight over it — every token on
+the page resolved **except** the one in the title. If you see that symptom,
+you are on a build from before this was fixed.
+
+### Fastest headless check
+
+```sh
+npm run roundtrip
+```
+
+If that prints `ROUND TRIP OK`, the substitution logic is sound and the problem
+is registration, policy or the vault — not the gate.
 
 ## Out of scope
 

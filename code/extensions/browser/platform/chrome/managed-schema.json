@@ -66,6 +66,16 @@
         "report",
         "enforce"
       ]
+    },
+    "reveal": {
+      "type": "string",
+      "enum": [
+        "off",
+        "dom"
+      ]
+    },
+    "debug": {
+      "type": "boolean"
     }
   }
 }
