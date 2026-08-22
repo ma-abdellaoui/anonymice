@@ -1156,13 +1156,11 @@ describe("UsagePage", () => {
         expect(mockUserDailyActivityAggregatedCall).toHaveBeenCalled();
       });
 
-      // Click the "Anonymice Model Name" toggle
-      const litellmToggle = screen.getAllByText("Anonymice Model Name")[0];
+      const anonymiceToggle = screen.getAllByText("Anonymice Model Name")[0];
       act(() => {
-        fireEvent.click(litellmToggle);
+        fireEvent.click(anonymiceToggle);
       });
 
-      // Title should change to "Top Anonymice Models"
       await waitFor(() => {
         expect(screen.getByText("Top Anonymice Models")).toBeInTheDocument();
       });

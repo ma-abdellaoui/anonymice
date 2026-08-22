@@ -89,8 +89,6 @@ describe("MCPPermissionManagement", () => {
     });
 
     const user = await expandPanel();
-    // Find the switch associated with "Allow All Anonymice Keys" text
-    // The first switch in the component is for allow_all_keys
     const switches = screen.getAllByRole("switch");
     const toggle = switches[0];
     expect(toggle).toBeChecked();

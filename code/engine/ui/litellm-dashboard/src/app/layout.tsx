@@ -8,13 +8,13 @@ import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ReactQueryProvider from "@/contexts/ReactQueryProvider";
 import { Toaster } from "@/components/ui/sonner";
-import { PRODUCT_FAVICON_SRC } from "@/lib/brand";
+import { PRODUCT_FAVICON_SRC, PRODUCT_NAME } from "@/lib/brand";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Anonymice Dashboard",
-  description: "Anonymice Proxy Admin UI",
+  title: `${PRODUCT_NAME} Dashboard`,
+  description: `${PRODUCT_NAME} Proxy Admin UI`,
   icons: { icon: PRODUCT_FAVICON_SRC },
 };
 

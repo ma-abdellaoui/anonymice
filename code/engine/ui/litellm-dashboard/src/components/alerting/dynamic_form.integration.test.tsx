@@ -72,6 +72,18 @@ const submit = async (user: ReturnType<typeof userEvent.setup>) =>
   user.click(screen.getByRole("button", { name: "Update Settings" }));
 
 describe("DynamicForm submit payload", () => {
+  it("points locked enterprise settings to the Anonymice repository", () => {
+    renderForm({
+      settings: [{ ...SETTINGS[0], premium_field: true }],
+      premiumUser: false,
+    });
+
+    expect(screen.getByRole("link", { name: /Enterprise Feature/ })).toHaveAttribute(
+      "href",
+      "https://github.com/ma-abdellaoui/anonymice",
+    );
+  });
+
   it("submits nothing when no field has been changed", async () => {
     const user = userEvent.setup();
     const { handleSubmit } = renderForm();

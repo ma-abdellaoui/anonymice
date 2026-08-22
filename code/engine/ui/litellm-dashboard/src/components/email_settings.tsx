@@ -107,7 +107,7 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ accessToken, premiumUser,
                     <div key={key} className="space-y-1">
                       {isLocked ? (
                         <a
-                          href="https://forms.gle/W3U4PZpJGFHWtHyA9"
+                          href="https://github.com/ma-abdellaoui/anonymice"
                           target="_blank"
                           rel="noreferrer"
                           className="text-sm text-primary underline underline-offset-4"

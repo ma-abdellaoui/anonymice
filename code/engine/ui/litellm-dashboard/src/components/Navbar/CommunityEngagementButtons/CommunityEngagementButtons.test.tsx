@@ -14,11 +14,6 @@ describe("CommunityEngagementButtons", () => {
     mockUseDisableShowPromptsImpl = () => false;
   });
 
-  it("should render", () => {
-    renderWithProviders(<CommunityEngagementButtons />);
-    expect(screen.getByRole("link", { name: /anonymice on github/i })).toBeInTheDocument();
-  });
-
   it("should render GitHub link with correct href", () => {
     renderWithProviders(<CommunityEngagementButtons />);
 

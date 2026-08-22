@@ -86,8 +86,8 @@ const SkillDetail: React.FC<SkillDetailProps> = ({ skill, onBack }) => {
               style={{
                 padding: "12px 20px",
                 fontSize: 14,
-                color: activeTab === tab.key ? "#1a73e8" : "#5f6368",
-                borderBottom: activeTab === tab.key ? "3px solid #1a73e8" : "3px solid transparent",
+                color: activeTab === tab.key ? "#1389A0" : "#5f6368",
+                borderBottom: activeTab === tab.key ? "3px solid #1389A0" : "3px solid transparent",
                 cursor: "pointer",
                 fontWeight: activeTab === tab.key ? 500 : 400,
                 marginBottom: -1,
@@ -155,7 +155,7 @@ const SkillDetail: React.FC<SkillDetailProps> = ({ skill, onBack }) => {
                   rel="noopener noreferrer"
                   style={{
                     fontSize: 13,
-                    color: "#1a73e8",
+                    color: "#1389A0",
                     wordBreak: "break-all",
                     display: "flex",
                     alignItems: "center",
@@ -236,7 +236,7 @@ const SkillDetail: React.FC<SkillDetailProps> = ({ skill, onBack }) => {
                   alignItems: "center",
                   gap: 4,
                   fontSize: 12,
-                  color: copiedKey === "install" ? "#137333" : "#1a73e8",
+                  color: copiedKey === "install" ? "#137333" : "#1389A0",
                   background: "none",
                   border: "none",
                   cursor: "pointer",
@@ -263,7 +263,7 @@ const SkillDetail: React.FC<SkillDetailProps> = ({ skill, onBack }) => {
 
           <p style={{ fontSize: 13, color: "#5f6368", lineHeight: 1.6, margin: 0 }}>
             Don&apos;t have the marketplace configured yet?{" "}
-            <span onClick={() => setActiveTab("setup")} style={{ color: "#1a73e8", cursor: "pointer" }}>
+            <span onClick={() => setActiveTab("setup")} style={{ color: "#1389A0", cursor: "pointer" }}>
               See one-time setup →
             </span>
           </p>
@@ -308,7 +308,7 @@ const SkillDetail: React.FC<SkillDetailProps> = ({ skill, onBack }) => {
                   alignItems: "center",
                   gap: 4,
                   fontSize: 12,
-                  color: copiedKey === "settings" ? "#137333" : "#1a73e8",
+                  color: copiedKey === "settings" ? "#137333" : "#1389A0",
                   background: "none",
                   border: "none",
                   cursor: "pointer",

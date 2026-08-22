@@ -75,8 +75,8 @@ const GuardrailDetailView: React.FC<GuardrailDetailViewProps> = ({ card, onBack,
               style={{
                 padding: "12px 20px",
                 fontSize: 14,
-                color: activeTab === tab.key ? "#1a73e8" : "#5f6368",
-                borderBottom: activeTab === tab.key ? "3px solid #1a73e8" : "3px solid transparent",
+                color: activeTab === tab.key ? "#1389A0" : "#5f6368",
+                borderBottom: activeTab === tab.key ? "3px solid #1389A0" : "3px solid transparent",
                 cursor: "pointer",
                 fontWeight: activeTab === tab.key ? 500 : 400,
                 marginBottom: -1,
@@ -126,7 +126,7 @@ const GuardrailDetailView: React.FC<GuardrailDetailViewProps> = ({ card, onBack,
             {/* Guardrail ID */}
             <div style={{ marginBottom: 28 }}>
               <div style={{ fontSize: 12, color: "#5f6368", marginBottom: 4 }}>Guardrail ID</div>
-              <div style={{ fontSize: 13, color: "#202124", wordBreak: "break-all" }}>anonymice/{card.id}</div>
+              <div style={{ fontSize: 13, color: "#202124", wordBreak: "break-all" }}>litellm/{card.id}</div>
             </div>
 
             {/* Type */}
