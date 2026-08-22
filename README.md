@@ -53,7 +53,6 @@ anonymice/
 │   ├── engine/          the LLM proxy — an extension of LiteLLM
 │   └── extensions/      where data is captured, before it reaches any model
 │       ├── browser/     Chrome extension: highlight + tokenize on the page
-│       ├── vscode/      VS Code extension: tokenize in the editor and on disk
 │       └── backend/     detection service the extensions call
 └── docs/                specs, endpoint contracts, QA walkthroughs
 ```
@@ -157,18 +156,6 @@ Copying a highlighted value mints a token in the vault and puts *the token* on
 the clipboard. Paste it into ChatGPT and the model gets `ANM1-PERSON-…`; paste it
 back into a trusted system and it resolves.
 
-### VS Code — [`code/extensions/vscode/`](code/extensions/vscode/)
-
-One invariant: *a sensitive value is never present in any `TextDocument`, and
-never in any file inside the workspace, at any instant.*
-
-VS Code has no per-resource reader isolation — Copilot and agents attach to the
-window, not the file — so the only place to enforce anything is the text itself.
-`DB_PASSWORD=ANM1-SECRET-K3F9QW2MX7VBNC4H8` is what the completion provider, the
-chat `#file` attachment, the agent's `read_file`, and the agent shelling out to
-`cat` all see. You see the real value, rendered through a surface no other
-extension can read back.
-
 ### Detection backend — [`code/extensions/backend/`](code/extensions/backend/)
 
 `/v1/health`, `/v1/policy`, `/v1/detect` on one origin behind one bearer
@@ -192,7 +179,7 @@ Classes: `IBAN`, `AHV`, `CARD`, `EMAIL`, `PHONE`, `PERSON`, `ORG`, `SECRET`.
 | Engine — persistent vault (DB table, revocation, audit) | Designed, not built |
 | Browser — detection + highlighting (SPEC §1–§5) | Implemented, 68 unit tests, eval gate |
 | Browser — clipboard, tokens, replacement (SPEC §6–§8) | Not built |
-| VS Code — tokenize selection, on disk and in buffer | Implemented |
+| VS Code extension | **Removed from the repository.** An editor surface existed during the hackathon; the browser is the surviving capture surface |
 | Extensions ↔ engine wiring | **Not connected yet.** The extensions talk to `code/extensions/backend/`; the engine's `/pii/*` endpoints are the same contract and are where the two converge |
 
 ---
@@ -231,12 +218,6 @@ Set `LITELLM_PII_ENCRYPTION_KEY`, or stored values are not sealed at rest.
 cd code/extensions/browser && npm run check && npm run build
 ```
 
-**VS Code extension:**
-
-```bash
-cd code/extensions/vscode && npm install && npm run check && npm run build
-```
-
 **Detection backend:**
 
 ```bash
@@ -252,7 +233,6 @@ cd code/extensions/backend && npm run dev
 | [`docs/JURY.md`](docs/JURY.md) | Technical summary for the bernhackt jury — focus, decisions, architecture, and what we deliberately left out |
 | [`code/extensions/SPEC.md`](code/extensions/SPEC.md) | Trust classes and the copy/paste model |
 | [`code/extensions/browser/SPEC.md`](code/extensions/browser/SPEC.md) | Browser extension design |
-| [`code/extensions/vscode/SPEC.md`](code/extensions/vscode/SPEC.md) | Editor invariant and token format |
 | [`docs/extensions/browser/ENDPOINTS.md`](docs/extensions/browser/ENDPOINTS.md) | The three-endpoint backend contract |
 | [`docs/extensions/browser/DETECTION.md`](docs/extensions/browser/DETECTION.md) | Detection semantics |
 | [`code/engine/litellm/pii/README.md`](code/engine/litellm/pii/README.md) | The PII layer, close up |

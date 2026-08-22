@@ -16,7 +16,6 @@
 code/engine/          LLM-Proxy — Erweiterung von LiteLLM (Python)
 code/extensions/
   ├── browser/        Chrome-Extension (TypeScript, MV3)
-  ├── vscode/         VS-Code-Extension (TypeScript)
   └── backend/        Detection-Service für die Extensions (Node, ohne Dependencies)
 docs/                 Specs, Endpoint-Verträge, QA-Walkthroughs
 ```
@@ -154,7 +153,6 @@ irreversibel, `ENCODE` ist der reversible Pfad.
 | Komponente | Einsatz |
 |---|---|
 | **Chrome-Extension** (MV3, Custom Highlight API) | Erkennt und markiert sensible Stellen auf der Seite; der Service Worker ist das Einzige, was mit dem Backend spricht |
-| **VS-Code-Extension** | Tokenisiert Werte im Buffer **und** auf der Platte |
 | **Detection-Backend** (Node, ohne Dependencies) | `/v1/health`, `/v1/policy`, `/v1/detect` auf einer Origin hinter einem Bearer-Credential |
 
 Jeder Host hat eine per Managed Policy verteilte Vertrauensklasse:
@@ -164,13 +162,6 @@ Jeder Host hat eine per Managed Policy verteilte Vertrauensklasse:
 | `NATIVE` | Eigene Systeme. Werte bleiben stehen, sensible Spans werden markiert |
 | `TRUSTED` | Der Nutzer sieht den Wert, das DOM hält Tokens |
 | `UNTRUSTED` | Alles andere. Echte Werte gelangen nie ins DOM |
-
-Die VS-Code-Invariante: *Ein sensibler Wert ist zu keinem Zeitpunkt in einem
-`TextDocument` und in keiner Datei im Workspace.* VS Code kennt keine Reader-Isolation pro
-Ressource — Copilot und Agents hängen am **Fenster**, nicht an der Datei. Der einzige Ort,
-an dem sich etwas durchsetzen lässt, ist der Text selbst. Completion-Provider,
-Chat-`#file`, `read_file` eines Agents und ein Agent, der `cat` aufruft, sehen alle
-dasselbe Token.
 
 Erkennungsklassen des Backends: `IBAN`, `AHV`, `CARD`, `EMAIL`, `PHONE`, `PERSON`, `ORG`,
 `SECRET`.
@@ -239,6 +230,7 @@ Bewusst nicht implementiert:
 | **Streaming-Decode (SSE)** | Der Guardrail setzt `streaming_transform_mode = "incremental_diff"` noch nicht, gestreamte Antworten kommen daher tokenisiert an. Die Mechanik ist entworfen (Holdback pro Choice, damit ein über Chunk-Grenzen zerschnittenes Token gehalten wird) — für einen Hackathon-Zeitraum war der nicht-gestreamte Pfad der ehrlichere Beweis |
 | **Persistenter Vault** (DB-Tabelle, Widerruf, Audit, Team-/Org-Scopes) | Vollständig entworfen inklusive Schlüsselableitung per HKDF und AAD-Bindung, aber nicht gebaut. Ein Vault ohne Audit und Retention wäre eine Compliance-Schuld, kein Feature |
 | **Extensions ↔ Engine noch nicht verdrahtet** | Die Extensions sprechen heute mit dem TypeScript-Detection-Backend, die Engine hat denselben Vertrag. Beide Seiten sind bewusst gegen denselben Vertrag gebaut, damit die Zusammenführung eine Konfiguration und keine Portierung ist |
+| **Editor-Oberfläche (VS Code)** | Während des Hackathons existierte eine VS-Code-Extension, die Werte im Buffer und auf der Platte tokenisiert hat. Sie ist nicht mehr Teil des Repositorys — der Browser ist die verbleibende Erfassungsoberfläche |
 | **Clipboard, Tokens, Replacement-Clone im Browser** (SPEC §6–§8) | Der Erkennungs- und Markierungspfad ist fertig und getestet; alles danach hängt am Vault |
 | **Audio, Bild, Video, Realtime** | Der Codec ist textbasiert. Ein binäres Media-Payload durchliefe den Guardrail unberührt. Eine Oberfläche, die per Design leckt, ist schlechter als eine, die 404 liefert |
 | **Nur `texts`, noch nicht `tool_calls` / `structured_messages`** | Bekannte Lücke, gleiche Mechanik |
@@ -264,5 +256,4 @@ dokumentiert, nicht wegkonstruiert.
 | [`../code/engine/litellm/pii/README.md`](../code/engine/litellm/pii/README.md) | Die PII-Schicht aus der Nähe |
 | [`../code/extensions/SPEC.md`](../code/extensions/SPEC.md) | Vertrauensklassen und das Copy/Paste-Modell |
 | [`../code/extensions/browser/SPEC.md`](../code/extensions/browser/SPEC.md) | Design der Browser-Extension |
-| [`../code/extensions/vscode/SPEC.md`](../code/extensions/vscode/SPEC.md) | Editor-Invariante und Token-Format |
 | [`extensions/browser/ENDPOINTS.md`](extensions/browser/ENDPOINTS.md) | Der Drei-Endpunkt-Vertrag des Backends |
