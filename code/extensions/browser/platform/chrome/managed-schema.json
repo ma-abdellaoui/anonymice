@@ -1,0 +1,49 @@
+{
+  "type": "object",
+  "properties": {
+    "policyVersion": {
+      "type": "string"
+    },
+    "locale": {
+      "type": "string"
+    },
+    "detectEndpoint": {
+      "type": "string"
+    },
+    "detectToken": {
+      "type": "string"
+    },
+    "policyEndpoint": {
+      "type": "string"
+    },
+    "policyRefreshMinutes": {
+      "type": "integer"
+    },
+    "native": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "trusted": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "activated": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "scanTrusted": {
+      "type": "string",
+      "enum": [
+        "off",
+        "readonly",
+        "full"
+      ]
+    }
+  }
+}

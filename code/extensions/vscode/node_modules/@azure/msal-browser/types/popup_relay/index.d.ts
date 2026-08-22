@@ -1,0 +1,42 @@
+import { PopupWindowAttributes } from "../request/PopupWindowAttributes.js";
+/** Options for {@link runPopupRelay}. */
+export type PopupRelayOptions = {
+    /**
+     * Sizing/positioning for the IdP child popup the relay page opens. Same
+     * shape as `PopupRequest.popupWindowAttributes` (`popupSize` with width and
+     * height, `popupPosition` with top and left). Defaults to a 520x640 window.
+     */
+    popupWindowAttributes?: PopupWindowAttributes;
+    /**
+     * How long (ms) to wait for the IdP child popup to deliver a response
+     * before giving up. Defaults to 300000 (5 minutes).
+     */
+    timeoutMs?: number;
+};
+/**
+ * Entry point for the top-level "popup-relay" page referenced by
+ * `auth.popupRelayUri`. Call this from the relay page (which MSAL opens as a
+ * top-level popup from inside an embedded, cross-origin iframe). It:
+ *
+ *   1. Reads the IdP navigation MSAL passed in this page's hash (a GET URL, or a
+ *      POST form for the form_post / EAR response modes), then scrubs the hash.
+ *   2. Opens the IdP child popup and performs that navigation (the relay page
+ *      stays put, so its `window.opener` link back to the embedded frame
+ *      survives COOP).
+ *   3. Waits for the child's redirect URI page (which must run the redirect
+ *      bridge, `broadcastResponseToMainFrame`) to broadcast the raw auth
+ *      response over a same-origin `BroadcastChannel`.
+ *   4. Relays that raw response back to the embedded frame via
+ *      `opener.postMessage`, posting only to its own (same) origin, then closes.
+ *
+ * The embedded frame keeps the PKCE verifier (and EAR private key) and exchanges
+ * the relayed response itself — no token, verifier, or private key ever crosses
+ * a window boundary.
+ *
+ * Note: the child popup is opened when this function runs, so call it from a
+ * user gesture (e.g. a "Continue" button click) to avoid popup blockers.
+ *
+ * @param options - {@link PopupRelayOptions}
+ */
+export declare function runPopupRelay(options?: PopupRelayOptions): void;
+//# sourceMappingURL=index.d.ts.map

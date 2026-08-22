@@ -1,0 +1,26 @@
+{
+  "name": "anonymice-extension",
+  "private": true,
+  "type": "module",
+  "description": "Anonymice browser extension \u2014 see browser/SPEC.md",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test 'test/*.test.ts'",
+    "eval": "node eval/run.ts",
+    "mock": "node mock/detect-server.ts",
+    "fixtures": "node dev/fixture-server.ts",
+    "build": "node dev/build.ts",
+    "check": "npm run typecheck && npm test && npm run eval",
+    "build:qa": "node dev/build.ts --qa",
+    "policy": "node dev/managed-policy.ts",
+    "hosts": "node dev/hosts.ts"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.2.7",
+    "@types/jsdom": "^30.0.0",
+    "@types/node": "^26.2.0",
+    "esbuild": "^0.28.2",
+    "jsdom": "^29.1.1",
+    "typescript": "^7.0.2"
+  }
+}

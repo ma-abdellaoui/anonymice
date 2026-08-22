@@ -1,0 +1,8 @@
+{
+  "policyVersion": "2026-08-22",
+  "locale": "de-CH",
+  "scanTrusted": "off",
+  "maxAgeSeconds": 300,
+  "native": ["native.anonymice.test"],
+  "trusted": ["trusted.anonymice.test"]
+}

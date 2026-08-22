@@ -1,0 +1,14 @@
+{
+  "locale": "de-CH",
+  "hostClass": "TRUSTED",
+  "note": "The TRUSTED page. The eval scores detection over the DOM regardless of host class — host classification is a policy property, checked by unit tests and by QA.md step 6. What this page asserts here is that the same values would be found if scanning were enabled on TRUSTED.",
+  "spans": [
+    { "cls": "PERSON", "value": "Peter Schmid" },
+    { "cls": "AHV",    "value": "756.3047.5009.62" },
+    { "cls": "IBAN",   "value": "CH56 0483 5012 3456 7800 9" },
+    { "cls": "EMAIL",  "value": "peter.schmid@example.org" },
+    { "cls": "PHONE",  "value": "044 668 18 00" },
+    { "cls": "PERSON", "value": "Julia Steiner" },
+    { "cls": "ORG",    "value": "Brunner Treuhand AG" }
+  ]
+}

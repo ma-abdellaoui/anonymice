@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "anonymice",
+  "version": "0.1.0",
+  "description": "Finds sensitive data on native resources and shows you its whole footprint.",
+  "minimum_chrome_version": "105",
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "anonymice"
+  },
+  "permissions": [
+    "scripting",
+    "storage",
+    "alarms",
+    "activeTab"
+  ],
+  "host_permissions": [],
+  "optional_host_permissions": [
+    "*://*/*"
+  ],
+  "storage": {
+    "managed_schema": "managed-schema.json"
+  }
+}

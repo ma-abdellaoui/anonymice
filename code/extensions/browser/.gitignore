@@ -1,0 +1,6 @@
+node_modules/
+dist/
+eval/report.json
+
+# dev artefacts
+dev/*.png

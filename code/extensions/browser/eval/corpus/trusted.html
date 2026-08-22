@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="de-CH">
+<head><meta charset="utf-8"><title>Fallakte — trusted.anonymice.test</title>
+<style>body{font:15px/1.7 system-ui;margin:2rem auto;max-width:44rem;padding:0 1rem}
+h1{font-size:1.3rem}h2{font-size:1rem;margin-top:2rem;color:#666}
+dt{font-weight:600;margin-top:.4rem}dd{margin:0 0 0 1rem}
+.note{background:#fffbe6;border-left:3px solid #e0c060;padding:.75rem}</style>
+</head>
+<body>
+<h1>Fallakte 8812 — TRUSTED</h1>
+<p>Served from <code>trusted.anonymice.test</code>. Same kinds of value as the
+NATIVE page, and the same content script is registered here — but
+<strong>nothing on this page should be highlighted today</strong>.</p>
+
+<div class="note">
+  <p><strong>Why nothing is painted.</strong> Scanning is <code>NATIVE</code>-only
+  for now: <code>policy.scanTrusted</code> is <code>off</code>, and only
+  <code>off</code> is implemented (SPEC §1). A highlight here means the class gate
+  is not holding.</p>
+  <p>In the target state this page <em>would</em> highlight, and its inputs would
+  hold tokens while a clone showed the real value (SPEC §1, §8) — neither is
+  built.</p>
+</div>
+
+<h2>Annotated by the site</h2>
+<dl>
+  <dt>Name</dt>
+  <dd><span data-sensitive="PERSON">Peter Schmid</span></dd>
+  <dt>AHV-Nummer</dt>
+  <dd data-sensitive="AHV">756.3047.5009.62</dd>
+</dl>
+
+<h2>Rule and model shapes</h2>
+<dl>
+  <dt>IBAN</dt>
+  <dd>CH56 0483 5012 3456 7800 9</dd>
+  <dt>E-Mail</dt>
+  <dd>peter.schmid@example.org</dd>
+  <dt>Telefon</dt>
+  <dd>044 668 18 00</dd>
+</dl>
+<p>Zuständig: Julia Steiner, Brunner Treuhand AG</p>
+
+<h2>A form, for when the paste path exists</h2>
+<form>
+  <p><label>IBAN <input type="text" size="34" value=""></label></p>
+  <p><label>Name <input type="text" size="34" value=""></label></p>
+</form>
+<p>These are here to paste into once SPEC §8 is built. Today they do nothing.</p>
+</body>
+</html>

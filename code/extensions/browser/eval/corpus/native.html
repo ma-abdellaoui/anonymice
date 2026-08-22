@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="de-CH">
+<head><meta charset="utf-8"><title>Kundendossier — native.anonymice.test</title>
+<style>body{font:15px/1.7 system-ui;margin:2rem auto;max-width:44rem;padding:0 1rem}
+h1{font-size:1.3rem}h2{font-size:1rem;margin-top:2rem;color:#666}
+dt{font-weight:600;margin-top:.4rem}dd{margin:0 0 0 1rem}
+.skip{background:#f6f6f6;padding:.75rem;border-left:3px solid #ccc}</style>
+</head>
+<body>
+<h1>Kundendossier 4471 — NATIVE</h1>
+<p>Served from <code>native.anonymice.test</code>. Everything sensitive on this
+page should be light-red.</p>
+
+<h2>Annotated by the site (origin: annotation)</h2>
+<dl>
+  <dt>Name</dt>
+  <dd><span data-sensitive="PERSON">Anna Meier</span></dd>
+  <dt>AHV-Nummer</dt>
+  <dd data-sensitive="AHV">756.1234.5678.97</dd>
+  <dt>Notiz</dt>
+  <dd><span data-sensitive>Patientin wünscht Rückruf am Nachmittag</span></dd>
+</dl>
+
+<h2>Found by the rule pass (origin: rule)</h2>
+<dl>
+  <dt>IBAN</dt>
+  <dd>CH93 0076 2011 6238 5295 7</dd>
+  <dt>E-Mail</dt>
+  <dd>anna.meier@example-clinic.ch</dd>
+  <dt>Telefon</dt>
+  <dd>+41 44 668 18 00</dd>
+  <dt>Karte</dt>
+  <dd>4242 4242 4242 4242</dd>
+</dl>
+
+<h2>Guessed by the model pass (origin: model)</h2>
+<p>Sachbearbeiter: Thomas Brunner, Helvetia Versicherungen AG</p>
+
+<h2>Awkward shapes</h2>
+<p>
+  Entity split across inline tags: Sachbearbeiterin <b>Anna</b> Meier.
+  <br>
+  IBAN split across elements:
+  <span>CH56</span> <span>0483</span> <span>5012</span>
+  <span>3456</span> <span>7800</span> <span>9</span>
+</p>
+<p>
+  Emoji and astral characters before a value:
+  👨‍👩‍👧‍👦 𝔎𝔬𝔫𝔱𝔬 🏦 DE89 3704 0044 0532 0130 00 ✅
+</p>
+<p>
+  Same account as above, written without spaces:
+  CH9300762011623852957 — this must <em>not</em> add a second value.
+</p>
+
+<h2 class="skip">Never scanned (SPEC §3.5)</h2>
+<div class="skip">
+  <p><input type="text" size="34" value="GB33 BUKB 2020 1555 5555 55"></p>
+  <p><input type="password" value="756.9217.4587.30"></p>
+  <p><textarea rows="2" cols="40">Claudia Weber, 5555 5555 5555 4444</textarea></p>
+  <p contenteditable="true">Beat Frei, beat.frei@example.org</p>
+  <p><code>const iban = "FR14 2004 1010 0505 0001 3M02 606";</code></p>
+  <pre>Marco Rossi &lt;marco.rossi@example.org&gt;</pre>
+  <p data-anonymice="pill">Nadia Keller (unsere eigene UI)</p>
+  <script>const person = "Ursula Baumann";</script>
+</div>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "locale": "de-CH",
+  "hostClass": "NATIVE",
+  "note": "The NATIVE page. Ground truth is per occurrence; the registry collapses occurrences of one value into a single entry, which is why the badge count in QA.md is lower than the span count here.",
+  "spans": [
+    { "cls": "PERSON",  "value": "Anna Meier", "nth": 1 },
+    { "cls": "AHV",     "value": "756.1234.5678.97" },
+    { "cls": "UNKNOWN", "value": "Patientin wünscht Rückruf am Nachmittag" },
+    { "cls": "IBAN",    "value": "CH93 0076 2011 6238 5295 7" },
+    { "cls": "EMAIL",   "value": "anna.meier@example-clinic.ch" },
+    { "cls": "PHONE",   "value": "+41 44 668 18 00" },
+    { "cls": "CARD",    "value": "4242 4242 4242 4242" },
+    { "cls": "PERSON",  "value": "Thomas Brunner" },
+    { "cls": "ORG",     "value": "Helvetia Versicherungen AG" },
+    { "cls": "PERSON",  "value": "Anna Meier", "nth": 2 },
+    { "cls": "IBAN",    "value": "CH56 0483 5012 3456 7800 9" },
+    { "cls": "IBAN",    "value": "DE89 3704 0044 0532 0130 00" },
+    { "cls": "IBAN",    "value": "CH9300762011623852957" }
+  ]
+}

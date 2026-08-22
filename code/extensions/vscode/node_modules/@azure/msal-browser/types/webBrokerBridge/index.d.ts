@@ -1,0 +1,16 @@
+/**
+ * @packageDocumentation
+ * @module @azure/msal-browser/web-broker-bridge
+ */
+/**
+ * Internal scaffolding for a `@azure/msal-browser/web-broker-bridge`
+ * subpath export. The subpath is not yet wired in `package.json` / rollup,
+ * so this module has no external callers and is intra-package only.
+ */
+export type { IWebBrokerBridgeMessage, IWebBrokerBridgeResponse, } from "./IWebBrokerBridgeMessage.js";
+export type { WebBrokerBridgeError } from "./WebBrokerBridgeError.js";
+export { WebBrokerBridgeErrorCode } from "./WebBrokerBridgeError.js";
+export { toAuthError } from "./WebBrokerBridgeErrorMap.js";
+export { PendingRequestRegistry } from "./PendingRequestRegistry.js";
+export type { WebBrokerBridgeSendFn } from "./PendingRequestRegistry.js";
+//# sourceMappingURL=index.d.ts.map

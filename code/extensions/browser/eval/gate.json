@@ -1,0 +1,15 @@
+{
+  "note": "Regression gate — SPEC §9. Raise these as the detector improves; never lower them to make a run pass.",
+  "strict": { "precision": 0.85, "recall": 0.85 },
+  "lenient": { "precision": 0.9, "recall": 0.95 },
+  "perClass": {
+    "IBAN": { "recall": 1.0 },
+    "AHV": { "recall": 1.0 },
+    "CARD": { "recall": 1.0 },
+    "EMAIL": { "recall": 1.0 }
+  },
+  "stripped": {
+    "note": "Annotations stripped. Precision may fall; recall may not (SPEC §3.4).",
+    "strict": { "recall": 0.75 }
+  }
+}
