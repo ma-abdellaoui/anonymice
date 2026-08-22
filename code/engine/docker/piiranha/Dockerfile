@@ -10,9 +10,16 @@ ENV PIP_NO_CACHE_DIR=1 \
 
 WORKDIR /app
 
+# Pinned as build args so a second image can be built for a model that needs a
+# newer runtime, without forking this file. openai/privacy-filter, for one,
+# declares model_type "openai_privacy_filter", which older transformers cannot
+# construct at all.
+ARG TORCH_VERSION=2.6.0
+ARG TRANSFORMERS_VERSION=4.48.3
+
 RUN pip install --no-cache-dir \
-        "torch==2.6.0" \
-        "transformers==4.48.3" \
+        "torch==${TORCH_VERSION}" \
+        "transformers==${TRANSFORMERS_VERSION}" \
         "fastapi==0.115.8" \
         "uvicorn[standard]==0.34.0"
 

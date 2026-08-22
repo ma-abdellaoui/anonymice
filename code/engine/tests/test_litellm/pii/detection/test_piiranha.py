@@ -2,7 +2,7 @@ import pytest
 
 from litellm.pii.detection.http import JsonResponse, TransportFailure
 from litellm.pii.detection.piiranha import PiiranhaDetector
-from litellm.pii.detection.piiranha_labels import (
+from litellm.pii.detection.ner_labels import (
     PIIRANHA_LABEL_MAP,
     map_label,
     normalize_label,

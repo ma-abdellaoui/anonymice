@@ -12,6 +12,7 @@ from litellm.pii.detection.chunking import (
     DEFAULT_OVERLAP_CHARS,
     ChunkedDetector,
 )
+from litellm.pii.detection.ner_labels import DEFAULT_LABEL_MAP_NAME, label_map_by_name
 from litellm.pii.detection.piiranha import PiiranhaDetector
 from litellm.pii.detection.presidio_rules import PresidioRulesDetector
 from litellm.pii.service import PiiService
@@ -38,6 +39,7 @@ ENV_SESSION_TTL: Final = "LITELLM_PII_SESSION_TTL_SECONDS"
 ENV_REQUIRE_NER: Final = "LITELLM_PII_REQUIRE_NER"
 ENV_LANGUAGE: Final = "LITELLM_PII_LANGUAGE"
 ENV_NER_MAX_CHARS: Final = "LITELLM_PII_NER_MAX_CHARS"
+ENV_NER_LABEL_MAP: Final = "LITELLM_PII_NER_LABEL_MAP"
 
 # Presidio must have the language registered before it runs any recognizer for
 # it, so this is not a free-text field: asking for a language the analyzer image
@@ -83,6 +85,9 @@ class PiiSettings:
     require_ner: bool = True
     language: str = DEFAULT_LANGUAGE
     ner_max_chars: int = DEFAULT_MAX_CHARS
+    # Names the vocabulary of the model being served, not the model itself. The
+    # two are set together: a map that does not match drops every prediction.
+    ner_label_map: str = DEFAULT_LABEL_MAP_NAME
 
     @classmethod
     def from_env(cls) -> "PiiSettings":
@@ -94,6 +99,7 @@ class PiiSettings:
             require_ner=_bool_from_env(ENV_REQUIRE_NER, True),
             language=os.getenv(ENV_LANGUAGE, DEFAULT_LANGUAGE),
             ner_max_chars=_int_from_env(ENV_NER_MAX_CHARS, DEFAULT_MAX_CHARS),
+            ner_label_map=os.getenv(ENV_NER_LABEL_MAP, DEFAULT_LABEL_MAP_NAME),
         )
 
 
@@ -137,6 +143,7 @@ def build_ner_stage(settings: PiiSettings) -> ChunkedDetector | None:
         inner=PiiranhaDetector(
             api_base=settings.ner_api_base,
             score_threshold=settings.ner_score_threshold,
+            label_map=label_map_by_name(settings.ner_label_map),
         ),
         max_chars=settings.ner_max_chars,
         overlap_chars=DEFAULT_OVERLAP_CHARS,

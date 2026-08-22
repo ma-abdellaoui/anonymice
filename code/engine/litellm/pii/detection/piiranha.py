@@ -9,7 +9,7 @@ from litellm.pii.detection.http import (
     JsonResponse,
     TransportFailure,
 )
-from litellm.pii.detection.piiranha_labels import map_label
+from litellm.pii.detection.ner_labels import PIIRANHA_LABEL_MAP, map_label
 from litellm.pii.types import (
     DEFAULT_NER_SCORE_THRESHOLD,
     DetectionError,
@@ -29,7 +29,7 @@ def _unwrap_batch(body: object) -> tuple[object, ...] | None:
     return tuple(body)
 
 
-def _parse_prediction(item: object, threshold: float) -> PiiSpan | None:
+def _parse_prediction(item: object, threshold: float, label_map: Mapping[str, str]) -> PiiSpan | None:
     if not isinstance(item, Mapping):
         return None
     raw_label: Final = item.get("entity_group") or item.get("entity")
@@ -40,7 +40,7 @@ def _parse_prediction(item: object, threshold: float) -> PiiSpan | None:
         return None
     if not isinstance(score, (int, float)) or float(score) < threshold or end <= start:
         return None
-    entity_type: Final = map_label(raw_label)
+    entity_type: Final = map_label(raw_label, label_map)
     if entity_type is None:
         return None
     return PiiSpan(
@@ -66,6 +66,9 @@ class PiiranhaDetector:
     poster: JsonPoster = field(default_factory=HttpxJsonPoster)
     score_threshold: float = DEFAULT_NER_SCORE_THRESHOLD
     api_key: str | None = None
+    # Must match the model the server actually loads. A mismatched map drops
+    # every prediction and reports a clean scan.
+    label_map: Mapping[str, str] = PIIRANHA_LABEL_MAP
 
     async def detect(
         self,
@@ -98,7 +101,7 @@ class PiiranhaDetector:
                         detector=DetectorKind.NER,
                         reason=f"expected list, received {type(body).__name__}",
                     )
-                parsed: Final = (_parse_prediction(item, self.score_threshold) for item in predictions)
+                parsed: Final = (_parse_prediction(item, self.score_threshold, self.label_map) for item in predictions)
                 spans: Final = tuple(span for span in parsed if span is not None)
                 requested: Final = frozenset(entities) if entities else None
                 if requested is None:
