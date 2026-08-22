@@ -818,9 +818,7 @@ ui_message += "\n\n💸 [```Anonymice Model Cost Map```](https://models.litellm.
 
 ui_message += f"\n\n🔎 [```Anonymice Model Hub```]({model_hub_link}). See available models on the proxy. [**GitHub**](https://github.com/ma-abdellaoui/anonymice)"
 
-custom_swagger_message: Final = (
-    "[**Anonymice on GitHub**](https://github.com/ma-abdellaoui/anonymice)"
-)
+custom_swagger_message: Final = "[**Anonymice on GitHub**](https://github.com/ma-abdellaoui/anonymice)"
 
 ### CUSTOM BRANDING [ENTERPRISE FEATURE] ###
 _title: Final = os.getenv("DOCS_TITLE", "Anonymice API") if premium_user else "Anonymice API"

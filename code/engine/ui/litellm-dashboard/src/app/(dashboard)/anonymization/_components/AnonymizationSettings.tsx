@@ -221,7 +221,11 @@ const AnonymizationSettings: React.FC<AnonymizationSettingsProps> = ({ userRole 
         </p>
         <SettingsTable
           rows={[
-            { name: "POST /pii/detect", description: "Report what PII is present without altering the text.", fallback: "" },
+            {
+              name: "POST /pii/detect",
+              description: "Report what PII is present without altering the text.",
+              fallback: "",
+            },
             {
               name: "POST /pii/encode",
               description: "Replace PII with tokens and persist the mapping. Returns a session_id.",

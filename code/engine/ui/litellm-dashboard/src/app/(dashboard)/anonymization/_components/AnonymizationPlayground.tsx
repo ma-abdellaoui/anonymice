@@ -116,7 +116,11 @@ const AnonymizationPlayground: React.FC<AnonymizationPlaygroundProps> = ({ acces
           </p>
           <div className="flex flex-wrap gap-2">
             <Button onClick={onDetect} disabled={!accessToken || busy !== null || text.trim() === ""}>
-              {busy === "detect" ? <UiLoadingSpinner className="mr-2 h-4 w-4" /> : <ScanSearch className="mr-2 h-4 w-4" />}
+              {busy === "detect" ? (
+                <UiLoadingSpinner className="mr-2 h-4 w-4" />
+              ) : (
+                <ScanSearch className="mr-2 h-4 w-4" />
+              )}
               Detect
             </Button>
             <Button onClick={onEncode} disabled={!accessToken || busy !== null || text.trim() === ""}>
@@ -124,7 +128,11 @@ const AnonymizationPlayground: React.FC<AnonymizationPlaygroundProps> = ({ acces
               Encode
             </Button>
             <Button variant="secondary" onClick={onDecode} disabled={!accessToken || busy !== null || !encoded}>
-              {busy === "decode" ? <UiLoadingSpinner className="mr-2 h-4 w-4" /> : <LockOpen className="mr-2 h-4 w-4" />}
+              {busy === "decode" ? (
+                <UiLoadingSpinner className="mr-2 h-4 w-4" />
+              ) : (
+                <LockOpen className="mr-2 h-4 w-4" />
+              )}
               Decode
             </Button>
           </div>
@@ -172,7 +180,10 @@ const AnonymizationPlayground: React.FC<AnonymizationPlaygroundProps> = ({ acces
             {encoded.tokens.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {encoded.tokens.map((token) => (
-                  <span key={token.token} className="rounded-full bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-700">
+                  <span
+                    key={token.token}
+                    className="rounded-full bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-700"
+                  >
                     {token.token}
                   </span>
                 ))}

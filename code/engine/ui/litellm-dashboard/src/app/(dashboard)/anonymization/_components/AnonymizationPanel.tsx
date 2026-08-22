@@ -15,8 +15,8 @@ const AnonymizationPanel: React.FC<AnonymizationPanelProps> = ({ accessToken, us
     <div className="mb-4">
       <h1 className="text-xl font-semibold text-gray-900">PII Anonymization</h1>
       <p className="mt-1 text-sm text-gray-500">
-        Detect PII with rule-based and model-based stages, replace it with reversible tokens on the way to the
-        provider, and restore it on the way back.
+        Detect PII with rule-based and model-based stages, replace it with reversible tokens on the way to the provider,
+        and restore it on the way back.
       </p>
     </div>
 

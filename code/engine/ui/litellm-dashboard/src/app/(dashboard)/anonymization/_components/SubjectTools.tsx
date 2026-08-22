@@ -46,8 +46,8 @@ const SubjectTools: React.FC<SubjectToolsProps> = ({ accessToken, scope, run, bu
       <CardContent className="flex flex-col gap-3">
         <p className="text-sm text-gray-600">
           Export and erasure both work off the{" "}
-          <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs">subject_id</code> recorded at encode
-          time, which defaults to the request&apos;s end user. Values encoded without one are not reachable this way.
+          <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs">subject_id</code> recorded at encode time,
+          which defaults to the request&apos;s end user. Values encoded without one are not reachable this way.
         </p>
         <div className="flex flex-wrap gap-2">
           <Input
