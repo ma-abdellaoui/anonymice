@@ -27,10 +27,10 @@ describe("GuardrailGarden", () => {
   it("should render both sections with their descriptions", () => {
     renderGarden();
 
-    expect(screen.getByText("LiteLLM Content Filter")).toBeInTheDocument();
+    expect(screen.getByText("Anonymice Content Filter")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Built-in guardrails powered by LiteLLM. Zero latency, no external dependencies, no additional cost.",
+        "Built-in guardrails powered by Anonymice. Zero latency, no external dependencies, no additional cost.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("Partner Guardrails")).toBeInTheDocument();

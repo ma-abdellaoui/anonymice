@@ -196,7 +196,7 @@ const ToolPermissionRulesEditor: React.FC<ToolPermissionRulesEditorProps> = ({ v
       <CardContent>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-lg font-semibold">LiteLLM Tool Permission Guardrail</p>
+            <p className="text-lg font-semibold">Anonymice Tool Permission Guardrail</p>
             <p className="text-sm text-muted-foreground">
               Provide regex patterns (e.g., ^mcp__github_.*$) for tool names or types and optionally constrain payload
               fields.

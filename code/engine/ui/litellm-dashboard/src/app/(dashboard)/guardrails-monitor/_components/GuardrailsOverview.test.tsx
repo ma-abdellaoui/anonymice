@@ -95,6 +95,7 @@ describe("GuardrailsOverview", () => {
     expect(screen.getByText("1,200")).toBeInTheDocument();
     expect(screen.getByText("18%")).toBeInTheDocument();
     expect(screen.getByText("45ms")).toBeInTheDocument();
+    expect(screen.getByText("Anonymice")).toBeInTheDocument();
 
     const rows = screen.getAllByRole("row");
     expect(rows[1]).toHaveTextContent("High Failure Guardrail");

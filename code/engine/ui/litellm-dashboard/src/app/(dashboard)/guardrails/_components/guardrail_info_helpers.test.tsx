@@ -114,7 +114,7 @@ describe("guardrail_info_helpers", () => {
   });
 
   describe("shouldRenderContentFilterConfigSettings", () => {
-    it("should return true when dynamic providers include LiteLLM Content Filter", () => {
+    it("should return true when dynamic providers include the upstream content filter", () => {
       populateGuardrailProviders({
         litellm_content_filter: {
           ui_friendly_name: "LiteLLM Content Filter",

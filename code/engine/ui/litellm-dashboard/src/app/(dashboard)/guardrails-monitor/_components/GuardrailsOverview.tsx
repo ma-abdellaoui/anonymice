@@ -110,7 +110,7 @@ export function GuardrailsOverview({
             providerColors[row.original.provider] ?? providerColors.Custom
           }`}
         >
-          {row.original.provider}
+          {row.original.provider === "LiteLLM" ? "Anonymice" : row.original.provider}
         </span>
       ),
     },

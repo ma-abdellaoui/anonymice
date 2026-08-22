@@ -18,7 +18,7 @@ const GuardrailDetailView: React.FC<GuardrailDetailViewProps> = ({ card, onBack,
   const [activeTab, setActiveTab] = useState("overview");
 
   const detailRows = [
-    { property: "Provider", value: card.category === "litellm" ? "LiteLLM Content Filter" : "Partner Guardrail" },
+    { property: "Provider", value: card.category === "litellm" ? "Anonymice Content Filter" : "Partner Guardrail" },
     ...(card.subcategory ? [{ property: "Subcategory", value: card.subcategory }] : []),
     ...(card.category === "litellm" ? [{ property: "Cost", value: "$0 / request" }] : []),
     ...(card.category === "litellm" ? [{ property: "External Dependencies", value: "None" }] : []),

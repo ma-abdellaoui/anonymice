@@ -152,7 +152,7 @@ describe("VectorStoreForm submit payload", () => {
     const user = setupUser();
     renderForm();
 
-    await chooseProvider(user, "PostgreSQL pgvector (LiteLLM Connector)");
+    await chooseProvider(user, "PostgreSQL pgvector (Anonymice Connector)");
     await user.type(screen.getByPlaceholderText("http://your-deployed-server:8000"), "http://pg:8000");
     await user.type(screen.getByPlaceholderText("your-deployed-api-key"), "pg-key");
     await chooseProvider(user, "Azure OpenAI");
