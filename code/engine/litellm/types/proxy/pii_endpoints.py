@@ -52,10 +52,28 @@ class PiiEncodeRequest(BaseModel):
     )
 
 
+class PiiPlacementModel(BaseModel):
+    """Where a token went, in coordinates of the text the caller sent.
+
+    Offsets index the caller's own input, so this discloses nothing they did not
+    already have, and it saves them a second detect call to find out what moved.
+    """
+
+    text_index: int
+    start: int
+    end: int
+    entity_type: str
+    detector: str
+    score: float
+    token: str
+
+
 class PiiEncodeResponse(BaseModel):
     texts: tuple[str, ...]
     session_id: str
     tokens: tuple[PiiIssuedTokenModel, ...]
+    placements: tuple[PiiPlacementModel, ...] = ()
+    ner_stage_ran: bool = False
 
 
 class PiiDecodeRequest(BaseModel):

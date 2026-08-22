@@ -936,3 +936,47 @@ class TestEndpointActivityRecording:
         as_key(NO_DECODE_KEY)
         client.post("/pii/encode", json={"texts": ["hello Ada"]})
         assert recorded.recent(limit=1)[0].user_id == "test-user"
+
+
+class TestEncodePlacements:
+    def test_reports_where_each_token_went(self, client, install_service, as_key):
+        install_service(SubstringDetector("Ada"), codec=None)
+        as_key(NO_DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"], "codec": "placeholder"}).json()
+        assert encoded["placements"] == [
+            {
+                "text_index": 0,
+                "start": 6,
+                "end": 9,
+                "entity_type": "PERSON",
+                "detector": "rules",
+                "score": 0.95,
+                "token": "<PERSON_1>",
+            }
+        ]
+
+    def test_offsets_index_the_text_the_caller_sent(self, client, install_service, as_key):
+        """A caller must be able to slice its own input with these, not the encoded output."""
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        source = "hello Ada"
+        placement = client.post("/pii/encode", json={"texts": [source]}).json()["placements"][0]
+        assert source[placement["start"] : placement["end"]] == "Ada"
+
+    def test_a_repeated_value_reports_both_positions_under_one_token(self, client, install_service, as_key):
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["Ada", "Ada again"], "codec": "placeholder"}).json()
+        placements = encoded["placements"]
+        assert [p["text_index"] for p in placements] == [0, 1]
+        assert {p["token"] for p in placements} == {"<PERSON_1>"}
+
+    def test_reports_whether_the_model_stage_ran(self, client, install_service, as_key):
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        assert client.post("/pii/encode", json={"texts": ["hello Ada"]}).json()["ner_stage_ran"] is False
+
+    def test_clean_text_reports_no_placements(self, client, install_service, as_key):
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        assert client.post("/pii/encode", json={"texts": ["nothing here"]}).json()["placements"] == []

@@ -74,6 +74,7 @@ from litellm.types.proxy.pii_endpoints import (
     PiiExportedValueModel,
     PiiExportResponse,
     PiiIssuedTokenModel,
+    PiiPlacementModel,
     PiiRevokeResponse,
     PiiSearchHitModel,
     PiiSearchRequest,
@@ -335,6 +336,19 @@ def _encode_response(encoded: EncodedBatch) -> PiiEncodeResponse:
             PiiIssuedTokenModel(token=token.token, entity_type=token.entity_type, codec_id=token.codec_id)
             for token in encoded.tokens
         ),
+        placements=tuple(
+            PiiPlacementModel(
+                text_index=placement.text_index,
+                start=placement.span.start,
+                end=placement.span.end,
+                entity_type=placement.span.entity_type,
+                detector=placement.span.detector.value,
+                score=placement.span.score,
+                token=placement.token,
+            )
+            for placement in encoded.placements
+        ),
+        ner_stage_ran=encoded.ner_stage_ran,
     )
 
 
