@@ -96,6 +96,10 @@ describe("LoginPage", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Login" })).toBeInTheDocument();
     });
+    expect(screen.getByRole("img", { name: "Anonymice" })).toHaveAttribute(
+      "src",
+      expect.stringContaining("anonymice-full-logo"),
+    );
   });
 
   it("should call router.replace to dashboard when jwt is valid", async () => {

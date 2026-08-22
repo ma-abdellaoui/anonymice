@@ -24,7 +24,7 @@ import Image from "next/image";
 import { useEffect, useId, useState } from "react";
 import { z } from "zod/v4";
 import { useWorker } from "@/hooks/useWorker";
-import { PRODUCT_WORDMARK_SRC } from "@/lib/brand";
+import { PRODUCT_FULL_LOGO_SRC } from "@/lib/brand";
 
 const loginSchema = z.object({
   username: z.string().min(1, "Please enter your username"),
@@ -195,11 +195,11 @@ function LoginPageContent() {
             <div className="flex w-full flex-col gap-4">
               <div className="text-center">
                 <Image
-                  src={PRODUCT_WORDMARK_SRC}
+                  src={PRODUCT_FULL_LOGO_SRC}
                   alt="Anonymice"
-                  width={1080}
-                  height={210}
-                  className="mx-auto h-10 w-auto object-contain dark:brightness-0 dark:invert"
+                  width={1254}
+                  height={1254}
+                  className="mx-auto h-48 w-48 object-contain"
                 />
               </div>
 
@@ -231,11 +231,11 @@ function LoginPageContent() {
             <div className="flex w-full flex-col gap-4">
               <div className="text-center">
                 <Image
-                  src={PRODUCT_WORDMARK_SRC}
+                  src={PRODUCT_FULL_LOGO_SRC}
                   alt="Anonymice"
-                  width={1080}
-                  height={210}
-                  className="mx-auto h-10 w-auto object-contain dark:brightness-0 dark:invert"
+                  width={1254}
+                  height={1254}
+                  className="mx-auto h-48 w-48 object-contain"
                 />
               </div>
 
