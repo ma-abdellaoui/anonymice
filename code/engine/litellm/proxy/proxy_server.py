@@ -813,17 +813,17 @@ else:
 ui_link: Final = f"{server_root_path}/ui"
 fallback_login_link: Final = f"{server_root_path}/fallback/login"
 model_hub_link: Final = f"{server_root_path}/ui/model_hub_table"
-ui_message = f"👉 [```anonymice Admin Panel on /ui```]({ui_link}). Create, Edit Keys with SSO. Having issues? Try [```Fallback Login```]({fallback_login_link})"
-ui_message += "\n\n💸 [```Model Cost Map```](https://models.litellm.ai/)."
+ui_message = f"👉 [```Anonymice Admin Panel on /ui```]({ui_link}). Create, Edit Keys with SSO. Having issues? Try [```Fallback Login```]({fallback_login_link})"
+ui_message += "\n\n💸 [```Anonymice Model Cost Map```](https://models.litellm.ai/)."
 
-ui_message += f"\n\n🔎 [```anonymice Model Hub```]({model_hub_link}). See available models on the proxy. [**LiteLLM Docs**](https://docs.litellm.ai/docs/proxy/ai_hub)"
+ui_message += f"\n\n🔎 [```Anonymice Model Hub```]({model_hub_link}). See available models on the proxy. [**GitHub**](https://github.com/ma-abdellaoui/anonymice)"
 
 custom_swagger_message: Final = (
-    "[**Customize Swagger Docs in the LiteLLM Docs**](https://docs.litellm.ai/docs/proxy/enterprise#swagger-docs---custom-routes--branding)"
+    "[**Anonymice on GitHub**](https://github.com/ma-abdellaoui/anonymice)"
 )
 
 ### CUSTOM BRANDING [ENTERPRISE FEATURE] ###
-_title: Final = os.getenv("DOCS_TITLE", "anonymice") if premium_user else "anonymice"
+_title: Final = os.getenv("DOCS_TITLE", "Anonymice API") if premium_user else "Anonymice API"
 _description: Final = (
     os.getenv(
         "DOCS_DESCRIPTION",
