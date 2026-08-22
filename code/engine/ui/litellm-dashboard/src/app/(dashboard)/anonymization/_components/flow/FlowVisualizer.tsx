@@ -67,7 +67,7 @@ const AnonymizationFlow: React.FC<AnonymizationFlowProps> = ({ accessToken, user
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-xl border border-gray-200 bg-white p-4">
+      <div className="rounded-xl border border-border bg-card p-4">
         <Textarea
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
@@ -77,11 +77,11 @@ const AnonymizationFlow: React.FC<AnonymizationFlowProps> = ({ accessToken, user
           placeholder="Write a prompt containing something you would not want a provider to keep"
         />
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-1.5 text-xs text-gray-500">
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             Model
             <select
               aria-label="Model"
-              className="rounded border border-gray-200 px-2 py-1.5 text-sm text-gray-700"
+              className="rounded border border-border px-2 py-1.5 text-sm text-foreground"
               value={chosenModel}
               onChange={(event) => setModel(event.target.value)}
             >
@@ -94,11 +94,11 @@ const AnonymizationFlow: React.FC<AnonymizationFlowProps> = ({ accessToken, user
             </select>
           </label>
 
-          <label className="flex items-center gap-1.5 text-xs text-gray-500">
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             Token shape
             <select
               aria-label="Token shape"
-              className="rounded border border-gray-200 px-2 py-1.5 text-sm text-gray-700"
+              className="rounded border border-border px-2 py-1.5 text-sm text-foreground"
               value={codec}
               onChange={(event) => setCodec(event.target.value as PiiCodecId)}
             >
@@ -123,8 +123,8 @@ const AnonymizationFlow: React.FC<AnonymizationFlowProps> = ({ accessToken, user
       </div>
 
       {run === null ? (
-        <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/60 p-12 text-center">
-          <p className="text-sm text-gray-500">
+        <div className="rounded-xl border border-dashed border-border bg-muted/60 p-12 text-center">
+          <p className="text-sm text-muted-foreground">
             Send a prompt to watch it get encoded, cross the boundary, come back, and get decoded.
           </p>
         </div>
@@ -154,11 +154,11 @@ const AnonymizationFlow: React.FC<AnonymizationFlowProps> = ({ accessToken, user
               Replay
             </Button>
 
-            <label className="ml-auto flex items-center gap-1.5 text-xs text-gray-500">
+            <label className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
               Speed
               <select
                 aria-label="Speed"
-                className="rounded border border-gray-200 px-2 py-1 text-sm text-gray-700"
+                className="rounded border border-border px-2 py-1 text-sm text-foreground"
                 value={playback.speed}
                 onChange={(event) => playback.setSpeed(Number(event.target.value))}
               >
@@ -171,7 +171,7 @@ const AnonymizationFlow: React.FC<AnonymizationFlowProps> = ({ accessToken, user
             </label>
           </div>
 
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-muted-foreground">
             Session {run.sessionId}
             {run.nerStageRan ? " · the model stage ran" : " · rules stage only, so names need the NER stage enabled"}
           </p>

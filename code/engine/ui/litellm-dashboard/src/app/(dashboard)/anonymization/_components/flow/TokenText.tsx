@@ -25,7 +25,7 @@ const TokenText: React.FC<TokenTextProps> = ({ text }) => {
     pieces.push(
       <mark
         key={`token-${at}`}
-        className="rounded-[3px] bg-emerald-100/80 px-0.5 text-emerald-950 ring-1 ring-emerald-400"
+        className="rounded-[3px] bg-emerald-100/80 dark:bg-emerald-950/50 px-0.5 text-emerald-950 dark:text-emerald-300 ring-1 ring-emerald-400 dark:ring-emerald-700"
       >
         {match[0]}
       </mark>,
@@ -35,7 +35,7 @@ const TokenText: React.FC<TokenTextProps> = ({ text }) => {
   if (cursor < text.length) pieces.push(<span key="plain-tail">{text.slice(cursor)}</span>);
 
   return (
-    <p className="whitespace-pre-wrap break-words font-mono text-[13px] leading-7 text-gray-800">
+    <p className="whitespace-pre-wrap break-words font-mono text-[13px] leading-7 text-foreground">
       {pieces.length > 0 ? pieces : text}
     </p>
   );

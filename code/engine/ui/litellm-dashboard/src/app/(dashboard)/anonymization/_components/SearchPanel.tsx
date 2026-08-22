@@ -47,7 +47,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({ accessToken, scope, run, busy
           />
           <select
             aria-label="Match mode"
-            className="rounded border border-gray-200 px-2 py-1.5 text-sm text-gray-700"
+            className="rounded border border-border px-2 py-1.5 text-sm text-foreground"
             value={mode}
             onChange={(event) => setMode(event.target.value as PiiMatchMode)}
           >
@@ -62,30 +62,30 @@ const SearchPanel: React.FC<SearchPanelProps> = ({ accessToken, scope, run, busy
             Search
           </Button>
         </div>
-        <p className="text-xs text-gray-400">{MATCH_MODES.find((option) => option.value === mode)?.hint}</p>
+        <p className="text-xs text-muted-foreground">{MATCH_MODES.find((option) => option.value === mode)?.hint}</p>
 
         {denied && (
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-muted-foreground">
             This key is not permitted to search. Set{" "}
-            <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs">permissions.allow_pii_search</code> on
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">permissions.allow_pii_search</code> on
             the key. It is deliberately separate from{" "}
-            <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs">allow_pii_decode</code>, since finding
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">allow_pii_decode</code>, since finding
             which tokens hold a value is more powerful than resolving one you already have.
           </p>
         )}
 
         {!denied && hits !== null && (
           <div className="flex flex-col gap-2">
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-muted-foreground">
               {hits.length} match{hits.length === 1 ? "" : "es"} after scanning {scanned} row
               {scanned === 1 ? "" : "s"}
             </p>
             {hits.map((hit) => (
               <div key={hit.token} className="flex flex-wrap items-baseline gap-2 text-sm">
-                <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-700">{hit.token}</code>
-                <span className="text-gray-600">{hit.entity_type}</span>
-                {hit.session_id && <span className="text-xs text-gray-400">session {hit.session_id}</span>}
-                {hit.subject_id && <span className="text-xs text-gray-400">subject {hit.subject_id}</span>}
+                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">{hit.token}</code>
+                <span className="text-muted-foreground">{hit.entity_type}</span>
+                {hit.session_id && <span className="text-xs text-muted-foreground">session {hit.session_id}</span>}
+                {hit.subject_id && <span className="text-xs text-muted-foreground">subject {hit.subject_id}</span>}
               </div>
             ))}
           </div>

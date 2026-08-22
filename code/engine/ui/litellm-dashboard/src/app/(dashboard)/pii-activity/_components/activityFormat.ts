@@ -7,22 +7,22 @@ export const SURFACE_LABELS: Record<string, string> = {
 };
 
 export const SURFACE_STYLES: Record<string, string> = {
-  guardrail: "bg-indigo-50 text-indigo-700 ring-indigo-200",
-  endpoint: "bg-sky-50 text-sky-700 ring-sky-200",
-  extension: "bg-violet-50 text-violet-700 ring-violet-200",
+  guardrail: "bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 ring-indigo-200 dark:ring-indigo-800",
+  endpoint: "bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 ring-sky-200 dark:ring-sky-800",
+  extension: "bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 ring-violet-200 dark:ring-violet-800",
 };
 
 export const DIRECTION_STYLES: Record<string, string> = {
-  detect: "bg-gray-50 text-gray-600 ring-gray-200",
-  encode: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-  decode: "bg-amber-50 text-amber-700 ring-amber-200",
+  detect: "bg-muted text-muted-foreground ring-border",
+  encode: "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-800",
+  decode: "bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 ring-amber-200 dark:ring-amber-800",
 };
 
 export const OUTCOME_STYLES: Record<string, string> = {
-  applied: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-  blocked: "bg-rose-50 text-rose-700 ring-rose-200",
-  failed: "bg-orange-50 text-orange-700 ring-orange-200",
-  unscanned: "bg-rose-100 text-rose-800 ring-rose-300",
+  applied: "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-800",
+  blocked: "bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 ring-rose-200 dark:ring-rose-800",
+  failed: "bg-orange-50 dark:bg-orange-950/50 text-orange-700 dark:text-orange-300 ring-orange-200 dark:ring-orange-800",
+  unscanned: "bg-rose-100 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300 ring-rose-300 dark:ring-rose-700",
 };
 
 export const duration = (ms: number): string => (ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${Math.round(ms)}ms`);

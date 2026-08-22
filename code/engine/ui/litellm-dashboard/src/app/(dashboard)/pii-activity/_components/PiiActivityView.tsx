@@ -33,7 +33,7 @@ interface ActivityBodyProps {
 const ActivityBody: React.FC<ActivityBodyProps> = ({ feed, selectedId, onSelect }) => {
   if (feed.loading && feed.events.length === 0) {
     return (
-      <div className="flex items-center justify-center gap-2 p-12 text-sm text-gray-400">
+      <div className="flex items-center justify-center gap-2 p-12 text-sm text-muted-foreground">
         <UiLoadingSpinner className="h-4 w-4" />
         Loading
       </div>
@@ -41,7 +41,7 @@ const ActivityBody: React.FC<ActivityBodyProps> = ({ feed, selectedId, onSelect 
   }
   if (feed.events.length === 0) {
     return (
-      <p className="p-12 text-center text-sm text-gray-400">
+      <p className="p-12 text-center text-sm text-muted-foreground">
         Nothing recorded yet. Send a request through the proxy, or run the Flow tab under PII Anonymization.
       </p>
     );
@@ -76,8 +76,8 @@ const PiiActivityView: React.FC<PiiActivityViewProps> = ({ accessToken }) => {
   return (
     <div className="flex h-full w-full flex-col p-6">
       <div className="mb-4">
-        <h1 className="text-xl font-semibold text-gray-900">PII Activity</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-xl font-semibold text-foreground">PII Activity</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           Every detect, encode and decode this proxy performed, from the LLM path, the REST endpoints, and the browser
           extension. Counts and outcomes always; the text itself only when capture is switched on.
         </p>
@@ -86,7 +86,7 @@ const PiiActivityView: React.FC<PiiActivityViewProps> = ({ accessToken }) => {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <select
           aria-label="Surface"
-          className="rounded border border-gray-200 px-2 py-1.5 text-sm text-gray-700"
+          className="rounded border border-border px-2 py-1.5 text-sm text-foreground"
           value={surface}
           onChange={(event) => setSurface(event.target.value as PiiSurface | "")}
         >
@@ -99,7 +99,7 @@ const PiiActivityView: React.FC<PiiActivityViewProps> = ({ accessToken }) => {
 
         <select
           aria-label="Operation"
-          className="rounded border border-gray-200 px-2 py-1.5 text-sm text-gray-700"
+          className="rounded border border-border px-2 py-1.5 text-sm text-foreground"
           value={direction}
           onChange={(event) => setDirection(event.target.value as PiiDirection | "")}
         >
@@ -123,17 +123,17 @@ const PiiActivityView: React.FC<PiiActivityViewProps> = ({ accessToken }) => {
           <RefreshCw className="h-4 w-4" />
         </Button>
 
-        <span className="ml-auto text-xs text-gray-400">
+        <span className="ml-auto text-xs text-muted-foreground">
           {feed.events.length} event{feed.events.length === 1 ? "" : "s"}
           {feed.captureEnabled ? " · text capture on" : " · text capture off"}
         </span>
       </div>
 
       {feed.error && (
-        <p className="mb-3 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{feed.error}</p>
+        <p className="mb-3 rounded border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/50 px-3 py-2 text-sm text-rose-700 dark:text-rose-300">{feed.error}</p>
       )}
 
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white">
+      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
         <div className="min-w-0 flex-1 overflow-auto">
           <ActivityBody feed={feed} selectedId={shown?.id ?? null} onSelect={setSelected} />
         </div>

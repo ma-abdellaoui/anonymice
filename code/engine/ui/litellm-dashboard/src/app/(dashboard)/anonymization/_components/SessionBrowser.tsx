@@ -24,7 +24,7 @@ interface SessionBrowserProps {
 const TokenTable: React.FC<{ tokens: PiiTokenMetadata[] }> = ({ tokens }) => (
   <div className="overflow-x-auto">
     <table className="w-full text-left text-sm">
-      <thead className="text-xs uppercase text-gray-400">
+      <thead className="text-xs uppercase text-muted-foreground">
         <tr>
           <th className="py-2 pr-4 font-medium">Token</th>
           <th className="py-2 pr-4 font-medium">Entity</th>
@@ -33,19 +33,19 @@ const TokenTable: React.FC<{ tokens: PiiTokenMetadata[] }> = ({ tokens }) => (
           <th className="py-2 font-medium">Expires</th>
         </tr>
       </thead>
-      <tbody className="divide-y divide-gray-100">
+      <tbody className="divide-y divide-border">
         {tokens.map((token) => (
           <tr key={token.token}>
-            <td className="py-2 pr-4 font-mono text-xs text-gray-700">{token.token}</td>
-            <td className="py-2 pr-4 text-gray-600">{token.entity_type}</td>
-            <td className="py-2 pr-4 text-gray-600">{token.subject_id ?? "-"}</td>
-            <td className="py-2 pr-4 text-gray-500">{formatWhen(token.created_at)}</td>
-            <td className="py-2 text-gray-500">{formatWhen(token.expires_at)}</td>
+            <td className="py-2 pr-4 font-mono text-xs text-foreground">{token.token}</td>
+            <td className="py-2 pr-4 text-muted-foreground">{token.entity_type}</td>
+            <td className="py-2 pr-4 text-muted-foreground">{token.subject_id ?? "-"}</td>
+            <td className="py-2 pr-4 text-muted-foreground">{formatWhen(token.created_at)}</td>
+            <td className="py-2 text-muted-foreground">{formatWhen(token.expires_at)}</td>
           </tr>
         ))}
       </tbody>
     </table>
-    <p className="mt-2 text-xs text-gray-400">
+    <p className="mt-2 text-xs text-muted-foreground">
       Metadata only. Values are never listed here; use search or subject export, both of which are audited.
     </p>
   </div>
@@ -98,7 +98,7 @@ const SessionBrowser: React.FC<SessionBrowserProps> = ({ accessToken, scope, run
 
         {tokens !== null &&
           (tokens.length === 0 ? (
-            <p className="text-sm text-gray-500">No live tokens in this session for the {scope} scope.</p>
+            <p className="text-sm text-muted-foreground">No live tokens in this session for the {scope} scope.</p>
           ) : (
             <TokenTable tokens={tokens} />
           ))}

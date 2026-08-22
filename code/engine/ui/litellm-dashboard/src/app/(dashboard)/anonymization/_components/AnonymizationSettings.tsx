@@ -119,14 +119,14 @@ const PERMISSIONS: SettingRow[] = [
 ];
 
 const SettingsTable: React.FC<{ rows: SettingRow[] }> = ({ rows }) => (
-  <div className="divide-y divide-gray-100">
+  <div className="divide-y divide-border">
     {rows.map((row) => (
       <div key={row.name} className="py-3">
         <div className="flex flex-wrap items-baseline gap-2">
-          <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-800">{row.name}</code>
-          <span className="text-xs text-gray-400">{row.fallback}</span>
+          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">{row.name}</code>
+          <span className="text-xs text-muted-foreground">{row.fallback}</span>
         </div>
-        <p className="mt-1 text-sm text-gray-600">{row.description}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{row.description}</p>
       </div>
     ))}
   </div>
@@ -142,13 +142,13 @@ const AnonymizationSettings: React.FC<AnonymizationSettingsProps> = ({ userRole 
       <CardHeader>
         <CardTitle>How to enable</CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3 text-sm text-gray-600">
+      <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
         <p>
           The anonymizer runs as a guardrail. Add one on the Guardrails page with provider{" "}
-          <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-800">pii_anonymizer</code>, or
+          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">pii_anonymizer</code>, or
           declare it in config.yaml:
         </p>
-        <pre className="overflow-x-auto rounded bg-gray-900 p-3 font-mono text-xs text-gray-100">
+        <pre className="overflow-x-auto rounded bg-primary p-3 font-mono text-xs text-muted-foreground">
           {`guardrails:
   - guardrail_name: pii-anonymizer
     litellm_params:
@@ -193,7 +193,7 @@ const AnonymizationSettings: React.FC<AnonymizationSettingsProps> = ({ userRole 
         <CardTitle>Token vault and retention</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-muted-foreground">
           With the vault on, mappings are stored encrypted per scope with AES-256-GCM, bound to the row they belong to
           so a ciphertext moved to another scope fails to decrypt rather than silently resolving.
         </p>
@@ -214,7 +214,7 @@ const AnonymizationSettings: React.FC<AnonymizationSettingsProps> = ({ userRole 
       <CardHeader>
         <CardTitle>Standalone endpoints</CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3 text-sm text-gray-600">
+      <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
         <p>
           The same logic is callable directly, which is what a browser extension or another integration would use. All
           three take a virtual key.
@@ -267,7 +267,7 @@ const AnonymizationSettings: React.FC<AnonymizationSettingsProps> = ({ userRole 
           ]}
         />
         {userRole !== null && (
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-muted-foreground">
             Signed in as {userRole}. Decode is scoped to the calling key, so a session_id alone never reads another
             key&apos;s tokens.
           </p>

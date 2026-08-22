@@ -44,9 +44,9 @@ const SubjectTools: React.FC<SubjectToolsProps> = ({ accessToken, scope, run, bu
         <CardTitle>Subject</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-muted-foreground">
           Export and erasure both work off the{" "}
-          <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs">subject_id</code> recorded at encode time,
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">subject_id</code> recorded at encode time,
           which defaults to the request&apos;s end user. Values encoded without one are not reachable this way.
         </p>
         <div className="flex flex-wrap gap-2">
@@ -68,16 +68,16 @@ const SubjectTools: React.FC<SubjectToolsProps> = ({ accessToken, scope, run, bu
 
         {exported !== null &&
           (exported.length === 0 ? (
-            <p className="text-sm text-gray-500">Nothing held for this subject in the {scope} scope.</p>
+            <p className="text-sm text-muted-foreground">Nothing held for this subject in the {scope} scope.</p>
           ) : (
             <div className="flex flex-col gap-1">
-              <p className="text-xs text-amber-600">This is real PII and the read has been audited.</p>
+              <p className="text-xs text-amber-600 dark:text-amber-300">This is real PII and the read has been audited.</p>
               {exported.map((entry) => (
                 <div key={entry.token} className="flex flex-wrap items-baseline gap-2 text-sm">
-                  <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-700">
+                  <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
                     {entry.token}
                   </code>
-                  <span className="text-gray-700">{entry.value}</span>
+                  <span className="text-foreground">{entry.value}</span>
                 </div>
               ))}
             </div>

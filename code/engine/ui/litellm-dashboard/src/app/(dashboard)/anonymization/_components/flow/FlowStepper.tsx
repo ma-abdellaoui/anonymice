@@ -10,9 +10,9 @@ const TIMED: Partial<Record<Beat, keyof FlowTimings>> = {
 
 const ms = (value: number) => (value >= 1000 ? `${(value / 1000).toFixed(1)}s` : `${Math.round(value)}ms`);
 
-const CURRENT = "border-gray-900 bg-gray-900 text-white shadow-sm";
-const DONE = "border-emerald-200 bg-emerald-50 text-emerald-900";
-const AHEAD = "border-gray-200 bg-white text-gray-400 hover:border-gray-300";
+const CURRENT = "border-primary bg-primary text-primary-foreground shadow-sm";
+const DONE = "border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-900 dark:text-emerald-300";
+const AHEAD = "border-border bg-card text-muted-foreground hover:border-foreground/30";
 
 const stepStyle = (at: number, current: number): string => {
   if (at === current) return CURRENT;
@@ -51,7 +51,7 @@ const FlowStepper: React.FC<FlowStepperProps> = ({ beat, index, timings, onSelec
         );
       })}
     </ol>
-    <p className="min-h-[2.5rem] text-sm leading-relaxed text-gray-600">{BEAT_CAPTIONS[beat]}</p>
+    <p className="min-h-[2.5rem] text-sm leading-relaxed text-muted-foreground">{BEAT_CAPTIONS[beat]}</p>
   </div>
 );
 
