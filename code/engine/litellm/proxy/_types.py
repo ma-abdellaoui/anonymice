@@ -567,6 +567,8 @@ class LiteLLMRoutes(enum.Enum):
         "/pii/detect",
         "/pii/encode",
         "/pii/decode",
+        "/pii/session/{session_id}",
+        "/pii/subject/{subject_id}",
     ]
 
     model_info_routes = [

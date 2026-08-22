@@ -9354,6 +9354,34 @@ class ProxyStartupEvent:
             verbose_proxy_logger.debug("Key rotation disabled (set LITELLM_KEY_ROTATION_ENABLED=true to enable)")
 
         await cls._initialize_expired_ui_session_key_cleanup_background_job(scheduler=scheduler)
+        cls._initialize_pii_vault_sweep_job(scheduler=scheduler)
+
+    @classmethod
+    def _initialize_pii_vault_sweep_job(cls, scheduler: AsyncIOScheduler) -> None:
+        """Delete PII vault rows past their retention. A no-op when the vault is off."""
+        from litellm.pii.vault.config import build_vault_store
+        from litellm.pii.vault.sweep import (
+            DEFAULT_SWEEP_INTERVAL_SECONDS,
+            PII_VAULT_SWEEP_JOB_NAME,
+            PiiVaultSweeper,
+        )
+
+        store: Final = build_vault_store(prisma_client)
+        if store is None:
+            return
+
+        sweeper: Final = PiiVaultSweeper(
+            store=store,
+            lock=proxy_logging_obj.db_spend_update_writer.pod_lock_manager,
+        )
+        scheduler.add_job(
+            sweeper.sweep,
+            "interval",
+            seconds=DEFAULT_SWEEP_INTERVAL_SECONDS,
+            id=PII_VAULT_SWEEP_JOB_NAME,
+            replace_existing=True,
+        )
+        verbose_proxy_logger.debug("PII vault sweep scheduled every %s seconds", DEFAULT_SWEEP_INTERVAL_SECONDS)
 
     @classmethod
     async def _initialize_expired_ui_session_key_cleanup_background_job(cls, scheduler: AsyncIOScheduler):

@@ -413,11 +413,10 @@ Six phases. Each leaves the tree working, is independently reviewable, and carri
 through C need no database and harden the path every request already takes; the vault does not exist until
 phase D.
 
-**Status.** Phases A, B, C, and D are complete. Phase E is complete through the storage layer (schema,
-migration, repository, store, authorization, audit entry) and still needs its routes wired and the sweep
-registered. Phases F and G are not started. Live verification against real Presidio and real piiranha found
-two defects the fake-injected tests could not: streaming never decoded at all, and piiranha's spans include
-the leading whitespace. Both are fixed and covered.
+**Status.** Phases A through E are complete. Phases F and G are not started. Live verification against
+real Presidio and real piiranha found two defects the fake-injected tests could not: streaming never decoded
+at all, and piiranha's spans include the leading whitespace. Both are fixed and covered. Nothing has yet run
+against a real LLM provider.
 
 ### Phase A: correctness fixes to shipped code
 
@@ -477,16 +476,15 @@ These are defects in code already merged, not new features, so they go first.
       belongs to
 - [x] Test: a key cannot mint a `team` token for a team it is not on
 - [x] Test: each scope level resolves for members and refuses for non-members
-- [~] `allow_pii_decode_any` break-glass, off by default, audited on every use. Policy and audit entry
-      exist and are tested; not yet reached from a route
-- [~] Audit entries on decode via `LiteLLM_AuditLog`. Entry builder exists; not yet called from a route
+- [x] `allow_pii_decode_any` break-glass, off by default, audited on every use
+- [x] Audit entries on decode via `LiteLLM_AuditLog`, on `/pii/decode` and on subject export
 - [x] `expires_at` filtered in the read query, not only swept, so a late sweep never resolves a dead row
-- [~] Expiry sweep registered through `LiteLLM_CronJob`. `sweep_expired` exists on the store; the cron
-      registration is outstanding
-- [~] `subject_id` column exists and the store writes it, documented as opaque-only. Defaulting it from
-      `end_user_id` happens at the route layer, which is outstanding
-- [~] `DELETE /pii/session/{session_id}` and subject-scoped erasure and export routes. `revoke_session`,
-      `revoke_subject`, and `export_subject` exist on the store; the routes are outstanding
+- [x] Expiry sweep registered on the proxy scheduler, single-flighted through the existing
+      `PodLockManager` rather than a second locking mechanism
+- [x] `subject_id` column, written by the store and defaulted from the request's `end_user_id`
+- [x] `DELETE /pii/session/{session_id}`, `DELETE /pii/subject/{subject_id}`, and
+      `GET /pii/subject/{subject_id}`. Erasure needs scope membership; export is a bulk decode, so it needs
+      the decode grant and is audited
 - [x] Fail the encode request if the mapping write fails; never return an unresolvable token
 
 ### Phase F: search

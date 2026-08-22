@@ -15,6 +15,7 @@ from litellm.pii.detection.cascade import CascadingDetector, NerStagePolicy
 from litellm.pii.service import PiiService
 from litellm.pii.store.dual_cache import DualCacheStore
 from litellm.pii.types import (
+    AuthorizationError,
     CodecError,
     DecodeFailed,
     DetectionError,
@@ -27,10 +28,24 @@ from litellm.pii.types import (
     StoreUnavailable,
     TokenSpaceExhausted,
     UnknownToken,
+    VaultForbidden,
 )
+from litellm.pii.vault.cipher import VaultCipher
+from litellm.pii.vault.keys import DerivedKeyProvider
+from litellm.pii.vault.repository import PiiVaultRepository
+from litellm.pii.vault.service import VaultService
+from litellm.pii.vault.store import DatabaseTokenStore
 from litellm.proxy._types import LiteLLMRoutes, LitellmUserRoles, UserAPIKeyAuth
-from litellm.proxy.pii_endpoints.endpoints import _raise_public, get_pii_service
+from litellm.proxy.pii_endpoints.endpoints import (
+    _raise_public,
+    get_decode_recorder,
+    get_pii_service,
+    get_pii_vault,
+    require_pii_vault,
+)
 from litellm.proxy.proxy_server import app
+
+from ...pii.vault.test_store import FakeTable
 
 DECODE_KEY = UserAPIKeyAuth(
     user_role=LitellmUserRoles.PROXY_ADMIN,
@@ -260,6 +275,7 @@ class TestUnconfigured:
 
 
 ERROR_SAMPLES = {
+    VaultForbidden: VaultForbidden(reason="not on that team"),
     DetectorUnavailable: DetectorUnavailable(detector=DetectorKind.RULES, reason="down"),
     DetectorInvalidResponse: DetectorInvalidResponse(detector=DetectorKind.NER, reason="not json"),
     UnknownToken: UnknownToken(token="<PERSON_9>"),
@@ -272,7 +288,9 @@ ERROR_SAMPLES = {
 
 def error_variants():
     return tuple(
-        variant for union in (DetectionError, CodecError, StoreError) for variant in (get_args(union) or (union,))
+        variant
+        for union in (DetectionError, CodecError, StoreError, AuthorizationError)
+        for variant in (get_args(union) or (union,))
     )
 
 
@@ -287,3 +305,302 @@ class TestPublicErrorContract:
         with pytest.raises(HTTPException) as raised:
             _raise_public(ERROR_SAMPLES[variant])
         assert 400 <= raised.value.status_code < 600
+
+
+BREAK_GLASS_KEY = UserAPIKeyAuth(
+    user_role=LitellmUserRoles.PROXY_ADMIN,
+    user_id="admin",
+    api_key="sk-admin",
+    permissions={"allow_pii_decode_any": True},
+)
+TEAM_KEY = UserAPIKeyAuth(
+    user_role=LitellmUserRoles.PROXY_ADMIN,
+    user_id="test-user",
+    api_key="sk-decoder",
+    team_id="team-eng",
+    permissions={"allow_pii_decode": True},
+)
+END_USER_KEY = UserAPIKeyAuth(
+    user_role=LitellmUserRoles.PROXY_ADMIN,
+    user_id="test-user",
+    api_key="sk-decoder",
+    end_user_id="customer-42",
+    permissions={"allow_pii_decode": True},
+)
+
+
+class RecordingAudit:
+    def __init__(self):
+        self.entries = []
+
+    async def record(self, user_api_key_dict, scope, token_count, break_glass):
+        self.entries.append((scope, token_count, break_glass))
+
+
+@pytest.fixture
+def vault_table():
+    return FakeTable()
+
+
+@pytest.fixture
+def install_vault(install_service, vault_table):
+    """Serve the routes a real DatabaseTokenStore over an in-memory table."""
+
+    def _install(detector_stage):
+        service = install_service(detector_stage)
+        vault = VaultService(
+            pii=service,
+            store=DatabaseTokenStore(
+                repository=PiiVaultRepository(table=vault_table),
+                cipher=VaultCipher(keys=DerivedKeyProvider(secret="root-secret")),
+            ),
+        )
+        app.dependency_overrides[get_pii_vault] = lambda: vault
+        app.dependency_overrides[require_pii_vault] = lambda: vault
+        return vault
+
+    yield _install
+    app.dependency_overrides.pop(get_pii_vault, None)
+    app.dependency_overrides.pop(require_pii_vault, None)
+
+
+@pytest.fixture
+def audit():
+    recorder = RecordingAudit()
+    app.dependency_overrides[get_decode_recorder] = lambda: recorder.record
+    yield recorder
+    app.dependency_overrides.pop(get_decode_recorder, None)
+
+
+class TestVaultRouteRegistration:
+    def test_the_erasure_and_export_routes_are_registered(self):
+        paths = {route.path for route in app.routes if hasattr(route, "path")}
+        assert {"/pii/session/{session_id}", "/pii/subject/{subject_id}"} <= paths
+
+    def test_the_new_routes_are_reachable_by_virtual_keys(self):
+        assert {"/pii/session/{session_id}", "/pii/subject/{subject_id}"} <= set(LiteLLMRoutes.pii_routes.value)
+
+
+class TestVaultBackedEncode:
+    def test_the_mapping_is_written_to_the_vault_not_the_cache(self, client, install_vault, as_key, vault_table):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"], "session_id": "s1"})
+        assert [row["session_id"] for row in vault_table.rows] == ["s1"]
+
+    def test_it_round_trips_through_the_vault(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"], "session_id": "s1"}).json()
+        decoded = client.post("/pii/decode", json={"texts": encoded["texts"], "session_id": "s1"}).json()
+        assert decoded["texts"] == ["hello Ada"]
+
+    def test_it_defaults_to_the_key_scope(self, client, install_vault, as_key, vault_table):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"]})
+        assert (vault_table.rows[0]["scope_type"], vault_table.rows[0]["scope_id"]) == ("key", DECODE_KEY.api_key)
+
+    def test_a_wider_scope_is_honoured_when_the_caller_belongs_to_it(self, client, install_vault, as_key, vault_table):
+        install_vault(SubstringDetector("Ada"))
+        as_key(TEAM_KEY)
+        response = client.post("/pii/encode", json={"texts": ["hello Ada"], "scope_type": "team"})
+        assert response.status_code == 200
+        assert (vault_table.rows[0]["scope_type"], vault_table.rows[0]["scope_id"]) == ("team", "team-eng")
+
+    def test_a_key_on_no_team_cannot_mint_a_team_token(self, client, install_vault, as_key, vault_table):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        assert client.post("/pii/encode", json={"texts": ["hello Ada"], "scope_type": "team"}).status_code == 403
+        assert vault_table.rows == []
+
+    def test_subject_id_defaults_to_the_requests_end_user(self, client, install_vault, as_key, vault_table):
+        install_vault(SubstringDetector("Ada"))
+        as_key(END_USER_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"]})
+        assert vault_table.rows[0]["subject_id"] == "customer-42"
+
+    def test_an_explicit_subject_id_wins_over_the_end_user(self, client, install_vault, as_key, vault_table):
+        install_vault(SubstringDetector("Ada"))
+        as_key(END_USER_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"], "subject_id": "subject-a"})
+        assert vault_table.rows[0]["subject_id"] == "subject-a"
+
+    def test_a_request_with_no_end_user_leaves_the_subject_untagged(self, client, install_vault, as_key, vault_table):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"]})
+        assert vault_table.rows[0]["subject_id"] is None
+
+    def test_the_minting_key_is_recorded(self, client, install_vault, as_key, vault_table):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"]})
+        assert vault_table.rows[0]["created_by"] == "test-user"
+
+
+class TestVaultBackedDecode:
+    def test_another_key_cannot_resolve_the_first_keys_tokens(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"], "session_id": "s1"}).json()
+
+        as_key(OTHER_DECODE_KEY)
+        decoded = client.post("/pii/decode", json={"texts": encoded["texts"], "session_id": "s1"}).json()
+        assert "Ada" not in decoded["texts"][0]
+
+    def test_it_still_requires_the_decode_permission(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        response = client.post("/pii/decode", json={"texts": ["<PERSON:abc123>"], "session_id": "s1"})
+        assert response.status_code == 403
+
+    def test_naming_another_scope_without_break_glass_is_refused(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        response = client.post(
+            "/pii/decode",
+            json={"texts": ["<PERSON:abc123>"], "session_id": "s1", "scope_id": OTHER_DECODE_KEY.api_key},
+        )
+        assert response.status_code == 403
+
+    def test_break_glass_reaches_another_scope(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"], "session_id": "s1"}).json()
+
+        as_key(BREAK_GLASS_KEY)
+        decoded = client.post(
+            "/pii/decode",
+            json={"texts": encoded["texts"], "session_id": "s1", "scope_id": DECODE_KEY.api_key},
+        ).json()
+        assert decoded["texts"] == ["hello Ada"]
+
+    def test_break_glass_use_is_audited(self, client, install_vault, as_key, audit):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"], "session_id": "s1"}).json()
+
+        as_key(BREAK_GLASS_KEY)
+        client.post(
+            "/pii/decode",
+            json={"texts": encoded["texts"], "session_id": "s1", "scope_id": DECODE_KEY.api_key},
+        )
+        assert audit.entries[-1][2] is True
+
+    def test_an_ordinary_decode_is_audited_without_the_break_glass_flag(self, client, install_vault, as_key, audit):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"], "session_id": "s1"}).json()
+        client.post("/pii/decode", json={"texts": encoded["texts"], "session_id": "s1"})
+        assert audit.entries[-1][1:] == (1, False)
+
+    def test_a_decode_that_resolves_nothing_is_still_audited(self, client, install_vault, as_key, audit):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        client.post("/pii/decode", json={"texts": ["hi <PERSON:deadbeef>"], "session_id": "s1"})
+        assert audit.entries[-1][1] == 0
+
+
+class TestSessionRevocation:
+    def test_it_makes_the_sessions_tokens_unresolvable(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"], "session_id": "s1"}).json()
+
+        assert client.delete("/pii/session/s1").status_code == 200
+        decoded = client.post("/pii/decode", json={"texts": encoded["texts"], "session_id": "s1"}).json()
+        assert decoded["texts"] == encoded["texts"]
+
+    def test_it_leaves_another_session_alone(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada", "Grace"))
+        as_key(DECODE_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"], "session_id": "s1"})
+        kept = client.post("/pii/encode", json={"texts": ["hello Grace"], "session_id": "s2"}).json()
+
+        client.delete("/pii/session/s1")
+        decoded = client.post("/pii/decode", json={"texts": kept["texts"], "session_id": "s2"}).json()
+        assert decoded["texts"] == ["hello Grace"]
+
+    def test_it_cannot_erase_another_keys_session(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"], "session_id": "s1"}).json()
+
+        as_key(OTHER_DECODE_KEY)
+        client.delete("/pii/session/s1")
+
+        as_key(DECODE_KEY)
+        decoded = client.post("/pii/decode", json={"texts": encoded["texts"], "session_id": "s1"}).json()
+        assert decoded["texts"] == ["hello Ada"]
+
+    def test_erasure_does_not_need_the_decode_permission(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        assert client.delete("/pii/session/s1").status_code == 200
+
+    def test_a_key_on_no_team_cannot_erase_a_team_scope(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        assert client.delete("/pii/session/s1?scope_type=team").status_code == 403
+
+
+class TestSubjectErasureAndExport:
+    def test_export_returns_the_values_held_for_a_subject(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"], "subject_id": "subject-a"})
+
+        body = client.get("/pii/subject/subject-a").json()
+        assert [entry["value"] for entry in body["values"]] == ["Ada"]
+
+    def test_export_needs_the_decode_permission(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        assert client.get("/pii/subject/subject-a").status_code == 403
+
+    def test_export_is_audited_as_a_bulk_read(self, client, install_vault, as_key, audit):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"], "subject_id": "subject-a"})
+        client.get("/pii/subject/subject-a")
+        assert audit.entries[-1][1] == 1
+
+    def test_export_finds_nothing_from_another_key(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"], "subject_id": "subject-a"})
+
+        as_key(OTHER_DECODE_KEY)
+        assert client.get("/pii/subject/subject-a").json()["values"] == []
+
+    def test_erasing_a_subject_removes_its_values(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"], "subject_id": "subject-a"})
+
+        assert client.delete("/pii/subject/subject-a").status_code == 200
+        assert client.get("/pii/subject/subject-a").json()["values"] == []
+
+    def test_erasing_one_subject_leaves_another_alone(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada", "Grace"))
+        as_key(DECODE_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"], "subject_id": "subject-a"})
+        client.post("/pii/encode", json={"texts": ["hello Grace"], "subject_id": "subject-b"})
+
+        client.delete("/pii/subject/subject-a")
+        assert [entry["value"] for entry in client.get("/pii/subject/subject-b").json()["values"]] == ["Grace"]
+
+
+class TestVaultUnconfigured:
+    def test_the_erasure_route_reports_that_the_vault_is_off(self, client, install_service, as_key):
+        install_service(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        assert client.delete("/pii/session/s1").status_code == 501
+
+    def test_encode_and_decode_still_work_off_the_cache_store(self, client, install_service, as_key):
+        install_service(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"], "session_id": "s1"}).json()
+        decoded = client.post("/pii/decode", json={"texts": encoded["texts"], "session_id": "s1"}).json()
+        assert decoded["texts"] == ["hello Ada"]

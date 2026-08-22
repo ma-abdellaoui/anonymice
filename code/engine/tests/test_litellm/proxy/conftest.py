@@ -15,6 +15,11 @@ import yaml
 from fastapi.testclient import TestClient
 from prisma.errors import ClientNotConnectedError
 
+# test_custom_proxy.py is a manual run-it-yourself script, not a test module: it
+# defines no tests, and importing it sets SERVER_ROOT_PATH, which makes
+# proxy_server rewrite the 476 packaged UI assets in the working tree in place.
+collect_ignore = ["test_custom_proxy.py"]  # mutable-ok: pytest requires a plain list
+
 _PROXY_MODULE_GLOBALS_TO_ISOLATE = (
     "master_key",
     "prisma_client",
