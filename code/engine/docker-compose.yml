@@ -22,10 +22,12 @@ services:
       # is auto-refreshed alongside the writer.
       # DATABASE_URL_READ_REPLICA: "postgresql://llmproxy:dbpassword9090@db-reader:5432/litellm"
       STORE_MODEL_IN_DB: "True" # allows adding models to proxy via UI
+      PRESIDIO_ANALYZER_API_BASE: "http://presidio:3000"
     env_file:
       - .env # Load local .env file
     depends_on:
       - db  # Indicates that this service depends on the 'db' service, ensuring 'db' starts first
+      - presidio  # PII detection; the guardrail and /pii routes are inert without it
     healthcheck:  # Defines the health check configuration for the container
       test:
         - CMD-SHELL
@@ -52,6 +54,20 @@ services:
       interval: 1s
       timeout: 5s
       retries: 10
+
+  presidio:
+    # The PII anonymizer guardrail's first detection stage. Without it the
+    # guardrail and every /pii route answer 501, so it belongs in the stack
+    # rather than in a local overlay.
+    image: mcr.microsoft.com/presidio-analyzer:2.2.360
+    restart: always
+    ports:
+      - "5002:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:3000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   prometheus:
     image: prom/prometheus
