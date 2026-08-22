@@ -16,6 +16,8 @@ RUN pip install --no-cache-dir \
         "fastapi==0.115.8" \
         "uvicorn[standard]==0.34.0"
 
+# Changing this also needs a matching label map: map_label covers Piiranha's
+# vocabulary only, and unmapped labels are dropped silently.
 ARG PII_NER_MODEL=iiiorg/piiranha-v1-detect-personal-information
 ENV PII_NER_MODEL=${PII_NER_MODEL}
 
