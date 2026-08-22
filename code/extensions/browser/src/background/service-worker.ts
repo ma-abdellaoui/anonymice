@@ -8,7 +8,8 @@
  */
 import type { PolicyLists } from '../lib/policy.ts';
 import { DetectClient } from './detect-client.ts';
-import { VaultClient, type MintSpec } from './vault-client.ts';
+import { VaultClient, type MintSpec, type ResolveReply } from './vault-client.ts';
+import { ActivityClient, type BeaconDirection } from './activity-client.ts';
 import { chromeStore, CACHE_KEY, PolicyClient, type PolicyResult } from './policy-client.ts';
 import {
   classifyHost,
@@ -40,6 +41,7 @@ const bakedPolicy: Partial<Policy> | null =
 let policy: Policy = DEFAULT_POLICY;
 let client = new DetectClient({ policy });
 let vault = new VaultClient({ policy });
+let activity = new ActivityClient({ policy });
 /** Last pull outcome, and what registration did with it — read by QA (§4). */
 let health: Diagnostics = {
   policyStatus: 'disabled',
@@ -91,6 +93,21 @@ export interface VaultMessage {
   normalized?: string;
 }
 
+/**
+ * What the egress gate did, on its way to the engine's activity log.
+ *
+ * Classes and counts only. The gate knows the body it held; nothing about the
+ * body travels, which is what keeps this a report and not a transcript.
+ */
+export interface BeaconMessage {
+  type: 'anonymice:beacon';
+  direction: BeaconDirection;
+  action: string;
+  entityTypes: string[];
+  tokenCount: number;
+  blockedEntityType?: string;
+}
+
 /** A copy was cancelled and nothing could replace it (SPEC §7 fails closed). */
 export interface CopyFailedMessage {
   type: 'anonymice:copy-failed';
@@ -112,6 +129,7 @@ type Message =
   | CopyFailedMessage
   | VaultMessage
   | StateMessage
+  | BeaconMessage
   | { type: 'anonymice:policy' }
   | { type: 'anonymice:diagnostics' };
 
@@ -318,6 +336,7 @@ async function bootOrThrow(mode: BootMode = 'refresh'): Promise<void> {
   warnIfPullDroppedHosts(previous, policy);
   client = new DetectClient({ policy });
   vault = new VaultClient({ policy });
+  activity = new ActivityClient({ policy });
   health = {
     ...health,
     policyStatus: result.status,
@@ -377,6 +396,18 @@ function notifyIfWorthIt(tabId: number, state: StateMessage): void {
   });
 }
 
+/** The class behind a resolution, when it has one. A miss reports nothing rather than guessing. */
+function entityTypeOf(reply: ResolveReply | null): string[] {
+  const resolution = reply?.resolution;
+  if (resolution === undefined) return [];
+  return 'cls' in resolution && typeof resolution.cls === 'string' ? [resolution.cls] : [];
+}
+
+/** The sender's own host, never a host the page named. Same rule as detect classification. */
+function hostOf(sender: chrome.runtime.MessageSender): string {
+  return sender.tab?.url ? new URL(sender.tab.url).hostname : '';
+}
+
 chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) => {
   if (message.type === 'anonymice:detect') {
     // The class is derived from the sender's own URL, not from anything the page
@@ -399,13 +430,38 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     // Scoping is the content script's call — it knows the source origin — but the
     // credential and the endpoint are not the page's business, so the request is
     // made here (SPEC §6.3, ENDPOINTS.md §6).
+    const minted = message.specs;
     whenReady()
-      .then(() => vault.mint(message.specs))
-      .then((result) => sendResponse(result))
+      .then(() => vault.mint(minted))
+      .then((result) => {
+        activity.report({
+          direction: 'encode',
+          action: 'mint',
+          host: hostOf(sender),
+          trustClass: classifyHost(hostOf(sender), policy),
+          entityTypes: minted.map((spec) => spec.cls),
+          tokenCount: result.tokens?.length ?? 0,
+          ...(result.tokens === null ? { failedReason: result.reason ?? 'mint failed' } : {}),
+        });
+        sendResponse(result);
+      })
       .catch((err: unknown) =>
         sendResponse({ tokens: null, reason: err instanceof Error ? err.message : String(err) }),
       );
     return true; // async
+  }
+
+  if (message.type === 'anonymice:beacon') {
+    activity.report({
+      direction: message.direction,
+      action: message.action,
+      host: hostOf(sender),
+      trustClass: classifyHost(hostOf(sender), policy),
+      entityTypes: message.entityTypes,
+      tokenCount: message.tokenCount,
+      ...(message.blockedEntityType ? { blockedEntityType: message.blockedEntityType } : {}),
+    });
+    return false;
   }
 
   if (message.type === 'anonymice:vault') {
@@ -413,8 +469,19 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     const run = async (): Promise<unknown> => {
       await whenReady();
       switch (m.op) {
-        case 'resolve':
-          return vault.resolve(m.token, m.scopeId);
+        case 'resolve': {
+          const reply = await vault.resolve(m.token, m.scopeId);
+          activity.report({
+            direction: 'decode',
+            action: 'reveal',
+            host: hostOf(sender),
+            trustClass: classifyHost(hostOf(sender), policy),
+            entityTypes: entityTypeOf(reply),
+            tokenCount: 1,
+            resolvedCount: reply?.resolution.kind === 'value' ? 1 : 0,
+          });
+          return reply;
+        }
         case 'child':
           return vault.mintChild(m.token, m.value ?? '', m.normalized ?? '', m.scopeId ?? '');
         case 'update':

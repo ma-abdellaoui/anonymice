@@ -29,6 +29,23 @@ const detector: Detector = {
   },
 };
 
+interface BeaconRequest {
+  direction: 'encode' | 'decode';
+  action: string;
+  entityTypes: string[];
+  tokenCount: number;
+  blockedEntityType?: string;
+}
+
+/**
+ * Tell the worker what the gate decided, so it lands in the engine's activity
+ * log next to what the proxy did. Nothing about the body travels, and a worker
+ * that is asleep or a log that is off simply means nothing is recorded.
+ */
+function reportBeacon(beacon: BeaconRequest): void {
+  void chrome.runtime.sendMessage({ type: 'anonymice:beacon', ...beacon }).catch(() => {});
+}
+
 async function main(): Promise<void> {
   const info = (await chrome.runtime.sendMessage({ type: 'anonymice:policy' })) as {
     hostClass: string;
@@ -215,15 +232,27 @@ async function main(): Promise<void> {
               (t) => !patched.includes(t),
             ),
           }),
-        onBlocked: ({ url, transport, missing }) =>
+        onBlocked: ({ url, transport, missing }) => {
           banner('REQUEST HELD', {
             transport,
             url,
             classes: missing.map((m) => m.cls),
             why: 'no token in hand yet — minting; the app\'s own retry should go out tokenised',
-          }),
-        onSent: ({ url, transport, replaced }) =>
-          note(`${transport} → ${url} — ${replaced} value(s) tokenised at egress`),
+          });
+          reportBeacon({
+            direction: 'encode',
+            action: 'egress-block',
+            entityTypes: missing.map((m) => m.cls),
+            tokenCount: 0,
+            blockedEntityType: missing[0]?.cls,
+          });
+        },
+        onSent: ({ url, transport, replaced }) => {
+          note(`${transport} → ${url} — ${replaced} value(s) tokenised at egress`);
+          if (replaced > 0) {
+            reportBeacon({ direction: 'encode', action: 'egress-substitute', entityTypes: [], tokenCount: replaced });
+          }
+        },
       })
     : null;
 

@@ -71,6 +71,11 @@ const devPolicy = qa
       reveal: argValue('reveal', 'off'),
       // A QA build exists to be watched, so the banners are on unless asked off.
       debug: argValue('debug', 'on') !== 'off',
+      // Off unless asked for, even in QA: reporting to another service is a
+      // decision, not a default. Point it at a running engine to see the browser
+      // half and the proxy half in one log.
+      activityEndpoint: argValue('activity-endpoint', ''),
+      activityToken: argValue('activity-token', ''),
     }
   : null;
 
@@ -164,6 +169,9 @@ if (devPolicy) {
   console.log(`  egress      : ${devPolicy.egress} (SPEC §10 — ships \`off\`; --egress=off|report|enforce)`);
   console.log(`  reveal      : ${devPolicy.reveal} (SPEC §10.9 — --reveal=off|dom puts real values in the DOM)`);
   console.log(`  debug       : ${devPolicy.debug ? 'on' : 'off'} (loud console banners; --debug=off to silence)`);
+  console.log(
+    `  activity    : ${devPolicy.activityEndpoint || '(off)'} (--activity-endpoint=http://localhost:4000/pii/activity --activity-token=sk-...)`,
+  );
   console.log(`  backend     : ${devPolicy.detectEndpoint}`);
   console.log(
     `  policy pull : ${devPolicy.policyEndpoint || '(off — baked lists only)'}` +
