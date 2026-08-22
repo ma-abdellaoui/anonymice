@@ -219,6 +219,45 @@ class TestFailureModes:
         assert await run(guard, ["hello Ada"], {}, "request") == ["hello Ada"]
 
 
+class TestStreamingContract:
+    """Under the default block_only the framework drops text rewrites, so a
+    streamed response would reach the caller still tokenized."""
+
+    def test_the_guardrail_opts_into_incremental_streaming_transforms(self):
+        assert guardrail().streaming_transform_mode == "incremental_diff"
+
+    def test_it_declares_that_it_rewrites_response_content(self):
+        assert guardrail().mask_response_content is True
+
+    @pytest.mark.asyncio
+    async def test_decode_returns_a_holdback_per_choice_in_text_order(self):
+        guard = guardrail({"Ada": "PERSON"})
+        data = {}
+        await guard.apply_guardrail(inputs={"texts": ["hello Ada"]}, request_data=data, input_type="request")
+        result = await guard.apply_guardrail(
+            inputs={"texts": ["all done", "still <PERSON_"]}, request_data=data, input_type="response"
+        )
+        assert result["stream_holdback_chars"] == [0, len("<PERSON_")]
+
+    @pytest.mark.asyncio
+    async def test_a_complete_token_needs_no_holdback(self):
+        guard = guardrail({"Ada": "PERSON"})
+        data = {}
+        encoded = await guard.apply_guardrail(inputs={"texts": ["hi Ada"]}, request_data=data, input_type="request")
+        result = await guard.apply_guardrail(
+            inputs={"texts": encoded["texts"]}, request_data=data, input_type="response"
+        )
+        assert result["texts"] == ["hi Ada"]
+        assert result["stream_holdback_chars"] == [0]
+
+    @pytest.mark.asyncio
+    async def test_encoding_does_not_request_a_holdback(self):
+        result = await guardrail({"Ada": "PERSON"}).apply_guardrail(
+            inputs={"texts": ["hello Ada"]}, request_data={}, input_type="request"
+        )
+        assert "stream_holdback_chars" not in result
+
+
 class TestPublicMessage:
     """The boundary must stay exhaustive: a new error variant has to be mapped here."""
 

@@ -1,6 +1,6 @@
 import pytest
 
-from litellm.pii.codec.grammar import AngleBracketGrammar, TokenKind
+from litellm.pii.codec.grammar import MAX_TOKEN_LENGTH, AngleBracketGrammar, TokenKind
 
 GRAMMAR = AngleBracketGrammar()
 
@@ -144,3 +144,93 @@ class TestCanonicalTokens:
 
     def test_text_without_tokens_yields_nothing(self):
         assert GRAMMAR.canonical_tokens(("just prose", "<PERSON>")) == frozenset()
+
+
+def emit_stream(chunks, resolved):
+    """Replay the framework's holdback protocol over an accumulating stream.
+
+    Mirrors `_build_transformed_chunk`: each round the guardrail returns the full
+    mutated accumulated text plus a holdback, and only the forward extension past
+    what was already emitted, minus the holdback, goes to the client. Holdback is
+    forced to zero on the final flush.
+    """
+    emitted = ""
+    accumulated = ""
+    for index, chunk in enumerate(chunks):
+        accumulated += chunk
+        mutated = GRAMMAR.substitute(accumulated, lambda f: resolved.get(f.canonical, f.text))
+        assert mutated.startswith(emitted), f"underflow at chunk {index}: {mutated!r} vs emitted {emitted!r}"
+        is_final = index == len(chunks) - 1
+        holdback = 0 if is_final else GRAMMAR.holdback_chars(mutated)
+        end = max(len(emitted), len(mutated) - holdback)
+        emitted = mutated[:end]
+    return emitted
+
+
+class TestHoldbackChars:
+    def test_settled_text_is_not_held(self):
+        assert GRAMMAR.holdback_chars("hello Ada") == 0
+
+    def test_a_closed_token_is_not_held(self):
+        assert GRAMMAR.holdback_chars("hello <PERSON_1>") == 0
+
+    def test_an_unclosed_token_is_held_from_its_opening_bracket(self):
+        assert GRAMMAR.holdback_chars("hello <PERSON_") == len("<PERSON_")
+
+    def test_a_lone_trailing_bracket_is_held(self):
+        assert GRAMMAR.holdback_chars("trailing <") == 1
+
+    def test_an_escaped_opening_bracket_is_held_from_the_backslash(self):
+        assert GRAMMAR.holdback_chars("text " + chr(92) + "<PERSON_") == len(chr(92) + "<PERSON_")
+
+    def test_an_overlong_tail_stops_being_held_so_the_stream_cannot_stall(self):
+        assert GRAMMAR.holdback_chars("a <" + "x" * MAX_TOKEN_LENGTH) == 0
+
+    def test_ordinary_prose_with_a_comparison_is_held_only_briefly(self):
+        assert GRAMMAR.holdback_chars("if a < b") == len("< b")
+
+
+class TestStreamingRoundTrip:
+    """A token split across chunk boundaries must still decode, at every split point."""
+
+    @pytest.mark.parametrize("split", range(1, len("hello <PERSON_1> there")))
+    def test_a_token_split_at_every_byte_offset_still_decodes(self, split):
+        text = "hello <PERSON_1> there"
+        chunks = [text[:split], text[split:]]
+        assert emit_stream(chunks, {"<PERSON_1>": "Ada"}) == "hello Ada there"
+
+    @pytest.mark.parametrize("split", range(1, len("<PERSON_1>")))
+    def test_a_token_split_across_the_final_chunk_boundary_still_decodes(self, split):
+        text = "the name is <PERSON_1>"
+        boundary = len("the name is ") + split
+        assert emit_stream([text[:boundary], text[boundary:]], {"<PERSON_1>": "Ada"}) == "the name is Ada"
+
+    def test_one_character_at_a_time_still_decodes(self):
+        text = "hi <PERSON_1> and <EMAIL_ADDRESS_2>"
+        resolved = {"<PERSON_1>": "Ada", "<EMAIL_ADDRESS_2>": "a@b.co"}
+        assert emit_stream(list(text), resolved) == "hi Ada and a@b.co"
+
+    def test_two_adjacent_tokens_split_between_them(self):
+        text = "<PERSON_1><PERSON_2>"
+        resolved = {"<PERSON_1>": "Ada", "<PERSON_2>": "Grace"}
+        assert emit_stream([text[:10], text[10:]], resolved) == "AdaGrace"
+
+    def test_an_unresolvable_token_streams_through_verbatim(self):
+        assert emit_stream(list("saw <PERSON_9> today"), {"<PERSON_1>": "Ada"}) == "saw <PERSON_9> today"
+
+    def test_a_truncated_trailing_token_is_flushed_verbatim_at_end_of_stream(self):
+        assert emit_stream(list("ends with <PERSON_"), {"<PERSON_1>": "Ada"}) == "ends with <PERSON_"
+
+    def test_prose_containing_a_comparison_streams_intact(self):
+        assert emit_stream(list("check if a < b before"), {}) == "check if a < b before"
+
+    def test_a_decoded_value_shorter_than_its_token_never_underflows(self):
+        assert emit_stream(list("x <EMAIL_ADDRESS_1> y"), {"<EMAIL_ADDRESS_1>": "a@b"}) == "x a@b y"
+
+    def test_n_greater_than_one_choices_hold_back_independently(self):
+        resolved = {"<PERSON_1>": "Ada"}
+        per_choice = [list("choice zero <PERSON_1>"), list("choice one has no token")]
+        assert [emit_stream(chunks, resolved) for chunks in per_choice] == [
+            "choice zero Ada",
+            "choice one has no token",
+        ]

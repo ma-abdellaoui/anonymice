@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from dataclasses import replace
 from functools import reduce
 from itertools import chain
 from typing import Final
@@ -6,6 +7,27 @@ from typing import Final
 from litellm.pii.types import DetectorKind, PiiSpan
 
 MAX_COALESCE_GAP: Final = 1
+
+
+def trim_span(span: PiiSpan, text: str) -> PiiSpan | None:
+    """Shrink a span onto the non-whitespace it actually covers.
+
+    Token-classification models report the whitespace preceding a word as part
+    of the entity, so an untrimmed span splices its token in without the space
+    that separated it and the model reads ``My name is<PERSON_1>``.
+    """
+    raw: Final = span.text_from(text)
+    leading: Final = len(raw) - len(raw.lstrip())
+    trailing: Final = len(raw) - len(raw.rstrip())
+    if not leading and not trailing:
+        return span
+    if span.end - trailing <= span.start + leading:
+        return None
+    return replace(span, start=span.start + leading, end=span.end - trailing)
+
+
+def trim_spans(spans: Iterable[PiiSpan], text: str) -> tuple[PiiSpan, ...]:
+    return tuple(trimmed for trimmed in (trim_span(span, text) for span in spans) if trimmed is not None)
 
 
 def _overlaps(left: PiiSpan, right: PiiSpan) -> bool:
@@ -70,4 +92,4 @@ def coalesce_adjacent(spans: Iterable[PiiSpan], text: str) -> tuple[PiiSpan, ...
 
 
 def merge_spans(text: str, *groups: Iterable[PiiSpan]) -> tuple[PiiSpan, ...]:
-    return coalesce_adjacent(resolve_overlaps(chain.from_iterable(groups)), text)
+    return coalesce_adjacent(resolve_overlaps(trim_spans(chain.from_iterable(groups), text)), text)

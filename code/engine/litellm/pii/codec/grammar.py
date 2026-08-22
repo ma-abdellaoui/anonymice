@@ -45,6 +45,11 @@ class TokenGrammar(Protocol):
 
     def canonical_tokens(self, texts: Sequence[str]) -> frozenset[str]: ...
 
+    def holdback_chars(self, text: str) -> int: ...
+
+
+MAX_DISCRIMINATOR_LENGTH: Final = 64
+MAX_TOKEN_LENGTH: Final = len("<_>") + max(len(label) for label in ENTITY_VOCABULARY) + MAX_DISCRIMINATOR_LENGTH
 
 _LABEL: Final = "|".join(sorted(ENTITY_VOCABULARY, key=len, reverse=True))
 _SLASH: Final = r"\\?"
@@ -124,3 +129,21 @@ class AngleBracketGrammar:
         the set it must resolve. Both are the same question, so both ask it here.
         """
         return frozenset(found.canonical for text in texts for found in self.find(text))
+
+    def holdback_chars(self, text: str) -> int:
+        """Trailing characters that could still grow into a token, so streaming holds them.
+
+        The framework cannot retract bytes it has already emitted, so a token
+        split across chunk boundaries must be withheld until it closes. Anything
+        before the last unclosed ``<`` is settled and safe to send.
+
+        The cap bounds how long an ordinary ``a < b`` stalls the stream. A
+        self-contained encrypted token can exceed it, which is one more reason
+        that codec is not the default on the LLM path.
+        """
+        opening: Final = text.rfind("<")
+        if opening < 0 or ">" in text[opening:]:
+            return 0
+        escaped: Final = opening - 1 if opening > 0 and text[opening - 1] == "\\" else opening
+        pending: Final = len(text) - escaped
+        return pending if pending <= MAX_TOKEN_LENGTH else 0

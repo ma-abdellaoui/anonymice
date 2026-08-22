@@ -40,7 +40,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Final, NamedTuple
 
-from engine_layout import DEFAULT_BASE, base_engine_root
+from engine_layout import DEFAULT_BASE, base_engine_root, engine_prefix
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CHECKER = REPO_ROOT / "scripts" / "check_type_discipline.py"
@@ -233,7 +233,7 @@ def ratcheted_budget(budget: dict, current: dict, base: dict, seeded: frozenset 
 
 def _base_budget_rules(base_point: str) -> frozenset:
     proc = subprocess.run(
-        ["git", "show", f"{base_point}:{BUDGET_PATH.name}"],
+        ["git", "show", f"{base_point}:{engine_prefix(REPO_ROOT) / BUDGET_PATH.name}"],
         cwd=REPO_ROOT, capture_output=True, text=True,
     )
     if proc.returncode != 0:

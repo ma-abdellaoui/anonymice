@@ -1,6 +1,6 @@
 import pytest
 
-from litellm.pii.detection.spans import coalesce_adjacent, merge_spans, resolve_overlaps
+from litellm.pii.detection.spans import coalesce_adjacent, merge_spans, resolve_overlaps, trim_span, trim_spans
 from litellm.pii.types import DetectorKind, PiiSpan
 
 
@@ -118,3 +118,61 @@ class TestMergeSpans:
 
     def test_empty_input_yields_empty_output(self):
         assert merge_spans("anything") == ()
+
+
+class TestTrimSpan:
+    """Piiranha reports the whitespace preceding a word as part of the entity.
+
+    The offsets here are the ones the real model returned for these exact inputs.
+    """
+
+    def test_a_leading_space_is_dropped(self):
+        text = "Ada Lovelace lives in Paris"
+        trimmed = trim_span(span("LOCATION", 21, 27, detector=DetectorKind.NER), text)
+        assert (trimmed.start, trimmed.end) == (22, 27)
+        assert trimmed.text_from(text) == "Paris"
+
+    def test_a_trailing_space_is_dropped(self):
+        text = "Paris is nice"
+        trimmed = trim_span(span("LOCATION", 0, 6, detector=DetectorKind.NER), text)
+        assert trimmed.text_from(text) == "Paris"
+
+    def test_an_already_tight_span_is_returned_unchanged(self):
+        text = "Ada Lovelace"
+        original = span("PERSON", 0, 3)
+        assert trim_span(original, text) is original
+
+    def test_a_whitespace_only_span_is_dropped_entirely(self):
+        assert trim_span(span("PERSON", 3, 4), "Ada Lovelace") is None
+
+    def test_score_and_detector_survive_the_trim(self):
+        text = "Ada Lovelace lives in Paris"
+        trimmed = trim_span(span("LOCATION", 21, 27, score=0.982, detector=DetectorKind.NER), text)
+        assert (trimmed.score, trimmed.detector, trimmed.entity_type) == (0.982, DetectorKind.NER, "LOCATION")
+
+    def test_trim_spans_drops_the_empty_ones_and_keeps_the_rest(self):
+        text = "Ada Lovelace"
+        assert trim_spans([span("PERSON", 0, 3), span("PERSON", 3, 4)], text) == (span("PERSON", 0, 3),)
+
+    def test_multibyte_offsets_survive_trimming(self):
+        text = "café 🎉 Ada"
+        trimmed = trim_span(span("PERSON", 6, 10, detector=DetectorKind.NER), text)
+        assert trimmed.text_from(text) == "Ada"
+
+
+class TestMergeTrimsPaddedSpans:
+    def test_the_separating_space_is_not_swallowed_by_the_token(self):
+        text = "Ada Lovelace lives in Paris"
+        merged = merge_spans(text, [span("LOCATION", 21, 27, detector=DetectorKind.NER)])
+        assert merged[0].text_from(text) == "Paris"
+        assert text[: merged[0].start].endswith(" ")
+
+    def test_padded_name_fragments_still_coalesce_into_one_span(self):
+        text = "My name is Ada Lovelace and more"
+        fragments = [
+            span("PERSON", 10, 14, detector=DetectorKind.NER),
+            span("PERSON", 14, 23, detector=DetectorKind.NER),
+        ]
+        merged = merge_spans(text, fragments)
+        assert len(merged) == 1
+        assert merged[0].text_from(text) == "Ada Lovelace"

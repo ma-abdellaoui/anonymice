@@ -79,8 +79,8 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
     """
 
     @classmethod
-    def get_supported_event_hooks(cls) -> list[GuardrailEventHooks]:  # mutable-ok: base class declares a list
-        return list(SUPPORTED_EVENT_HOOKS)  # mutable-ok: base class declares a list
+    def get_supported_event_hooks(cls) -> list[GuardrailEventHooks]:  # mutable-ok: base class wants a list
+        return list(SUPPORTED_EVENT_HOOKS)  # mutable-ok: base class wants a list
 
     @staticmethod
     def get_config_model() -> type[PiiAnonymizerConfigModel]:
@@ -97,21 +97,25 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
         kwargs.setdefault("supported_event_hooks", list(SUPPORTED_EVENT_HOOKS))  # mutable-ok: base class wants a list
         super().__init__(**kwargs)
         self.guardrail_provider = "pii_anonymizer"
+        # The framework drops text rewrites on the streaming path under the default
+        # "block_only", so a streamed response would reach the caller still tokenized.
+        self.streaming_transform_mode = "incremental_diff"
+        self.mask_response_content = True
         self.detector: Final = detector
-        self.actions: Final[Mapping[str, SpanAction]] = MappingProxyType(
-            {entity: _to_span_action(action) for entity, action in (pii_entities_config or {}).items()}  # mutable-ok: frozen by the MappingProxyType wrapping it
-        )
+        configured: Final = pii_entities_config.items() if pii_entities_config else ()
+        actions: Final = {e: _to_span_action(a) for e, a in configured}  # mutable-ok: frozen just below
+        self.actions: Final[Mapping[str, SpanAction]] = MappingProxyType(actions)
         self.codec: Final = ActionAwareCodec(
             inner=build_codec(codec_id),
             actions=self.actions,
             default_action=_to_span_action(default_action),
         )
 
-    def _token_bucket(self, request_data: dict) -> dict:  # mutable-ok: the live per-request token map is written through
-        metadata: Final[dict] = request_data.setdefault("metadata", {})  # mutable-ok: request metadata is a live dict
-        return metadata.setdefault(TOKEN_BUCKET_KEY, {})  # mutable-ok: the token bucket is written through by the store
+    def _token_bucket(self, request_data: dict) -> dict:  # mutable-ok: live per-request map
+        metadata: Final[dict] = request_data.setdefault("metadata", {})  # mutable-ok: live dict
+        return metadata.setdefault(TOKEN_BUCKET_KEY, {})  # mutable-ok: written through by the store
 
-    def _service(self, request_data: dict) -> PiiService | None:  # mutable-ok: CustomGuardrail.apply_guardrail declares request_data as a plain dict
+    def _service(self, request_data: dict) -> PiiService | None:  # mutable-ok: framework passes a dict
         if self.detector is None:
             return None
         return PiiService(
@@ -137,7 +141,12 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
         decoded: Final = await service.decode(texts=texts, scope=scope)
         if not isinstance(decoded, tuple):
             self._raise_public(decoded)
-        updated: Final[GenericGuardrailAPIInputs] = {**inputs, "texts": list(decoded)}  # mutable-ok: GenericGuardrailAPIInputs types texts as list[str]
+        # Per choice, in the order the texts arrived. This is what lets a token
+        # split across chunk boundaries be decoded rather than emitted in pieces.
+        holdback: Final = [self.codec.grammar.holdback_chars(t) for t in decoded]  # mutable-ok: typed as list[int]
+        texts_out: Final = list(decoded)  # mutable-ok: the TypedDict types texts as list[str]
+        both: Final = {"texts": texts_out, "stream_holdback_chars": holdback}  # mutable-ok: TypedDict
+        updated: Final[GenericGuardrailAPIInputs] = {**inputs, **both}  # mutable-ok: TypedDict
         return updated
 
     async def _encode(
@@ -158,7 +167,8 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
         if blocked:
             raise BlockedPiiEntityError(entity_type=blocked[0], guardrail_name=self.guardrail_name)
 
-        updated: Final[GenericGuardrailAPIInputs] = {**inputs, "texts": list(encoded.texts)}  # mutable-ok: GenericGuardrailAPIInputs types texts as list[str]
+        texts_out: Final = list(encoded.texts)  # mutable-ok: the TypedDict types texts as list[str]
+        updated: Final[GenericGuardrailAPIInputs] = {**inputs, "texts": texts_out}  # mutable-ok: TypedDict
         return updated
 
     @log_guardrail_information

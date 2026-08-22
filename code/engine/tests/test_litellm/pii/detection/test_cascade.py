@@ -22,7 +22,7 @@ class RecordingDetector:
         return self.result
 
 
-def span(entity_type="PERSON", start=0, end=4, score=0.9, detector=DetectorKind.RULES):
+def span(entity_type="PERSON", start=0, end=3, score=0.9, detector=DetectorKind.RULES):
     return PiiSpan(entity_type=entity_type, start=start, end=end, score=score, detector=detector)
 
 
