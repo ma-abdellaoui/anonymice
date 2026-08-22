@@ -251,7 +251,7 @@ function LoginPageContent() {
                   <AlertDescription>
                     <p className="text-sm">
                       By default, Username is <code className="bg-muted px-1 py-0.5 rounded-sm text-xs">admin</code> and
-                      Password is your set Anonymice Proxy
+                      Password is your set Anonymice Proxy{" "}
                       <code className="bg-muted px-1 py-0.5 rounded-sm text-xs">MASTER_KEY</code>.
                     </p>
                     <p className="mt-2 text-sm">Need to set UI credentials or SSO? Contact your administrator.</p>
