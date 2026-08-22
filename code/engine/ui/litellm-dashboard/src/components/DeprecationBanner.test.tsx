@@ -18,13 +18,11 @@ describe("DeprecationBanner", () => {
     expect(screen.getByText(/This list is a draft and is not final/)).toBeInTheDocument();
   });
 
-  it("links to the deprecation discussion in a new tab without leaking the opener", () => {
+  it("directs users to their administrator without linking upstream", () => {
     render(<DeprecationBanner featureName="Memory" />);
 
-    const link = screen.getByRole("link", { name: "deprecation discussion" });
-    expect(link).toHaveAttribute("href", "https://github.com/BerriAI/litellm/discussions/32090");
-    expect(link).toHaveAttribute("target", "_blank");
-    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.getByText(/contact your administrator/i)).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
   it("exposes a named close control", () => {

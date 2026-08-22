@@ -264,7 +264,7 @@ const AgentCardDiscovery: React.FC<AgentCardDiscoveryProps> = ({
               }
             />
             <TooltipContent>
-              LiteLLM will fetch /.well-known/agent-card.json from this URL and let you pick which skills and
+              Anonymice will fetch /.well-known/agent-card.json from this URL and let you pick which skills and
               capabilities to expose through the proxy.
             </TooltipContent>
           </Tooltip>
@@ -432,7 +432,7 @@ const AgentCardDiscovery: React.FC<AgentCardDiscoveryProps> = ({
                       }
                     />
                     <TooltipContent>
-                      Only capabilities LiteLLM can faithfully proxy today are listed. Others (push notifications,
+                      Only capabilities Anonymice can faithfully proxy today are listed. Others (push notifications,
                       extensions) are coming soon.
                     </TooltipContent>
                   </Tooltip>

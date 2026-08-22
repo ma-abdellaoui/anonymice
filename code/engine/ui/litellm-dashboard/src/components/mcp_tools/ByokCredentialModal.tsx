@@ -97,7 +97,7 @@ export const ByokCredentialModal: React.FC<ByokCredentialModalProps> = ({ server
               {/* Logos */}
               <div className="flex items-center justify-center gap-3 mb-6">
                 <div className="w-14 h-14 rounded-xl bg-linear-to-br from-teal-400 to-cyan-600 flex items-center justify-center text-white font-bold text-xl shadow-sm">
-                  L
+                  A
                 </div>
                 <ArrowRight className="size-4.5 text-muted-foreground" />
                 <div className="w-14 h-14 rounded-xl bg-linear-to-br from-blue-600 to-indigo-800 flex items-center justify-center text-white font-bold text-xl shadow-sm">
@@ -107,7 +107,7 @@ export const ByokCredentialModal: React.FC<ByokCredentialModalProps> = ({ server
 
               <h2 className="text-2xl font-bold text-foreground mb-2">Connect {serverDisplayName}</h2>
               <p className="text-muted-foreground mb-6">
-                LiteLLM needs access to {serverDisplayName} to complete your request.
+                Anonymice needs access to {serverDisplayName} to complete your request.
               </p>
 
               {/* How it works */}
@@ -122,7 +122,7 @@ export const ByokCredentialModal: React.FC<ByokCredentialModalProps> = ({ server
                   <div>
                     <p className="font-semibold text-foreground mb-1">How it works</p>
                     <p className="text-muted-foreground text-sm">
-                      LiteLLM acts as a secure bridge. Your requests are routed through our MCP client directly to{" "}
+                      Anonymice acts as a secure bridge. Your requests are routed through our MCP client directly to{" "}
                       {serverDisplayName}&apos;s API.
                     </p>
                   </div>

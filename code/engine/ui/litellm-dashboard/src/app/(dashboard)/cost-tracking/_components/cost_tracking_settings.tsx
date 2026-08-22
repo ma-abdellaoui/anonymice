@@ -28,8 +28,8 @@ import { fetchAvailableModels, ModelGroup } from "@/components/llm_calls/fetch_m
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const DOCS_LINKS = [
-  { label: "Custom pricing for models", href: "https://docs.litellm.ai/docs/proxy/custom_pricing" },
-  { label: "Spend tracking", href: "https://docs.litellm.ai/docs/proxy/cost_tracking" },
+  { label: "Custom pricing for models", href: "https://github.com/ma-abdellaoui/anonymice" },
+  { label: "Spend tracking", href: "https://github.com/ma-abdellaoui/anonymice" },
 ];
 
 const REMOVAL_COPY = {

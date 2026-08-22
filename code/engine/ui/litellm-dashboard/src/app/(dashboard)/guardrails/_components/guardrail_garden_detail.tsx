@@ -18,7 +18,7 @@ const GuardrailDetailView: React.FC<GuardrailDetailViewProps> = ({ card, onBack,
   const [activeTab, setActiveTab] = useState("overview");
 
   const detailRows = [
-    { property: "Provider", value: card.category === "litellm" ? "LiteLLM Content Filter" : "Partner Guardrail" },
+    { property: "Provider", value: card.category === "litellm" ? "Anonymice Content Filter" : "Partner Guardrail" },
     ...(card.subcategory ? [{ property: "Subcategory", value: card.subcategory }] : []),
     ...(card.category === "litellm" ? [{ property: "Cost", value: "$0 / request" }] : []),
     ...(card.category === "litellm" ? [{ property: "External Dependencies", value: "None" }] : []),
@@ -75,8 +75,8 @@ const GuardrailDetailView: React.FC<GuardrailDetailViewProps> = ({ card, onBack,
               style={{
                 padding: "12px 20px",
                 fontSize: 14,
-                color: activeTab === tab.key ? "#1a73e8" : "#5f6368",
-                borderBottom: activeTab === tab.key ? "3px solid #1a73e8" : "3px solid transparent",
+                color: activeTab === tab.key ? "#1389A0" : "#5f6368",
+                borderBottom: activeTab === tab.key ? "3px solid #1389A0" : "3px solid transparent",
                 cursor: "pointer",
                 fontWeight: activeTab === tab.key ? 500 : 400,
                 marginBottom: -1,

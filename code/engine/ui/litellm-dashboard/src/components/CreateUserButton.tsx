@@ -140,7 +140,7 @@ const EmailInvitationsNotice: React.FC = () => (
     <AlertTitle>Email invitations</AlertTitle>
     <AlertDescription>
       New users receive an email invite only when an email integration (SMTP, Resend, or SendGrid) is configured.{" "}
-      <a href="https://docs.litellm.ai/docs/proxy/email" target="_blank" rel="noreferrer">
+      <a href="https://github.com/ma-abdellaoui/anonymice" target="_blank" rel="noreferrer">
         Learn how to set up email notifications
       </a>
     </AlertDescription>

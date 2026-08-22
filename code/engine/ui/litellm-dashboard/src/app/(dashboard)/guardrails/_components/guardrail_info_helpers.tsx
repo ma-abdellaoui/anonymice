@@ -11,7 +11,7 @@ import guardrailsAiLogo from "../../../../../public/assets/logos/guardrails_ai.j
 import javelinLogo from "../../../../../public/assets/logos/javelin.png";
 import lakeraAiLogo from "../../../../../public/assets/logos/lakeraai.jpeg";
 import lassoLogo from "../../../../../public/assets/logos/lasso.png";
-import litellmLogo from "../../../../../public/assets/logos/litellm_logo.jpg";
+import anonymiceMark from "../../../../../public/assets/brand/anonymice-mark.png";
 import microsoftAzureLogo from "../../../../../public/assets/logos/microsoft_azure.svg";
 import nomaSecurityLogo from "../../../../../public/assets/logos/noma_security.png";
 import openaiSmallLogo from "../../../../../public/assets/logos/openai_small.svg";
@@ -36,6 +36,8 @@ export enum GuardrailProviders {
 // Dynamic guardrail providers object - populated from API response
 export let DynamicGuardrailProviders: Record<string, string> = {};
 
+const rebrandGuardrailDisplayName = (displayName: string): string => displayName.replace(/^LiteLLM\b/, "Anonymice");
+
 // Function to populate dynamic providers from API response
 export const populateGuardrailProviders = (providerParamsResponse: Record<string, any>) => {
   const providers: Record<string, string> = {};
@@ -44,7 +46,7 @@ export const populateGuardrailProviders = (providerParamsResponse: Record<string
   providers.PresidioPII = "Presidio PII";
   providers.Bedrock = "Bedrock Guardrail";
   providers.Lakera = "Lakera";
-  providers.LlmAsAJudge = "LiteLLM LLM as a Judge";
+  providers.LlmAsAJudge = "Anonymice LLM as a Judge";
 
   // Add dynamic providers from API response
   Object.entries(providerParamsResponse).forEach(([key, value]) => {
@@ -57,7 +59,7 @@ export const populateGuardrailProviders = (providerParamsResponse: Record<string
         )
         .join("");
 
-      providers[providerKey] = value.ui_friendly_name;
+      providers[providerKey] = rebrandGuardrailDisplayName(value.ui_friendly_name);
     }
   });
 
@@ -152,9 +154,7 @@ export const shouldRenderContentFilterConfigSettings = (provider: string | null)
     return false;
   }
   // Check both dynamic and legacy providers
-  const currentProviders = getGuardrailProviders();
-  const providerEnum = currentProviders[provider as keyof typeof currentProviders];
-  return providerEnum === "LiteLLM Content Filter";
+  return guardrail_provider_map[provider] === "litellm_content_filter";
 };
 
 export const shouldRenderLLMJudgeFields = (provider: string | null) => {
@@ -186,8 +186,8 @@ export const guardrailLogoMap = {
   "Prompt Security": promptSecurityLogo.src,
   PromptGuard: promptguardLogo.src,
   XecGuard: xecguardLogo.src,
-  "LiteLLM Content Filter": litellmLogo.src,
-  "LiteLLM LLM as a Judge": litellmLogo.src,
+  "Anonymice Content Filter": anonymiceMark.src,
+  "Anonymice LLM as a Judge": anonymiceMark.src,
   Akto: aktoLogo.src,
   "DeepKeep AI Firewall": deepkeepLogo.src,
   "Qostodian Nexus": qohashLogo.src,

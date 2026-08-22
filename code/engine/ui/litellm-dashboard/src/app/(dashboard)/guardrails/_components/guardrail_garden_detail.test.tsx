@@ -18,7 +18,7 @@ const makeCard = (overrides: Partial<GuardrailCardInfo> = {}): GuardrailCardInfo
 const renderDetail = (card: GuardrailCardInfo) =>
   render(<GuardrailDetailView card={card} onBack={vi.fn()} accessToken={null} onGuardrailCreated={vi.fn()} />);
 
-describe("GuardrailDetailView logo", () => {
+describe("GuardrailDetailView", () => {
   it("renders the card logo through the shared Logo component with the bundled src", () => {
     renderDetail(makeCard());
     expect(screen.getByAltText("Bedrock Guardrail logo")).toHaveAttribute("src", "/_next/static/media/bedrock.svg");
@@ -28,5 +28,12 @@ describe("GuardrailDetailView logo", () => {
     renderDetail(makeCard({ logo: "" }));
     expect(screen.queryByAltText("Bedrock Guardrail logo")).not.toBeInTheDocument();
     expect(screen.getByText("B")).toBeInTheDocument();
+  });
+
+  it("preserves the technical guardrail ID and applies the Anonymice tab accent", () => {
+    renderDetail(makeCard());
+
+    expect(screen.getByText("litellm/bedrock")).toBeInTheDocument();
+    expect(screen.getAllByText("Overview")[0]).toHaveStyle({ color: "#1389A0", borderBottom: "3px solid #1389A0" });
   });
 });

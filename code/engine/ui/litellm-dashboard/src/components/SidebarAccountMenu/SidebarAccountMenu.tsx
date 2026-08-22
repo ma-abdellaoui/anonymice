@@ -17,8 +17,6 @@ import { cn } from "@/lib/cva.config";
 import { ChevronsUpDown, Crown, IdCard, LogOut, Mail, ShieldCheck } from "lucide-react";
 import React from "react";
 
-const RELEASE_NOTES_URL = "https://docs.litellm.ai/release_notes";
-
 function hueFromString(seed: string): number {
   let h = 0;
   for (let i = 0; i < seed.length; i += 1) {
@@ -169,12 +167,12 @@ const SidebarAccountMenu: React.FC<SidebarAccountMenuProps> = ({ onLogout, colla
         data-testid="sidebar-account-menu-panel"
       >
         <div className="flex items-center gap-2 border-b border-border px-3 py-3">
-          <span className="text-[15px] font-bold tracking-tight text-foreground">LiteLLM</span>
+          <span className="text-[15px] font-bold tracking-tight text-foreground">Anonymice</span>
           {!disableBouncingIcon && (
             <span
               className="animate-bounce text-lg leading-none"
               style={{ animationDuration: "2s" }}
-              title="Thanks for using LiteLLM!"
+              title="Thanks for using Anonymice!"
               aria-hidden
             >
               🌴
@@ -182,11 +180,7 @@ const SidebarAccountMenu: React.FC<SidebarAccountMenuProps> = ({ onLogout, colla
           )}
           <span className="flex-1" />
           {version && (
-            <Badge
-              variant="outline"
-              render={<a href={RELEASE_NOTES_URL} target="_blank" rel="noopener noreferrer" />}
-              className="px-1.5 py-0 font-mono text-[10px] font-medium text-muted-foreground"
-            >
+            <Badge variant="outline" className="px-1.5 py-0 font-mono text-[10px] font-medium text-muted-foreground">
               v{version}
             </Badge>
           )}

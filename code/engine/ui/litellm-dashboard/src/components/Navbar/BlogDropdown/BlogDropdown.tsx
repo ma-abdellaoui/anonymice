@@ -71,7 +71,7 @@ export const BlogDropdown: React.FC = () => {
         ))}
         <DropdownMenuSeparator />
         <DropdownMenuItem>
-          <a href="https://docs.litellm.ai/blog" target="_blank" rel="noopener noreferrer">
+          <a href="https://github.com/ma-abdellaoui/anonymice" target="_blank" rel="noopener noreferrer">
             View all posts
           </a>
         </DropdownMenuItem>

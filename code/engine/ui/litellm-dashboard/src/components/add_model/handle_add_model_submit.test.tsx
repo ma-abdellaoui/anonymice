@@ -50,7 +50,7 @@ describe("prepareModelAddRequest", () => {
     expect(deployment.litellmParamsObj.custom_llm_provider).toBe("petals");
   });
 
-  it("ignores litellm_credential_name inside LiteLLM Params JSON", async () => {
+  it("ignores litellm_credential_name inside Anonymice Params JSON", async () => {
     const formValues = {
       model_mappings: [
         {

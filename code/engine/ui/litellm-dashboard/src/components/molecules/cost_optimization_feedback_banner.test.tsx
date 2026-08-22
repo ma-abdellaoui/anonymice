@@ -12,7 +12,7 @@ describe("CostOptimizationFeedbackBanner", () => {
   it("renders with a link to the feedback discussion", () => {
     const { getByText } = render(<CostOptimizationFeedbackBanner />);
     const link = getByText("Share Feedback").closest("a");
-    expect(link).toHaveAttribute("href", "https://github.com/BerriAI/litellm/discussions/32172");
+    expect(link).toHaveAttribute("href", "https://github.com/ma-abdellaoui/anonymice");
   });
 
   it("hides itself and persists the dismissal when the dismiss button is clicked", () => {

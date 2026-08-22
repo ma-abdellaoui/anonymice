@@ -7,7 +7,7 @@ import valkeyLogo from "../../public/assets/logos/valkey.svg";
 export enum VectorStoreProviders {
   Bedrock = "Amazon Bedrock",
   S3Vectors = "Amazon S3 Vectors",
-  PgVector = "PostgreSQL pgvector (LiteLLM Connector)",
+  PgVector = "PostgreSQL pgvector (Anonymice Connector)",
   VertexRagEngine = "Vertex AI RAG Engine",
   VertexAiSearch = "Vertex AI Search",
   OpenAI = "OpenAI",
@@ -211,7 +211,7 @@ export const vectorStoreProviderFields: Record<string, VectorStoreFieldConfig[]>
       name: "embedding_model",
       label: "Embedding Model",
       tooltip:
-        "The embedding model on this proxy that was used to create the embeddings already stored in your Valkey index. LiteLLM uses it to embed each search query, so it must be the same model or results will be wrong. Add it under Models first if it is not listed",
+        "The embedding model on this proxy that was used to create the embeddings already stored in your Valkey index. Anonymice uses it to embed each search query, so it must be the same model or results will be wrong. Add it under Models first if it is not listed",
       placeholder: "text-embedding-3-small",
       required: true,
       type: "select",
@@ -220,7 +220,7 @@ export const vectorStoreProviderFields: Record<string, VectorStoreFieldConfig[]>
       name: "valkey_text_field",
       label: "Text Field",
       tooltip:
-        "The field in each stored document that holds its readable text. LiteLLM returns this text in search results. Must match how your documents were stored (default: text)",
+        "The field in each stored document that holds its readable text. Anonymice returns this text in search results. Must match how your documents were stored (default: text)",
       placeholder: "text",
       required: false,
       type: "text",
@@ -230,7 +230,7 @@ export const vectorStoreProviderFields: Record<string, VectorStoreFieldConfig[]>
       name: "valkey_embedding_field",
       label: "Vector Field Name",
       tooltip:
-        "The field in each stored document that holds its embedding. LiteLLM searches against this field, so it must match the field your index was created on (default: embedding)",
+        "The field in each stored document that holds its embedding. Anonymice searches against this field, so it must match the field your index was created on (default: embedding)",
       placeholder: "embedding",
       required: false,
       type: "text",

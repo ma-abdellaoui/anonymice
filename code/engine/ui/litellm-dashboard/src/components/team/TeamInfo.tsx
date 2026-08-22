@@ -620,7 +620,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
       let errMsg = "Failed to add team member";
 
       if (error?.raw?.detail?.error?.includes("Assigning team admins is a premium feature")) {
-        errMsg = "Assigning admins is an enterprise-only feature. Please upgrade your LiteLLM plan to enable this.";
+        errMsg = "Assigning admins is an enterprise-only feature. Contact your administrator to enable this.";
       } else if (error?.message) {
         errMsg = error.message;
       }
@@ -662,7 +662,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
     } catch (error: any) {
       let errMsg = "Failed to update team member";
       if (error?.raw?.detail?.includes("Assigning team admins is a premium feature")) {
-        errMsg = "Assigning admins is an enterprise-only feature. Please upgrade your LiteLLM plan to enable this.";
+        errMsg = "Assigning admins is an enterprise-only feature. Contact your administrator to enable this.";
       } else if (error?.message) {
         errMsg = error.message;
       }
@@ -1463,7 +1463,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                     label={labelWithDocsHint(
                       "Guardrails",
                       "Select which guardrails apply to this team. Global guardrails are enabled by default, uncheck to opt out. Other guardrails are opt-in.",
-                      "https://docs.litellm.ai/docs/proxy/guardrails/quick_start",
+                      "https://github.com/ma-abdellaoui/anonymice",
                     )}
                   >
                     {({ id, value, onChange }) => (
@@ -1511,7 +1511,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                       label={labelWithDocsHint(
                         "Policies",
                         "Apply policies to this team to control guardrails and other settings",
-                        "https://docs.litellm.ai/docs/proxy/guardrails/guardrail_policies",
+                        "https://github.com/ma-abdellaoui/anonymice",
                       )}
                     >
                       {({ id, value, onChange }) => (
@@ -1682,7 +1682,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                         ref={ref}
                         value={value ?? ""}
                         rows={6}
-                        placeholder='{"namespace": "admin", "mount": "secret", "path_prefix": "litellm"}'
+                        placeholder='{"namespace": "admin", "mount": "secret", "path_prefix": "anonymice"}'
                         disabled={!premiumUser}
                       />
                     )}

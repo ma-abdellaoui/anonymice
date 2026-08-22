@@ -38,7 +38,7 @@ const IdJagFormFields: React.FC<IdJagFormFieldsProps> = ({ isEditing = false }) 
         label={
           <FieldLabel
             label="Org Token Endpoint (leg 1)"
-            tooltip="Your IdP org authorization server's token endpoint. LiteLLM exchanges the user's identity assertion here for an ID-JAG assertion (RFC 8693 with requested_token_type=urn:ietf:params:oauth:token-type:id-jag)."
+            tooltip="Your IdP org authorization server's token endpoint. Anonymice exchanges the user's identity assertion here for an ID-JAG assertion (RFC 8693 with requested_token_type=urn:ietf:params:oauth:token-type:id-jag)."
           />
         }
         name="token_exchange_endpoint"
@@ -57,7 +57,7 @@ const IdJagFormFields: React.FC<IdJagFormFieldsProps> = ({ isEditing = false }) 
         label={
           <FieldLabel
             label="Resource Token Endpoint (leg 2)"
-            tooltip="The upstream resource authorization server's token endpoint. LiteLLM posts the ID-JAG assertion here as an RFC 7523 jwt-bearer grant to get the access token the MCP server accepts."
+            tooltip="The upstream resource authorization server's token endpoint. Anonymice posts the ID-JAG assertion here as an RFC 7523 jwt-bearer grant to get the access token the MCP server accepts."
           />
         }
         name={["credentials", "id_jag_resource_token_endpoint"]}
@@ -73,7 +73,7 @@ const IdJagFormFields: React.FC<IdJagFormFieldsProps> = ({ isEditing = false }) 
         )}
       </MountedFormField>
       <MountedFormField
-        label={<FieldLabel label="Client ID" tooltip="OAuth2 client ID LiteLLM authenticates as on both legs." />}
+        label={<FieldLabel label="Client ID" tooltip="OAuth2 client ID Anonymice authenticates as on both legs." />}
         name={["credentials", "client_id"]}
         required={!isEditing}
         rules={requiredWhenCreating("Client ID is required for ID-JAG")}
@@ -90,7 +90,7 @@ const IdJagFormFields: React.FC<IdJagFormFieldsProps> = ({ isEditing = false }) 
         label={
           <FieldLabel
             label="Client Secret"
-            tooltip="Authenticates LiteLLM as the OAuth client via client_secret_post. Leave blank when using a private key instead; a private key takes precedence over this secret."
+            tooltip="Authenticates Anonymice as the OAuth client via client_secret_post. Leave blank when using a private key instead; a private key takes precedence over this secret."
           />
         }
         name={["credentials", "client_secret"]}

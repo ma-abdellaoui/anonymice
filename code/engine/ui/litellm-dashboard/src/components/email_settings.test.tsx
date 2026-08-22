@@ -44,10 +44,8 @@ describe("EmailSettings", () => {
     renderWithProviders(<EmailSettings accessToken="sk-test" premiumUser alerts={alerts} />);
 
     expect(screen.getByText("Email Server Settings")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /LiteLLM Docs: email alerts/ })).toHaveAttribute(
-      "href",
-      "https://docs.litellm.ai/docs/proxy/email",
-    );
+    expect(screen.getByText("Email Server Settings")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
   it("renders one named input per email variable and none for other alert types", () => {
@@ -102,6 +100,10 @@ describe("EmailSettings", () => {
 
     expect(inputNamed("EMAIL_LOGO_URL")).toBeDisabled();
     expect(inputNamed("SMTP_HOST")).toBeEnabled();
+    expect(screen.getByRole("link", { name: "✨ EMAIL_LOGO_URL" })).toHaveAttribute(
+      "href",
+      "https://github.com/ma-abdellaoui/anonymice",
+    );
   });
 
   it("leaves the premium-only fields editable for premium users", () => {

@@ -536,7 +536,7 @@ const UsagePage: React.FC<UsagePageProps> = ({ accessToken, token, userRole, use
             </p>
             <Button
               render={
-                <a href="https://docs.litellm.ai/docs/proxy/cost_tracking" target="_blank" rel="noreferrer">
+                <a href="https://github.com/ma-abdellaoui/anonymice" target="_blank" rel="noreferrer">
                   View Usage Guide
                 </a>
               }
@@ -789,7 +789,7 @@ const UsagePage: React.FC<UsagePageProps> = ({ accessToken, token, userRole, use
             Customers of your LLM API calls. Tracked when a `user` param is passed in your LLM calls{" "}
             <a
               className="text-primary"
-              href="https://docs.litellm.ai/docs/proxy/users"
+              href="https://github.com/ma-abdellaoui/anonymice"
               target="_blank"
               rel="noreferrer"
             >
@@ -921,7 +921,7 @@ const UsagePage: React.FC<UsagePageProps> = ({ accessToken, token, userRole, use
                     Get Started by Tracking cost per tag{" "}
                     <a
                       className="text-primary"
-                      href="https://docs.litellm.ai/docs/proxy/cost_tracking"
+                      href="https://github.com/ma-abdellaoui/anonymice"
                       target="_blank"
                       rel="noreferrer"
                     >

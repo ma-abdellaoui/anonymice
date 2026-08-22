@@ -1,8 +1,7 @@
 import React from "react";
-import { AlertTriangle, CircleCheck, Copy, ExternalLink, Info, LoaderCircle } from "lucide-react";
+import { AlertTriangle, CircleCheck, Copy, LoaderCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 
 import { toast } from "@/lib/toast";
 import { testConnectionRequest } from "../networking";
@@ -200,18 +199,6 @@ ${formattedBody}
           </div>
         </div>
       )}
-
-      <Separator className="my-6" />
-      <Button
-        variant="link"
-        className="px-0"
-        nativeButton={false}
-        render={<a href="https://docs.litellm.ai/docs/providers" target="_blank" rel="noopener noreferrer" />}
-      >
-        <Info data-icon="inline-start" />
-        View Documentation
-        <ExternalLink data-icon="inline-end" />
-      </Button>
     </div>
   );
 };

@@ -225,7 +225,7 @@ describe("BlogDropdown", () => {
         await openDropdown();
 
         const viewAllLink = await screen.findByRole("link", { name: /view all posts/i });
-        expect(viewAllLink).toHaveAttribute("href", "https://docs.litellm.ai/blog");
+        expect(viewAllLink).toHaveAttribute("href", "https://github.com/ma-abdellaoui/anonymice");
         expect(viewAllLink).toHaveAttribute("rel", "noopener noreferrer");
         expect(viewAllLink).toHaveAttribute("target", "_blank");
       });

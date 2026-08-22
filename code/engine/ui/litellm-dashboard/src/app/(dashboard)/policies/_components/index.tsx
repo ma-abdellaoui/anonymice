@@ -71,12 +71,12 @@ const AboutPoliciesAlert = () => (
       <li>Inherit from existing policies and override what you need</li>
     </ul>
     <a
-      href="https://docs.litellm.ai/docs/proxy/guardrails/guardrail_policies"
+      href="https://github.com/ma-abdellaoui/anonymice"
       target="_blank"
       rel="noopener noreferrer"
       className="mt-1 inline-block text-primary underline underline-offset-4"
     >
-      Learn more in the documentation -&gt;
+      Learn more on GitHub -&gt;
     </a>
   </DismissibleAlert>
 );
@@ -531,17 +531,17 @@ const PoliciesPanel: React.FC<PoliciesPanelProps> = ({ accessToken, userRole }) 
               </li>
             </ul>
             <a
-              href="https://docs.litellm.ai/docs/proxy/guardrails/guardrail_policies#attachments"
+              href="https://github.com/ma-abdellaoui/anonymice"
               target="_blank"
               rel="noopener noreferrer"
               className="mt-1 inline-block text-primary underline underline-offset-4"
             >
-              Learn more about attachments -&gt;
+              Learn more on GitHub -&gt;
             </a>
           </DismissibleAlert>
 
           <DismissibleAlert title="Enterprise Feature Notice" icon={<TriangleAlert />}>
-            Parts of policy attachments will be on LiteLLM Enterprise in subsequent releases.
+            Parts of policy attachments will be available in Anonymice Enterprise in subsequent releases.
           </DismissibleAlert>
 
           <div className="mb-4 flex items-center justify-between">

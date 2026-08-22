@@ -168,11 +168,11 @@ describe("AddModelPanel submit payload contract", () => {
     });
   });
 
-  it("merges typed LiteLLM Params into litellm_params", async () => {
+  it("merges typed Anonymice Params into litellm_params", async () => {
     const { user, openAdvanced, fillRequired, submit } = await setup();
     await fillRequired();
     await openAdvanced();
-    await user.type(screen.getByLabelText("LiteLLM Params"), '{{"rpm": 7}');
+    await user.type(screen.getByLabelText("Anonymice Params"), '{{"rpm": 7}');
     await submit();
 
     expect(lastCreatedModel()).toStrictEqual({
@@ -186,7 +186,7 @@ describe("AddModelPanel submit payload contract", () => {
     const { user, openAdvanced, closeAdvanced, fillRequired, submit } = await setup();
     await fillRequired();
     await openAdvanced();
-    await user.type(screen.getByLabelText("LiteLLM Params"), '{{"rpm": 7}');
+    await user.type(screen.getByLabelText("Anonymice Params"), '{{"rpm": 7}');
     await closeAdvanced();
     await submit();
 
@@ -201,10 +201,10 @@ describe("AddModelPanel submit payload contract", () => {
     const { user, openAdvanced, closeAdvanced, fillRequired, submit } = await setup();
     await fillRequired();
     await openAdvanced();
-    await user.type(screen.getByLabelText("LiteLLM Params"), '{{"rpm": 7}');
+    await user.type(screen.getByLabelText("Anonymice Params"), '{{"rpm": 7}');
     await closeAdvanced();
     await openAdvanced();
-    expect(screen.getByLabelText("LiteLLM Params")).toHaveValue('{"rpm": 7}');
+    expect(screen.getByLabelText("Anonymice Params")).toHaveValue('{"rpm": 7}');
 
     await submit();
 
@@ -362,12 +362,12 @@ describe("AddModelPanel validation gates", () => {
     expect(modelCreateCall).not.toHaveBeenCalled();
   });
 
-  it("blocks the submit when LiteLLM Params is not valid JSON", async () => {
+  it("blocks the submit when Anonymice Params is not valid JSON", async () => {
     mockPtuEnabled.mockReturnValue(false);
     const { user, openAdvanced, fillRequired, submitExpectingRejection } = await setup();
     await fillRequired();
     await openAdvanced();
-    await user.type(screen.getByLabelText("LiteLLM Params"), "rpm: 7");
+    await user.type(screen.getByLabelText("Anonymice Params"), "rpm: 7");
     await submitExpectingRejection("Please enter valid JSON");
 
     expect(modelCreateCall).not.toHaveBeenCalled();
@@ -381,12 +381,12 @@ describe("AddModelPanel behaviours the removed Advanced Settings form instance n
     mockAuthorized.mockReturnValue(PROXY_ADMIN);
   });
 
-  it("leaves LiteLLM Params untouched when pass through routes is switched on", async () => {
+  it("leaves Anonymice Params untouched when pass through routes is switched on", async () => {
     const { user, openAdvanced, fillRequired, submit } = await setup();
     await fillRequired();
     await openAdvanced();
     await user.click(screen.getByRole("switch", { name: "Use in pass through routes" }));
-    expect(screen.getByLabelText("LiteLLM Params")).toHaveValue("");
+    expect(screen.getByLabelText("Anonymice Params")).toHaveValue("");
 
     await submit();
 

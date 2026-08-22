@@ -149,7 +149,7 @@ const CacheSettings: React.FC<CacheSettingsProps> = ({ accessToken }) => {
         <form onSubmit={(event) => event.preventDefault()} className="space-y-6">
           <div className="max-w-3xl">
             <h3 className="text-sm font-medium text-foreground">Cache Settings</h3>
-            <p className="text-xs text-muted-foreground mt-1">Configure Redis cache for LiteLLM</p>
+            <p className="text-xs text-muted-foreground mt-1">Configure Redis cache for Anonymice</p>
           </div>
 
           <RedisTypeSelector

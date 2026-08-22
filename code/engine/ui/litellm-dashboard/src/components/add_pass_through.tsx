@@ -164,8 +164,8 @@ const AddPassThroughEndpoint: React.FC<AddFallbacksProps> = ({
                 <Info />
                 <AlertTitle>What is a Pass-Through Endpoint?</AlertTitle>
                 <AlertDescription>
-                  Route requests from your LiteLLM proxy to any external API. Perfect for custom models, image
-                  generation APIs, or any service you want to proxy through LiteLLM.
+                  Route requests from your Anonymice proxy to any external API. Perfect for custom models, image
+                  generation APIs, or any service you want to proxy through Anonymice.
                 </AlertDescription>
               </Alert>
 

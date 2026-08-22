@@ -311,12 +311,6 @@ const Hint: React.FC<{ text: string }> = ({ text }) => (
   </Tooltip>
 );
 
-const DocsHint: React.FC<{ text: string; href: string }> = ({ text, href }) => (
-  <a href={href} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()}>
-    <Hint text={text} />
-  </a>
-);
-
 const ChipList: React.FC<{ values: unknown; emptyLabel: string }> = ({ values, emptyLabel }) => {
   if (!values) {
     return <>Not Set</>;
@@ -458,8 +452,8 @@ const ModelInfoEditForm: React.FC<ModelInfoEditFormProps> = ({
             {textField("model_name", "Model Name", "Enter model name", localModelData.model_name)}
             {textField(
               "litellm_model_name",
-              "LiteLLM Model Name",
-              "Enter LiteLLM model name",
+              "Anonymice Model Name",
+              "Enter Anonymice model name",
               localModelData.litellm_model_name,
             )}
 
@@ -559,10 +553,7 @@ const ModelInfoEditForm: React.FC<ModelInfoEditFormProps> = ({
             <div>
               <FieldLabel>
                 Guardrails
-                <DocsHint
-                  text="Apply safety guardrails to this model to filter content or enforce policies"
-                  href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start"
-                />
+                <Hint text="Apply safety guardrails to this model to filter content or enforce policies" />
               </FieldLabel>
               {isEditing ? (
                 tagsField(
@@ -580,10 +571,7 @@ const ModelInfoEditForm: React.FC<ModelInfoEditFormProps> = ({
             <div>
               <FieldLabel>
                 Attached Knowledge Bases (RAG)
-                <DocsHint
-                  text="Vector stores used for RAG. Every request to this model will automatically retrieve context from these knowledge bases."
-                  href="https://docs.litellm.ai/docs/completion/knowledgebase"
-                />
+                <Hint text="Vector stores used for RAG. Every request to this model will automatically retrieve context from these knowledge bases." />
               </FieldLabel>
               {isEditing ? (
                 <FormField control={form.control} name="vector_store_ids">
@@ -772,11 +760,8 @@ const ModelInfoEditForm: React.FC<ModelInfoEditFormProps> = ({
 
             <div>
               <FieldLabel>
-                LiteLLM Params
-                <DocsHint
-                  text="Optional litellm params used for making a litellm.completion() call. Some params are automatically added by LiteLLM."
-                  href="https://docs.litellm.ai/docs/completion/input"
-                />
+                Anonymice Params
+                <Hint text="Optional proxy parameters used when making a completion call. Some parameters are added automatically by Anonymice." />
               </FieldLabel>
               {isEditing ? (
                 <FormField control={form.control} name="litellm_extra_params">

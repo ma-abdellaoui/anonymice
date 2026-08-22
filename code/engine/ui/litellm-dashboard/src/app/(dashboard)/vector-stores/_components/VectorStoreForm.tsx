@@ -258,7 +258,7 @@ const VectorStoreForm: React.FC<VectorStoreFormProps> = ({
       ? '6917529027641081856 (corpus ID from Vertex AI / "RAG Engine" console)'
       : selectedProvider === "vertex_ai/search_api"
         ? vertexEngineId
-          ? "Any identifier you'll use to reference this in LiteLLM"
+          ? "Any identifier you'll use to reference this in Anonymice"
           : 'my-datastore_1234567890 (data store ID from Vertex AI / "Agent Search" console)'
         : selectedProvider === "valkey"
           ? "my-search-index (FT index name in Valkey)"
@@ -319,14 +319,9 @@ const VectorStoreForm: React.FC<VectorStoreFormProps> = ({
                   <Info />
                   <AlertTitle>PG Vector Setup Required</AlertTitle>
                   <AlertDescription>
-                    <p>LiteLLM provides a server to connect to PG Vector. To use this provider:</p>
+                    <p>Anonymice provides a server to connect to PG Vector. To use this provider:</p>
                     <ol style={{ marginLeft: "16px", marginTop: "8px", listStyleType: "decimal" }}>
-                      <li>
-                        Deploy the litellm-pgvector server from:{" "}
-                        <a href="https://github.com/BerriAI/litellm-pgvector" target="_blank" rel="noopener noreferrer">
-                          https://github.com/BerriAI/litellm-pgvector
-                        </a>
-                      </li>
+                      <li>Deploy the litellm-pgvector server supplied for your environment</li>
                       <li>Configure your PostgreSQL database with pgvector extension</li>
                       <li>Start the server and note the API base URL and API key</li>
                       <li>Enter those details in the fields below</li>
@@ -341,7 +336,7 @@ const VectorStoreForm: React.FC<VectorStoreFormProps> = ({
                   <AlertTitle>Valkey Setup Required</AlertTitle>
                   <AlertDescription>
                     <p>
-                      LiteLLM searches documents you have already stored in Valkey. It does not create the index or
+                      Anonymice searches documents you have already stored in Valkey. It does not create the index or
                       upload documents for you. Before creating this vector store, make sure:
                     </p>
                     <ol style={{ marginLeft: "16px", marginTop: "8px", listStyleType: "decimal" }}>
@@ -363,7 +358,7 @@ const VectorStoreForm: React.FC<VectorStoreFormProps> = ({
                       </li>
                     </ol>
                     <p style={{ marginTop: "8px" }}>
-                      When a query comes in, LiteLLM converts it to an embedding with the model below and returns the
+                      When a query comes in, Anonymice converts it to an embedding with the model below and returns the
                       closest matching documents from your index.
                     </p>
                   </AlertDescription>
@@ -433,7 +428,7 @@ const VectorStoreForm: React.FC<VectorStoreFormProps> = ({
                       <li>
                         For website, healthcare, and connector-based sources (Drive, Gmail, Slack, Jira, etc.): create a
                         search app on top of the data store, then copy the <strong>Engine ID</strong> and enter it in
-                        the Engine ID field. The Vector Store ID is still required as the LiteLLM-side name for this
+                        the Engine ID field. The Vector Store ID is still required as the Anonymice-side name for this
                         record, but it isn&apos;t used in the GCP URL when Engine ID is set.
                       </li>
                     </ol>
@@ -460,7 +455,7 @@ const VectorStoreForm: React.FC<VectorStoreFormProps> = ({
                 name="vector_store_name"
                 label={labelWithHint(
                   "Vector Store Name",
-                  "Custom name you want to give to the vector store, this name will be rendered on the LiteLLM UI",
+                  "Custom name you want to give to the vector store, this name will be rendered on the Anonymice UI",
                 )}
               >
                 {({ ref, value, ...field }) => <Input {...field} ref={ref} value={value ?? ""} />}

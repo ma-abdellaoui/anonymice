@@ -23,15 +23,14 @@ const APIReferenceView: React.FC<ApiRefProps> = ({ proxySettings }) => {
   return (
     <div className="grid grid-cols-1 gap-2 p-8 h-[80vh] w-full mt-2">
       <div className="mb-5">
-        {/* Header row with Docs link on the right */}
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold text-foreground">OpenAI Compatible Proxy: API Reference</h1>
-          <DocLink className="ml-3 shrink-0" href="https://docs.litellm.ai/docs/proxy/user_keys" />
+          <DocLink className="ml-3 shrink-0" href="https://github.com/ma-abdellaoui/anonymice" />
         </div>
 
         <p className="mt-2 mb-2 text-sm text-muted-foreground">
-          LiteLLM is OpenAI Compatible. This means your API Key works with the OpenAI SDK. Just replace the base_url to
-          point to your litellm proxy. Example Below{" "}
+          Anonymice is OpenAI compatible. This means your API Key works with the OpenAI SDK. Replace the base_url to
+          point to your Anonymice proxy. Example below.
         </p>
 
         <Tabs defaultValue="openai">
@@ -52,7 +51,7 @@ const APIReferenceView: React.FC<ApiRefProps> = ({ proxySettings }) => {
               code={`import openai
 client = openai.OpenAI(
     api_key="your_api_key",
-    base_url="${base_url}" # LiteLLM Proxy is OpenAI compatible, Read More: https://docs.litellm.ai/docs/proxy/user_keys
+    base_url="${base_url}" # Repository: https://github.com/ma-abdellaoui/anonymice
 )
 
 response = client.chat.completions.create(
@@ -79,10 +78,10 @@ from llama_index.embeddings import AzureOpenAIEmbedding
 from llama_index import VectorStoreIndex, SimpleDirectoryReader, ServiceContext
 
 llm = AzureOpenAI(
-    engine="azure-gpt-3.5",               # model_name on litellm proxy
+    engine="azure-gpt-3.5",               # model_name on Anonymice
     temperature=0.0,
-    azure_endpoint="${base_url}", # litellm proxy endpoint
-    api_key="sk-1234",                    # litellm proxy API Key
+    azure_endpoint="${base_url}", # Anonymice endpoint
+    api_key="sk-1234",                    # Anonymice API Key
     api_version="2023-07-01-preview",
 )
 
@@ -125,7 +124,7 @@ messages = [
         content="You are a helpful assistant that im using to make a test request to."
     ),
     HumanMessage(
-        content="test from litellm. tell me why it's amazing in 1 sentence"
+        content="test from Anonymice. tell me why it's amazing in 1 sentence"
     ),
 ]
 response = chat(messages)

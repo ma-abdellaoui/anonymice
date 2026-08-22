@@ -168,9 +168,9 @@ const CacheDashboard: React.FC<CachePageProps> = ({ accessToken, token, userRole
         <Card>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              Analytics for LiteLLM&apos;s{" "}
+              Analytics for Anonymice&apos;s{" "}
               <a
-                href="https://docs.litellm.ai/docs/proxy/caching"
+                href="https://github.com/ma-abdellaoui/anonymice"
                 target="_blank"
                 rel="noreferrer"
                 className="underline"
@@ -179,7 +179,7 @@ const CacheDashboard: React.FC<CachePageProps> = ({ accessToken, token, userRole
               </a>{" "}
               (e.g. Redis / in-memory): requests answered from cache without calling the LLM provider. Provider-side{" "}
               <a
-                href="https://docs.litellm.ai/docs/completion/prompt_caching"
+                href="https://github.com/ma-abdellaoui/anonymice"
                 target="_blank"
                 rel="noreferrer"
                 className="underline"

@@ -189,9 +189,9 @@ export default function PluginSettings() {
                 control={form.control}
                 name="name"
                 label="Name (identifier)"
-                description="Used in URLs and config. No spaces. E.g. litellm-platform-plugin"
+                description="Used in URLs and config. No spaces. E.g. anonymice-platform-plugin"
               >
-                {({ ref, ...field }) => <Input {...field} ref={ref} placeholder="litellm-platform-plugin" />}
+                {({ ref, ...field }) => <Input {...field} ref={ref} placeholder="anonymice-platform-plugin" />}
               </FormField>
               <FormField control={form.control} name="display_name" label="Display Name">
                 {({ ref, ...field }) => <Input {...field} ref={ref} placeholder="Agent Control Plane" />}
@@ -203,7 +203,7 @@ export default function PluginSettings() {
                 control={form.control}
                 name="plugin_key"
                 label="Plugin Key"
-                description="Optional. The plugin's own credential, injected as Authorization: Bearer <key> only when litellm reverse-proxies API calls to the plugin's backend (/plugin-proxy/<name>/*). Leave blank for plugins that use the forwarded litellm user token (e.g. iframe plugins) — that path uses the user's token, not this key."
+                description="Optional. The plugin's own credential, injected as Authorization: Bearer <key> only when Anonymice reverse-proxies API calls to the plugin's backend (/plugin-proxy/<name>/*). Leave blank for plugins that use the forwarded Anonymice user token (e.g. iframe plugins) — that path uses the user's token, not this key."
               >
                 {({ ref, ...field }) => (
                   <InputGroup>

@@ -124,24 +124,24 @@ const ConditionalPublicModelName: React.FC = () => {
 
   const publicNameTooltipContent = (
     <>
-      <div className="mb-2 font-normal">The name you specify in your API calls to LiteLLM Proxy</div>
+      <div className="mb-2 font-normal">The name you specify in your API calls to Anonymice</div>
       <div className="mb-2 font-normal">
         <strong>Example:</strong> If you name your public model{" "}
         <code className="bg-muted px-1 py-0.5 rounded-sm text-xs">example-name</code>, and choose{" "}
-        <code className="bg-muted px-1 py-0.5 rounded-sm text-xs">openai/qwen-plus-latest</code> as the LiteLLM model
+        <code className="bg-muted px-1 py-0.5 rounded-sm text-xs">openai/qwen-plus-latest</code> as the Anonymice model
       </div>
       <div className="mb-2 font-normal">
-        <strong>Usage:</strong> You make an API call to the LiteLLM proxy with{" "}
+        <strong>Usage:</strong> You make an API call to the Anonymice proxy with{" "}
         <code className="bg-muted px-1 py-0.5 rounded-sm text-xs">model = &quot;example-name&quot;</code>
       </div>
       <div className="font-normal">
-        <strong>Result:</strong> LiteLLM sends{" "}
+        <strong>Result:</strong> Anonymice sends{" "}
         <code className="bg-muted px-1 py-0.5 rounded-sm text-xs">qwen-plus-latest</code> to the provider
       </div>
     </>
   );
 
-  const liteLLMModelTooltipContent = <div>The model name LiteLLM will send to the LLM API</div>;
+  const liteLLMModelTooltipContent = <div>The model name Anonymice will send to the LLM API</div>;
 
   const columns: ColumnDef<ModelMapping>[] = [
     {
@@ -194,7 +194,7 @@ const ConditionalPublicModelName: React.FC = () => {
       accessorKey: "litellm_model",
       header: () => (
         <span className="flex items-center">
-          LiteLLM Model Name
+          Anonymice Model Name
           <SimpleTooltip content={liteLLMModelTooltipContent} width="360px" />
         </span>
       ),
@@ -207,7 +207,7 @@ const ConditionalPublicModelName: React.FC = () => {
       label={
         <span className="flex items-center">
           Model Mappings
-          <SimpleTooltip content="Map public model names to LiteLLM model names for load balancing" />
+          <SimpleTooltip content="Map public model names to Anonymice model names for load balancing" />
         </span>
       }
       required

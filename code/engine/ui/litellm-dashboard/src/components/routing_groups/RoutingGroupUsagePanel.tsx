@@ -69,7 +69,7 @@ export function RoutingGroupUsagePanel({ group, baseUrl }: RoutingGroupUsagePane
         <span className="text-sm font-medium text-foreground">How routing works for this group</span>
       </div>
       <p className="mb-3 text-sm text-muted-foreground">
-        Callers request any model in the group by name; LiteLLM picks a deployment behind the scenes using the{" "}
+        Callers request any model in the group by name; Anonymice picks a deployment behind the scenes using the{" "}
         <span className="font-medium text-foreground">{formatStrategyLabel(group.routing_strategy)}</span> strategy.
       </p>
       <Tabs defaultValue="curl">

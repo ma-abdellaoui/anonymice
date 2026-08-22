@@ -15,7 +15,7 @@ describe("LitellmModelNameField", () => {
         />
       </MountedFormHost>,
     );
-    expect(getByText("LiteLLM Model Name(s)")).toBeInTheDocument();
+    expect(getByText("Anonymice Model Name(s)")).toBeInTheDocument();
   });
 
   it("should show Azure placeholder as 'my-deployment'", () => {

@@ -785,7 +785,7 @@ const UsagePage: React.FC<UsagePageProps> = ({ teams, organizations }) => {
                       <ShadcnCard className="h-full">
                         <CardContent>
                           <h3 className="text-lg font-medium text-foreground">
-                            {modelViewType === "groups" ? "Top Public Model Names" : "Top Litellm Models"}
+                            {modelViewType === "groups" ? "Top Public Model Names" : "Top Anonymice Models"}
                           </h3>
                           <div className="flex justify-between items-center mb-4">
                             <Tabs

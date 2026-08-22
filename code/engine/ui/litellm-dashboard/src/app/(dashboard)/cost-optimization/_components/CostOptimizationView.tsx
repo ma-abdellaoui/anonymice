@@ -53,7 +53,7 @@ const CostOptimizationView: React.FC<CostOptimizationViewProps> = ({ accessToken
         <p className="col-start-2 text-sm text-muted-foreground">
           Have feedback? Join the discussion{" "}
           <a
-            href="https://github.com/BerriAI/litellm/discussions/32168"
+            href="https://github.com/ma-abdellaoui/anonymice"
             target="_blank"
             rel="noopener noreferrer"
             className="text-primary underline underline-offset-2"

@@ -46,15 +46,16 @@ describe("APIReferenceView", () => {
     expect(renderedCode).not.toContain(proxyUrl);
   });
 
-  it("renders the page title, blurb and docs link", () => {
+  it("renders the page title, compatibility blurb, and Anonymice GitHub link", () => {
     render(<APIReferenceView proxySettings={{ PROXY_BASE_URL: "https://proxy.litellm.test" }} />);
 
     expect(screen.getByText("OpenAI Compatible Proxy: API Reference")).toBeInTheDocument();
-    expect(screen.getByText(/LiteLLM is OpenAI Compatible/)).toBeInTheDocument();
+    expect(screen.getByText(/Anonymice is OpenAI compatible/)).toBeInTheDocument();
 
-    const docsLink = screen.getByRole("link", { name: /API Reference Docs/ });
-    expect(docsLink).toHaveAttribute("href", "https://docs.litellm.ai/docs/proxy/user_keys");
-    expect(docsLink).toHaveAttribute("target", "_blank");
+    expect(screen.getByRole("link", { name: /Anonymice on GitHub/ })).toHaveAttribute(
+      "href",
+      "https://github.com/ma-abdellaoui/anonymice",
+    );
   });
 
   it("exposes the three SDK tabs with the first selected by default", () => {

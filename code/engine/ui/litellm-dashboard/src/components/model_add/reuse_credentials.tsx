@@ -85,7 +85,7 @@ const ReuseCredentialsModal: React.FC<ReuseCredentialsModalProps> = ({
                   <TooltipTrigger
                     render={
                       <a
-                        href="https://github.com/BerriAI/litellm/issues"
+                        href="https://github.com/ma-abdellaoui/anonymice"
                         className="text-sm text-primary underline-offset-4 hover:underline"
                       >
                         Need Help?

@@ -80,17 +80,17 @@ function ModelInformationCell({ model, displayName }: { model: ModelData; displa
             </span>
           </div>
           <div className="flex flex-col gap-0.5">
-            <span className="text-xs text-muted-foreground">LiteLLM Model Name</span>
+            <span className="text-xs text-muted-foreground">Anonymice Model Name</span>
             <span className="flex min-w-0 items-center gap-1.5">
               <span className="truncate font-mono text-sm text-foreground" title={litellmModelName}>
                 {litellmModelName}
               </span>
               <button
                 type="button"
-                aria-label="Copy LiteLLM model name"
+                aria-label="Copy Anonymice model name"
                 data-testid={`copy-litellm-model-name-${model.model_info.id}`}
                 className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
-                onClick={() => void copyToClipboard(litellmModelName, "LiteLLM model name copied")}
+                onClick={() => void copyToClipboard(litellmModelName, "Anonymice model name copied")}
               >
                 <Copy className="size-3.5" />
               </button>
@@ -128,7 +128,7 @@ function CredentialsHeader() {
                 Reusable
               </span>
               <span className="text-xs text-muted-foreground">
-                Credentials saved in LiteLLM that can be added to models repeatedly.
+                Credentials saved in Anonymice that can be added to models repeatedly.
               </span>
             </div>
             <div className="flex flex-col gap-1">

@@ -256,7 +256,7 @@ const CustomCodeModal: React.FC<CustomCodeModalProps> = ({ visible, onClose, onS
     pre_mcp_call: {
       name: "Pre MCP (MCP tool as OpenAI tool)",
       data: {
-        texts: ['Tool: read_wiki_structure\nArguments: {"repoName": "BerriAI/litellm"}'],
+        texts: ['Tool: read_wiki_structure\nArguments: {"repoName": "ma-abdellaoui/anonymice"}'],
         images: [],
         tools: [
           {
@@ -267,7 +267,7 @@ const CustomCodeModal: React.FC<CustomCodeModalProps> = ({ visible, onClose, onS
               parameters: {
                 type: "object",
                 properties: {
-                  repoName: { type: "string", description: "Repository name, e.g. BerriAI/litellm" },
+                  repoName: { type: "string", description: "Repository name, e.g. ma-abdellaoui/anonymice" },
                 },
                 required: ["repoName"],
               },
@@ -280,12 +280,12 @@ const CustomCodeModal: React.FC<CustomCodeModalProps> = ({ visible, onClose, onS
             type: "function",
             function: {
               name: "read_wiki_structure",
-              arguments: '{"repoName": "BerriAI/litellm"}',
+              arguments: '{"repoName": "ma-abdellaoui/anonymice"}',
             },
           },
         ],
         structured_messages: [
-          { role: "user", content: 'Tool: read_wiki_structure\nArguments: {"repoName": "BerriAI/litellm"}' },
+          { role: "user", content: 'Tool: read_wiki_structure\nArguments: {"repoName": "ma-abdellaoui/anonymice"}' },
         ],
         model: "mcp-tool-call",
       },
@@ -568,7 +568,7 @@ const CustomCodeModal: React.FC<CustomCodeModalProps> = ({ visible, onClose, onS
                 <SelectSeparator />
                 <button
                   type="button"
-                  onClick={() => window.open("https://models.litellm.ai/guardrails", "_blank")}
+                  onClick={() => window.open("https://github.com/ma-abdellaoui/anonymice", "_blank")}
                   className="flex w-full items-center gap-1 rounded-sm px-2 py-1.5 text-xs text-primary hover:bg-accent"
                 >
                   <Users className="size-3.5" />
@@ -768,7 +768,7 @@ const CustomCodeModal: React.FC<CustomCodeModalProps> = ({ visible, onClose, onS
                   </div>
                 </div>
               </div>
-              <Button size="sm" onClick={() => window.open("https://github.com/BerriAI/litellm-guardrails", "_blank")}>
+              <Button size="sm" onClick={() => window.open("https://github.com/ma-abdellaoui/anonymice", "_blank")}>
                 <ExternalLink />
                 Contribute Template
               </Button>

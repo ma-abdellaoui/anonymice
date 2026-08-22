@@ -324,7 +324,7 @@ describe("LogDetailContent", () => {
 
     expect(await screen.findByRole("link", { name: "Docs" })).toHaveAttribute(
       "href",
-      "https://docs.litellm.ai/docs/proxy/caching",
+      "https://github.com/ma-abdellaoui/anonymice",
     );
   });
 
@@ -349,7 +349,7 @@ describe("LogDetailContent", () => {
 
     expect(await screen.findByRole("link", { name: "Docs" })).toHaveAttribute(
       "href",
-      "https://docs.litellm.ai/docs/completion/prompt_caching",
+      "https://github.com/ma-abdellaoui/anonymice",
     );
   });
 
@@ -359,7 +359,7 @@ describe("LogDetailContent", () => {
     expect(screen.queryByText("Response Cache")).not.toBeInTheDocument();
   });
 
-  it("should display LiteLLM Overhead when litellm_overhead_time_ms is in metadata", () => {
+  it("should display Anonymice Overhead when litellm_overhead_time_ms is in metadata", () => {
     render(
       <LogDetailContent
         logEntry={createLogEntry({
@@ -371,14 +371,14 @@ describe("LogDetailContent", () => {
       />,
     );
 
-    expect(screen.getByText("LiteLLM Overhead")).toBeInTheDocument();
+    expect(screen.getByText("Anonymice Overhead")).toBeInTheDocument();
     expect(screen.getByText("42.50 ms")).toBeInTheDocument();
   });
 
-  it("should not display LiteLLM Overhead when litellm_overhead_time_ms is absent from metadata", () => {
+  it("should not display Anonymice Overhead when litellm_overhead_time_ms is absent from metadata", () => {
     render(<LogDetailContent logEntry={createLogEntry({ metadata: { status: "success" } })} />);
 
-    expect(screen.queryByText("LiteLLM Overhead")).not.toBeInTheDocument();
+    expect(screen.queryByText("Anonymice Overhead")).not.toBeInTheDocument();
   });
 
   const retriesItem = () => screen.getByText("Retries").parentElement as HTMLElement;

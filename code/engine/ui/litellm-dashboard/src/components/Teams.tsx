@@ -696,7 +696,7 @@ const Teams: React.FC<TeamProps> = ({ accessToken, userID, userRole, premiumUser
                           label={labelWithDocsHint(
                             "Organization",
                             "Organizations can have multiple teams. Learn more about the user management hierarchy",
-                            "https://docs.litellm.ai/docs/proxy/user_management_heirarchy",
+                            "https://github.com/ma-abdellaoui/anonymice",
                           )}
                           description={
                             isOrgAdmin && isSingleOrg
@@ -899,7 +899,7 @@ const Teams: React.FC<TeamProps> = ({ accessToken, userID, userRole, premiumUser
                               ref={ref}
                               value={value ?? ""}
                               rows={4}
-                              placeholder='{"namespace": "admin", "mount": "secret", "path_prefix": "litellm"}'
+                              placeholder='{"namespace": "admin", "mount": "secret", "path_prefix": "anonymice"}'
                               disabled={!premiumUser}
                             />
                           )}
@@ -911,7 +911,7 @@ const Teams: React.FC<TeamProps> = ({ accessToken, userID, userRole, premiumUser
                           label={labelWithDocsHint(
                             "Guardrails",
                             "Setup your first guardrail",
-                            "https://docs.litellm.ai/docs/proxy/guardrails/quick_start",
+                            "https://github.com/ma-abdellaoui/anonymice",
                           )}
                           description="Select existing guardrails or enter new ones"
                         >
@@ -956,7 +956,7 @@ const Teams: React.FC<TeamProps> = ({ accessToken, userID, userRole, premiumUser
                             label={labelWithDocsHint(
                               "Policies",
                               "Apply policies to this team to control guardrails and other settings",
-                              "https://docs.litellm.ai/docs/proxy/guardrails/guardrail_policies",
+                              "https://github.com/ma-abdellaoui/anonymice",
                             )}
                             description="Select existing policies or enter new ones"
                           >

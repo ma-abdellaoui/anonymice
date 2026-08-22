@@ -9,6 +9,7 @@ if server_root_path != "":
     url_to_redirect_to += server_root_path
 url_to_redirect_to += "/login"
 new_ui_login_url: Final = get_custom_url("", "ui/login")
+anonymice_logo_url: Final = get_custom_url("", "ui/assets/brand/anonymice-full-logo.png")
 
 
 def build_ui_login_form(
@@ -40,8 +41,8 @@ def build_ui_login_form(
                 </svg>
                 Default Credentials
             </div>
-            <p>By default, Username is <code>admin</code> and Password is your set LiteLLM Proxy <code>MASTER_KEY</code>.</p>
-            <p>Need to set UI credentials or SSO? <a href="https://docs.litellm.ai/docs/proxy/ui" target="_blank">Check the documentation</a>.</p>
+            <p>By default, Username is <code>admin</code> and Password is your set Anonymice Proxy <code>MASTER_KEY</code>.</p>
+            <p>Need to set UI credentials or SSO? <a href="https://github.com/ma-abdellaoui/anonymice" target="_blank" rel="noopener noreferrer">Visit the Anonymice repository</a>.</p>
         </div>
         """
     )
@@ -51,7 +52,7 @@ def build_ui_login_form(
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>LiteLLM Login</title>
+    <title>Anonymice Login</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         body {{
@@ -81,9 +82,11 @@ def build_ui_login_form(
         }}
         
         .logo {{
-            font-size: 24px;
-            font-weight: 600;
-            color: #1e293b;
+            display: block;
+            width: 192px;
+            height: 192px;
+            margin: 0 auto;
+            object-fit: contain;
         }}
         
         h2 {{
@@ -106,14 +109,14 @@ def build_ui_login_form(
             border-radius: 6px;
             padding: 20px;
             margin-bottom: 30px;
-            border-left: 4px solid #2563eb;
+            border-left: 4px solid #1389A0;
         }}
         
         .info-header {{
             display: flex;
             align-items: center;
             margin-bottom: 12px;
-            color: #1e40af;
+            color: #1389A0;
             font-weight: 600;
             font-size: 16px;
         }}
@@ -159,8 +162,8 @@ def build_ui_login_form(
         input[type="text"]:focus,
         input[type="password"]:focus {{
             outline: none;
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+            border-color: #1389A0;
+            box-shadow: 0 0 0 2px rgba(19, 137, 160, 0.2);
         }}
 
         .toggle-password {{
@@ -185,7 +188,7 @@ def build_ui_login_form(
         }}
 
         input[type="submit"] {{
-            background-color: #6466E9;
+            background-color: #1389A0;
             color: #fff;
             cursor: pointer;
             font-weight: 500;
@@ -199,11 +202,11 @@ def build_ui_login_form(
         }}
 
         input[type="submit"]:hover {{
-            background-color: #4138C2;
+            background-color: #0f7184;
         }}
         
         a {{
-            color: #3b82f6;
+            color: #1389A0;
             text-decoration: none;
         }}
 
@@ -249,12 +252,10 @@ def build_ui_login_form(
     <form action="{url_to_redirect_to}" method="post">
         {banner_html}
         <div class="logo-container">
-            <div class="logo">
-                🚅 LiteLLM
-            </div>
+            <img class="logo" src="{anonymice_logo_url}" alt="Anonymice">
         </div>
         <h2>Login</h2>
-        <p class="subtitle">Access your LiteLLM Admin UI.</p>
+        <p class="subtitle">Access your Anonymice Admin UI.</p>
         {info_box_html}
         <label for="username">Username<span class="required">*</span></label>
         <input type="text" id="username" name="username" required placeholder="Enter your username" autocomplete="username">

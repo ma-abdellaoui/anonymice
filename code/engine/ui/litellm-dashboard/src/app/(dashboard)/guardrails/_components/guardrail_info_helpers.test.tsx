@@ -75,6 +75,16 @@ describe("guardrail_info_helpers", () => {
       expect(result.InvalidProvider).toBeUndefined();
       expect(result.StringValue).toBeUndefined();
     });
+
+    it("rebrands upstream provider names without changing partner names", () => {
+      const result = populateGuardrailProviders({
+        litellm_content_filter: { ui_friendly_name: "LiteLLM Content Filter" },
+        partner_guardrail: { ui_friendly_name: "Partner Guardrail" },
+      });
+
+      expect(result.LitellmContentFilter).toBe("Anonymice Content Filter");
+      expect(result.PartnerGuardrail).toBe("Partner Guardrail");
+    });
   });
 
   describe("getGuardrailProviders", () => {
@@ -114,7 +124,7 @@ describe("guardrail_info_helpers", () => {
   });
 
   describe("shouldRenderContentFilterConfigSettings", () => {
-    it("should return true when dynamic providers include LiteLLM Content Filter", () => {
+    it("should return true when dynamic providers include the upstream content filter", () => {
       populateGuardrailProviders({
         litellm_content_filter: {
           ui_friendly_name: "LiteLLM Content Filter",

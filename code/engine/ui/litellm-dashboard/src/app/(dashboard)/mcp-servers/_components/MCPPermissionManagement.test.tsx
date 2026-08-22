@@ -31,7 +31,7 @@ describe("MCPPermissionManagement", () => {
   it("should default allow_all_keys switch to unchecked for new servers", async () => {
     renderWithForm();
     await expandPanel();
-    expect(screen.getByRole("switch", { name: "Allow All LiteLLM Keys" })).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: "Allow All Anonymice Keys" })).not.toBeChecked();
   });
 
   const renderWithInitialValues = (initialValues: Record<string, unknown>, props = {}) =>
@@ -89,8 +89,6 @@ describe("MCPPermissionManagement", () => {
     });
 
     const user = await expandPanel();
-    // Find the switch associated with "Allow All LiteLLM Keys" text
-    // The first switch in the component is for allow_all_keys
     const switches = screen.getAllByRole("switch");
     const toggle = switches[0];
     expect(toggle).toBeChecked();

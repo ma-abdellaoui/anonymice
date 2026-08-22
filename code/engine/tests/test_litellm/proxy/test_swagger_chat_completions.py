@@ -29,6 +29,18 @@ class TestSwaggerChatCompletions:
         """FastAPI test client for the proxy server."""
         return TestClient(app)
 
+    def test_openapi_schema_uses_anonymice_branding(self, client):
+        response = client.get("/openapi.json")
+        assert response.status_code == 200
+
+        info = response.json()["info"]
+        assert info["title"] == "Anonymice API"
+        assert "Anonymice Admin Panel" in info["description"]
+        assert "Anonymice Model Cost Map" in info["description"]
+        assert "Anonymice Model Hub" in info["description"]
+        assert "https://github.com/ma-abdellaoui/anonymice" in info["description"]
+        assert "LiteLLM Docs" not in info["description"]
+
     def test_openapi_schema_includes_chat_completions_request_body(self, client):
         """
         Test that the OpenAPI schema includes ProxyChatCompletionRequest schema
