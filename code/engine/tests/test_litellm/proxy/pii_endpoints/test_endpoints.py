@@ -151,8 +151,28 @@ class TestRouteRegistration:
         paths = {route.path for route in app.routes if hasattr(route, "path")}
         assert {"/pii/detect", "/pii/encode", "/pii/decode"} <= paths
 
-    def test_pii_routes_are_reachable_by_virtual_keys(self):
+    def test_pii_routes_are_listed_as_llm_api_routes(self):
         assert set(LiteLLMRoutes.pii_routes.value) <= set(LiteLLMRoutes.llm_api_routes.value)
+
+    @pytest.mark.parametrize(
+        "route",
+        ["/pii/detect", "/pii/encode", "/pii/decode", "/pii/search", "/pii/session/s1", "/pii/subject/subject-a"],
+    )
+    def test_a_virtual_key_may_reach_every_pii_route(self, route):
+        """Membership in llm_api_routes is not what the runtime consults.
+
+        is_llm_api_route enumerates the sub-lists itself, and omitting pii_routes
+        there refused every virtual key with an admin-only error while the
+        membership assertion above still passed.
+        """
+        from litellm.proxy.auth.route_checks import RouteChecks
+
+        assert RouteChecks.is_llm_api_route(route=route) is True
+
+    def test_an_unrelated_route_is_still_not_an_llm_api_route(self):
+        from litellm.proxy.auth.route_checks import RouteChecks
+
+        assert RouteChecks.is_llm_api_route(route="/pii-ish/not-ours") is False
 
 
 class TestDetect:

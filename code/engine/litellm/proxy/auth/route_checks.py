@@ -387,6 +387,12 @@ class RouteChecks:
         if route in LiteLLMRoutes.litellm_native_routes.value:
             return True
 
+        # pii_routes is part of llm_api_routes, but this predicate is what the
+        # runtime gate actually consults, so membership in the aggregate list is
+        # not enough. check_route_access covers the {session_id} placeholders.
+        if RouteChecks.check_route_access(route=route, allowed_routes=LiteLLMRoutes.pii_routes.value):
+            return True
+
         # fuzzy match routes like "/v1/threads/thread_49EIN5QF32s4mH20M7GFKdlZ"
         # Check for routes with placeholders or wildcard patterns
         for openai_route in LiteLLMRoutes.openai_routes.value:

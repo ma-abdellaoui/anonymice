@@ -120,6 +120,65 @@ class VaultTable(Protocol):
     async def delete_many(self, where: Mapping[str, object]) -> object: ...
 
 
+@runtime_checkable
+class PrismaTableActions(Protocol):
+    """The raw Prisma actions, which answer with model instances rather than mappings."""
+
+    async def create_many(self, data: Sequence[Mapping[str, object]], skip_duplicates: bool) -> object: ...
+
+    async def find_many(
+        self,
+        where: Mapping[str, object],
+        order: Mapping[str, str] | None = None,
+        take: int | None = None,
+    ) -> Sequence[object]: ...
+
+    async def delete_many(self, where: Mapping[str, object]) -> object: ...
+
+
+def as_mapping(record: object) -> Mapping[str, object]:
+    """One Prisma row as plain data.
+
+    Prisma answers with pydantic models, so without this every read reaches
+    ``record_to_row`` as an object and its lookups fail. Converting at the seam
+    keeps the repository and its tests working in mappings.
+    """
+    if isinstance(record, Mapping):
+        return record
+    dump: Final = getattr(record, "model_dump", None)
+    if not callable(dump):
+        return MappingProxyType({})
+    dumped: Final = dump()
+    return dumped if isinstance(dumped, Mapping) else MappingProxyType({})
+
+
+@dataclass(frozen=True, slots=True)
+class PrismaVaultTable:
+    """Adapts the Prisma actions to the mapping-shaped ``VaultTable``."""
+
+    actions: PrismaTableActions
+
+    async def create_many(self, data: Sequence[Mapping[str, object]], skip_duplicates: bool) -> object:
+        return await self.actions.create_many(data=data, skip_duplicates=skip_duplicates)
+
+    async def find_many(
+        self,
+        where: Mapping[str, object],
+        order: Mapping[str, str] | None = None,
+        take: int | None = None,
+    ) -> Sequence[Mapping[str, object]]:
+        # Prisma rejects a read-only mapping, so hand it plain dicts.
+        records: Final = await self.actions.find_many(
+            where=dict(where),
+            **({"order": dict(order)} if order else {}),  # kwargs-ok: Prisma omits vs None are different
+            **({"take": take} if take else {}),  # kwargs-ok: Prisma omits vs None are different
+        )
+        return tuple(as_mapping(record) for record in records)
+
+    async def delete_many(self, where: Mapping[str, object]) -> object:
+        return await self.actions.delete_many(where=dict(where))
+
+
 def table_from_prisma(prisma_client: object) -> VaultTable:
     """The vault's table actions, reached through the proxy's repository base.
 
@@ -128,7 +187,7 @@ def table_from_prisma(prisma_client: object) -> VaultTable:
     """
     from litellm.repositories.table_repositories import PiiTokenRepository
 
-    return PiiTokenRepository(prisma_client).table
+    return PrismaVaultTable(actions=PiiTokenRepository(prisma_client).table)
 
 
 @dataclass(frozen=True, slots=True)

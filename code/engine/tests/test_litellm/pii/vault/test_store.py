@@ -282,3 +282,146 @@ class TestFailureModes:
         )
         assert isinstance(await store.put_many(KEY_SCOPE, "s", mints(("<PERSON:a1>", "Ada"))), StoreUnavailable)
         assert table.rows == []
+
+
+class FakePrismaRow:
+    """Prisma answers with pydantic models, not mappings. The real client's rows
+    are objects with a model_dump, which is what broke every read path."""
+
+    def __init__(self, **fields):
+        self._fields = fields
+
+    def model_dump(self):
+        return dict(self._fields)
+
+
+class FakePrismaActions:
+    def __init__(self, rows=()):
+        self.rows = list(rows)
+        self.last_where = None
+        self.last_order = None
+        self.last_take = None
+
+    async def create_many(self, data, skip_duplicates):
+        self.rows.extend(data)
+
+    async def find_many(self, where, order=None, take=None):
+        self.last_where, self.last_order, self.last_take = where, order, take
+        return self.rows
+
+    async def delete_many(self, where):
+        self.last_where = where
+        self.rows = []
+
+
+class TestPrismaAdapter:
+    """The seam between Prisma's model instances and the repository's mappings."""
+
+    def test_a_model_row_becomes_a_mapping(self):
+        from litellm.pii.vault.repository import as_mapping
+
+        assert as_mapping(FakePrismaRow(token_id="tok-1"))["token_id"] == "tok-1"
+
+    def test_a_mapping_is_left_alone(self):
+        from litellm.pii.vault.repository import as_mapping
+
+        assert as_mapping({"token_id": "tok-1"})["token_id"] == "tok-1"
+
+    def test_an_unrecognized_row_yields_nothing_rather_than_raising(self):
+        from litellm.pii.vault.repository import as_mapping
+
+        assert dict(as_mapping(object())) == {}
+
+    @pytest.mark.asyncio
+    async def test_find_many_hands_the_repository_mappings_not_models(self):
+        from litellm.pii.vault.repository import PrismaVaultTable
+
+        table = PrismaVaultTable(actions=FakePrismaActions([FakePrismaRow(token_id="tok-1")]))
+        rows = await table.find_many(where={})
+        assert rows[0]["token_id"] == "tok-1"
+
+    @pytest.mark.asyncio
+    async def test_a_model_row_survives_the_whole_read_path(self):
+        """The regression: record_to_row reached a model object and its lookups failed."""
+        from litellm.pii.vault.repository import PrismaVaultTable
+
+        row = FakePrismaRow(
+            token_id="tok-1",
+            entity_type="PERSON",
+            ciphertext="p1:gcm:xxx",
+            key_version=1,
+            scope_type="key",
+            scope_id="key-alice",
+            session_id="s1",
+            subject_id=None,
+            created_by=None,
+            expires_at=None,
+            created_at=None,
+        )
+        repository = PiiVaultRepository(table=PrismaVaultTable(actions=FakePrismaActions([row])))
+        found = await repository.find_session(KEY_SCOPE, "s1", datetime.now(timezone.utc))
+        assert (found[0].token_id, found[0].entity_type) == ("tok-1", "PERSON")
+
+    @pytest.mark.asyncio
+    async def test_prisma_is_handed_plain_dicts_not_read_only_mappings(self):
+        """Prisma rejects a MappingProxyType, so the adapter has to unwrap."""
+        from types import MappingProxyType
+
+        from litellm.pii.vault.repository import PrismaVaultTable
+
+        actions = FakePrismaActions()
+        await PrismaVaultTable(actions=actions).find_many(
+            where=MappingProxyType({"scope_id": "k"}), order=MappingProxyType({"token_id": "asc"})
+        )
+        assert type(actions.last_where) is dict
+        assert type(actions.last_order) is dict
+
+    @pytest.mark.asyncio
+    async def test_paging_arguments_are_omitted_when_unset(self):
+        from litellm.pii.vault.repository import PrismaVaultTable
+
+        actions = FakePrismaActions()
+        await PrismaVaultTable(actions=actions).find_many(where={})
+        assert (actions.last_order, actions.last_take) == (None, None)
+
+
+class FakePrismaDb:
+    def __init__(self, actions):
+        self.litellm_piitokentable = actions
+
+
+class FakePrismaClient:
+    def __init__(self, actions):
+        self.db = FakePrismaDb(actions)
+
+
+class TestTableFromPrisma:
+    """The factory has to install the adapter, not hand back raw Prisma actions.
+
+    Testing the adapter class alone missed the original defect: the class was
+    correct and simply was not wired in.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_factory_returns_rows_as_mappings(self):
+        from litellm.pii.vault.repository import table_from_prisma
+
+        table = table_from_prisma(FakePrismaClient(FakePrismaActions([FakePrismaRow(token_id="tok-1")])))
+        rows = await table.find_many(where={})
+        assert rows[0]["token_id"] == "tok-1"
+
+    @pytest.mark.asyncio
+    async def test_a_row_from_the_factory_survives_record_to_row(self):
+        from litellm.pii.vault.repository import table_from_prisma
+
+        row = FakePrismaRow(
+            token_id="tok-1",
+            entity_type="PERSON",
+            ciphertext="p1:gcm:xxx",
+            key_version=1,
+            scope_type="key",
+            scope_id="key-alice",
+        )
+        table = table_from_prisma(FakePrismaClient(FakePrismaActions([row])))
+        found = await PiiVaultRepository(table=table).find_live(KEY_SCOPE, ["tok-1"], datetime.now(timezone.utc))
+        assert found[0].entity_type == "PERSON"
