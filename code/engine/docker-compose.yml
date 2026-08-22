@@ -1,10 +1,12 @@
 services:
   litellm:
+    image: anonymice:local
+    container_name: anonymice
+    pull_policy: build
     build:
       context: .
-      args:
-        target: runtime
-    image: docker.litellm.ai/berriai/litellm:main-stable
+      dockerfile: Dockerfile
+      target: runtime
     #########################################
     ## Uncomment these lines to start proxy with a config.yaml file ##
     # volumes:

@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 748" width="1040" height="748" role="img" aria-label="Anonymice architecture. The API path: an app calls the gateway, the pii_anonymizer guardrail detects sensitive spans through a two-stage cascade, encodes them into the token store, and only tokenized text crosses the boundary to the provider and back. The browser path: a value copied from a NATIVE page is minted into a token vault on copy and resolved on paste, so a TRUSTED page holds the token while the user still sees the real value, and an UNTRUSTED page across the boundary only ever holds the token.">
+  <style>
+    .bg{fill:#f7f6f3}
+    .box{fill:#ffffff;stroke:#c9d1d3;stroke-width:1}
+    .dark{fill:#1b2936;stroke:#0f8ba1;stroke-width:1.5}
+    .store{fill:#e6f3f5;stroke:#0f8ba1;stroke-width:1.5}
+    .group{fill:none;stroke:#c9d1d3;stroke-width:1;stroke-dasharray:4 4}
+    .out{fill:#ffffff;stroke:#ed6052;stroke-width:1.5}
+    .wire{fill:none;stroke:#8fa3aa;stroke-width:1.5}
+    .bound{stroke:#12181d;stroke-opacity:.32;stroke-width:1.5;stroke-dasharray:4 5}
+    .rule{stroke:#12181d;stroke-opacity:.09;stroke-width:1}
+    .t{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:13px;font-weight:600;fill:#12181d}
+    .tw{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:13px;font-weight:600;fill:#eef3f4}
+    .s{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:9.5px;fill:#57646c}
+    .sw{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:9.5px;fill:#9db0b6}
+    .lbl{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:9.5px;letter-spacing:.12em;fill:#0b6e80;font-weight:600}
+    .lblo{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:9.5px;letter-spacing:.12em;fill:#7c8890;font-weight:600}
+    .band{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10px;letter-spacing:.14em;fill:#12181d;font-weight:600}
+    .edge{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:9.5px;fill:#57646c}
+    .val{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10px;fill:#b93f2c}
+    .tok{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10px;fill:#0b6e80}
+    .gt{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:9.5px;letter-spacing:.1em;fill:#7c8890}
+  </style>
+  <rect class="bg" x="0" y="0" width="1040" height="748"/>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 1 L9 5 L0 9" fill="none" stroke="#8fa3aa" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <text class="lbl" x="24" y="20">YOUR SIDE · REAL VALUES NEVER LEAVE</text>
+  <text class="lblo" x="840" y="20">OUTSIDE · TOKENS ONLY</text>
+
+  <line class="bound" x1="795" y1="32" x2="795" y2="700"/>
+  <rect x="783" y="252" width="24" height="118" fill="#f7f6f3"/>
+  <text class="gt" x="795" y="311" text-anchor="middle" transform="rotate(-90 795 311)">THE BOUNDARY</text>
+
+  <text class="band" x="24" y="48">1 · THE API PATH · YOUR APP CALLS A MODEL</text>
+
+  <rect class="box" x="24" y="60" width="186" height="76" rx="9"/>
+  <text class="t" x="40" y="85">your app or agent</text>
+  <text class="s" x="40" y="102">ANY OPENAI-COMPATIBLE SDK</text>
+  <text class="val" x="40" y="120">Anna Meier · CH93 0076…</text>
+
+  <rect class="dark" x="250" y="60" width="140" height="76" rx="9"/>
+  <text class="tw" x="266" y="85">gateway</text>
+  <text class="sw" x="266" y="102">DATA PLANE ONLY,</text>
+  <text class="sw" x="266" y="116">ADMIN ROUTES TRIMMED</text>
+
+  <rect class="dark" x="430" y="60" width="272" height="76" rx="9"/>
+  <text class="tw" x="446" y="85">pii_anonymizer guardrail</text>
+  <text class="sw" x="446" y="102">ONE PiiService: DETECT · ENCODE · DECODE</text>
+  <text class="sw" x="446" y="116">BLOCK · MASK · ENCODE, PER ENTITY</text>
+
+  <rect class="out" x="840" y="60" width="176" height="76" rx="9"/>
+  <text class="t" x="856" y="85">any provider</text>
+  <text class="s" x="856" y="102">100+ VIA LITELLM</text>
+  <text class="tok" x="856" y="120">&lt;PERSON_1&gt; &lt;IBAN_CODE_1&gt;</text>
+
+  <path class="wire" marker-start="url(#a)" marker-end="url(#a)" d="M210 98 H250"/>
+  <path class="wire" marker-start="url(#a)" marker-end="url(#a)" d="M390 98 H430"/>
+  <path class="wire" marker-end="url(#a)" d="M702 82 H840"/>
+  <text class="edge" x="771" y="74" text-anchor="middle">3 · tokenized prompt</text>
+  <path class="wire" marker-end="url(#a)" d="M840 114 H702"/>
+  <text class="edge" x="771" y="130" text-anchor="middle">4 · tokenized response</text>
+
+  <rect class="group" x="120" y="196" width="396" height="152" rx="10"/>
+  <text class="gt" x="136" y="216">DETECT · TWO-STAGE CASCADE</text>
+  <rect class="box" x="136" y="230" width="180" height="102" rx="8"/>
+  <text class="t" x="152" y="254">stage 1 · Presidio</text>
+  <text class="s" x="152" y="271">PATTERN + CHECKSUM ONLY</text>
+  <text class="s" x="152" y="285">DETERMINISTIC, NO MODEL</text>
+  <text class="s" x="152" y="305">~40 TYPES: IBAN, CARD,</text>
+  <text class="s" x="152" y="319">AHV, SSN, NINO</text>
+  <rect class="box" x="352" y="230" width="148" height="102" rx="8"/>
+  <text class="t" x="368" y="254">stage 2 · piiranha</text>
+  <text class="s" x="368" y="271">TOKEN-CLASSIFICATION</text>
+  <text class="s" x="368" y="285">PERSON, LOCATION, ORG</text>
+  <text class="s" x="368" y="305">REQUIRED, RUNS ON</text>
+  <text class="s" x="368" y="319">EVERY REQUEST</text>
+  <path class="wire" marker-end="url(#a)" stroke-dasharray="3 3" d="M316 288 H352"/>
+  <text class="edge" x="334" y="280" text-anchor="middle">then</text>
+
+  <path class="wire" marker-end="url(#a)" d="M486 136 V168 H318 V196"/>
+  <text class="edge" x="404" y="162" text-anchor="middle">1 · detect</text>
+
+  <rect class="store" x="566" y="230" width="200" height="92" rx="10"/>
+  <text class="t" x="582" y="254">token store</text>
+  <text class="s" x="582" y="271">AES-256-GCM AT REST</text>
+  <text class="s" x="582" y="285">REQUEST-SCOPED, OR TTL</text>
+  <text class="s" x="582" y="299">FOR THE /pii ENDPOINTS</text>
+  <path class="wire" marker-start="url(#a)" marker-end="url(#a)" d="M646 136 V198 H666 V230"/>
+  <text class="edge" x="678" y="168">2 · encode</text>
+  <text class="edge" x="678" y="182">5 · resolve</text>
+
+  <text class="edge" x="24" y="374">Overlaps resolve deterministically: higher score wins, ties go to the rule stage, then to the longer span.</text>
+  <text class="edge" x="24" y="390">Decode is gated on allow_pii_decode and scoped to the calling key, so a session id alone never reads another key's tokens.</text>
+
+  <line class="rule" x1="24" y1="418" x2="1016" y2="418"/>
+
+  <text class="band" x="24" y="452">2 · THE BROWSER PATH · A PERSON COPIES AND PASTES</text>
+
+  <rect class="box" x="24" y="464" width="186" height="92" rx="9"/>
+  <text class="t" x="40" y="489">NATIVE page</text>
+  <text class="s" x="40" y="506">YOUR OWN SYSTEMS</text>
+  <text class="val" x="40" y="525">Anna Meier</text>
+  <text class="s" x="40" y="542">HIGHLIGHTED, LEFT ALONE</text>
+
+  <rect class="dark" x="250" y="464" width="224" height="92" rx="9"/>
+  <text class="tw" x="266" y="489">clipboard guard</text>
+  <text class="sw" x="266" y="506">ENCODES ON COPY,</text>
+  <text class="sw" x="266" y="520">DECODES ON PASTE</text>
+  <text class="sw" x="266" y="542">THE TOKEN IS WHAT IS COPIED</text>
+
+  <rect class="box" x="544" y="464" width="240" height="92" rx="9"/>
+  <text class="t" x="560" y="489">TRUSTED page</text>
+  <text class="s" x="560" y="506">DOM HOLDS</text>
+  <text class="tok" x="628" y="506">ANM1-PERSON-…</text>
+  <text class="s" x="560" y="524">YOU SEE</text>
+  <text class="val" x="612" y="524">Anna Meier</text>
+  <text class="s" x="560" y="542">VIA A CLONE THE PAGE CANNOT READ</text>
+
+  <rect class="store" x="250" y="606" width="224" height="82" rx="10"/>
+  <text class="t" x="266" y="631">token vault</text>
+  <text class="s" x="266" y="648">/v1/tokens</text>
+  <text class="s" x="266" y="666">MINT · RESOLVE · REVOKE</text>
+
+  <rect class="out" x="840" y="606" width="176" height="82" rx="9"/>
+  <text class="t" x="856" y="631">UNTRUSTED page</text>
+  <text class="s" x="856" y="648">A PUBLIC LLM CHAT</text>
+  <text class="tok" x="856" y="668">ANM1-PERSON-…</text>
+
+  <path class="wire" marker-end="url(#a)" d="M210 502 H250"/>
+  <text class="edge" x="230" y="494" text-anchor="middle">copy</text>
+  <path class="wire" marker-end="url(#a)" d="M474 492 H544"/>
+  <text class="edge" x="509" y="484" text-anchor="middle">paste</text>
+
+  <path class="wire" marker-start="url(#a)" marker-end="url(#a)" d="M362 556 V606"/>
+  <text class="edge" x="374" y="574">mint on copy</text>
+  <text class="edge" x="374" y="588">resolve on paste</text>
+
+  <path class="wire" marker-end="url(#a)" d="M474 534 H508 V646 H840"/>
+  <text class="edge" x="640" y="638" text-anchor="middle">paste · only the token crosses</text>
+
+  <text class="edge" x="24" y="722">The vault is told the value at mint time, so a paste resolves synchronously: a paste is a user gesture and cannot await a round trip.</text>
+</svg>

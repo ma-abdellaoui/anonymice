@@ -26,11 +26,11 @@ NER entities from the stage we treat as high precision.
 
 Stage two is a token-classification model (`iiiorg/piiranha-v1-detect-personal-information`) reached over the
 standard HuggingFace pipeline contract, covering what patterns cannot: PERSON, LOCATION, and friends. Its label
-vocabulary differs from Presidio's, so `piiranha_labels.py` maps it onto ours and drops anything unmapped, which
+vocabulary differs from Presidio's, so `ner_labels.py` maps it onto ours and drops anything unmapped, which
 means a model upgrade can never inject an unknown entity type.
 
-`ner_stage_policy` decides when stage two runs. The default, `on_miss`, only calls it when the rule stage found
-nothing, so most requests pay only for the cheap pass.
+`ner_stage_policy` decides when stage two runs, and defaults to `always`. `on_miss` skipped the model whenever
+the rule stage matched anything, so one email address in the text was enough to let every name beside it through.
 
 Overlaps resolve deterministically: higher score wins, ties go to the rule stage, then to the longer span. Same
 entity fragments separated by a single space then coalesce, so a given name and surname become one `<PERSON_1>`
@@ -68,8 +68,12 @@ irreversible by construction rather than by remembering not to store the mapping
 
 ## Configuration
 
-Run the detection tiers with `docker compose -f litellm/pii/deploy/docker-compose.pii.yml up -d`, then add the
-guardrail:
+The quickest way to get a proxy with this layer enabled is `docker compose up -d` from `code/engine/`, which
+mounts [`litellm/proxy/dev_config.yaml`](../proxy/dev_config.yaml) and brings up both detection stages. The NER
+stage is required: without it no name is ever detected, so detection refuses to build and the guardrail refuses
+every request rather than forwarding text it could not scan. `LITELLM_PII_REQUIRE_NER=false` accepts rules-only.
+
+The guardrail block itself:
 
 ```yaml
 guardrails:
@@ -79,7 +83,7 @@ guardrails:
       mode: [pre_call, post_call]
       presidio_analyzer_api_base: http://localhost:3000
       pii_ner_api_base: http://localhost:8080
-      pii_ner_stage_policy: on_miss
+      pii_ner_stage_policy: always
       pii_codec: placeholder
       pii_entities_config:
         CREDIT_CARD: BLOCK
