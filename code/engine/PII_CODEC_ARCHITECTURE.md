@@ -413,7 +413,7 @@ Six phases. Each leaves the tree working, is independently reviewable, and carri
 through C need no database and harden the path every request already takes; the vault does not exist until
 phase D.
 
-**Status.** Phases A through F are complete. Phase G is not started. Live verification against
+**Status.** Phases A through G are complete. Live verification against
 real Presidio and real piiranha found two defects the fake-injected tests could not: streaming never decoded
 at all, and piiranha's spans include the leading whitespace. Both are fixed and covered. Nothing has yet run
 against a real LLM provider.
@@ -502,9 +502,14 @@ These are defects in code already merged, not new features, so they go first.
 
 ### Phase G: UI
 
-- [ ] Scope and retention controls on the anonymization page
-- [ ] Session browser showing token metadata and never plaintext
-- [ ] Search panel gated on `allow_pii_search`
+- [x] Scope and retention controls on the anonymization page. Scope is a live request parameter on the
+      playground and on every vault action; retention and the rest of the vault configuration are documented
+      on the Configuration tab, since they are environment settings with no write API
+- [x] Session browser showing token metadata and never plaintext. Needed a new metadata-only
+      `GET /pii/session/{session_id}`, which returns no value and no ciphertext, and so requires scope
+      membership rather than the decode grant
+- [x] Search panel gated on `allow_pii_search`. The server enforces the permission; the panel renders the
+      refusal as an explanation of which permission is missing rather than a generic error
 
 ### Cross-cutting
 

@@ -2,6 +2,7 @@ import React from "react";
 
 import AnonymizationPlayground from "./AnonymizationPlayground";
 import AnonymizationSettings from "./AnonymizationSettings";
+import VaultBrowser from "./VaultBrowser";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface AnonymizationPanelProps {
@@ -22,10 +23,14 @@ const AnonymizationPanel: React.FC<AnonymizationPanelProps> = ({ accessToken, us
     <Tabs defaultValue="playground">
       <TabsList>
         <TabsTrigger value="playground">Playground</TabsTrigger>
+        <TabsTrigger value="vault">Vault</TabsTrigger>
         <TabsTrigger value="settings">Configuration</TabsTrigger>
       </TabsList>
       <TabsContent value="playground" className="mt-4">
         <AnonymizationPlayground accessToken={accessToken} />
+      </TabsContent>
+      <TabsContent value="vault" className="mt-4">
+        <VaultBrowser accessToken={accessToken} />
       </TabsContent>
       <TabsContent value="settings" className="mt-4">
         <AnonymizationSettings userRole={userRole} />

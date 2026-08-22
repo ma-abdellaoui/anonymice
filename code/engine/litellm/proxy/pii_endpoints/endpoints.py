@@ -59,7 +59,9 @@ from litellm.types.proxy.pii_endpoints import (
     PiiSearchHitModel,
     PiiSearchRequest,
     PiiSearchResponse,
+    PiiSessionResponse,
     PiiSpanModel,
+    PiiTokenMetadataModel,
 )
 
 PII_TAGS: Final[list[str]] = ["pii anonymization"]  # mutable-ok: FastAPI copies and mutates router tags
@@ -333,6 +335,43 @@ async def decode_pii(
         _raise_public(result)
     await record(user_api_key_dict, scope, result.resolved, used_break_glass(identity, scope))
     return PiiDecodeResponse(texts=result.texts)
+
+
+@pii_router.get("/session/{session_id}", response_model=PiiSessionResponse)
+async def read_pii_session(
+    session_id: str,
+    user_api_key_dict: Annotated[UserAPIKeyAuth, Depends(user_api_key_auth)],
+    vault: Annotated[VaultService, Depends(require_pii_vault)],
+    scope_type: VaultScopeType | None = None,
+) -> PiiSessionResponse:
+    """What a session holds, without opening any of it.
+
+    Metadata only, so this needs scope membership rather than the decode grant:
+    seeing that a token exists and when it expires is a different question from
+    seeing what it says.
+    """
+    scope: Final = _requested_scope(identity_from(user_api_key_dict), scope_type)
+    if isinstance(scope, VaultForbidden):
+        _raise_public(scope)
+
+    rows: Final = await vault.session_tokens(scope, session_id)
+    if not isinstance(rows, tuple):
+        _raise_public(rows)
+
+    return PiiSessionResponse(
+        session_id=session_id,
+        scope_type=scope.scope_type,
+        tokens=tuple(
+            PiiTokenMetadataModel(
+                token=row.token_id,
+                entity_type=row.entity_type,
+                subject_id=row.subject_id,
+                created_at=row.created_at,
+                expires_at=row.expires_at,
+            )
+            for row in sorted(rows, key=lambda row: row.token_id)
+        ),
+    )
 
 
 @pii_router.delete("/session/{session_id}", response_model=PiiRevokeResponse)

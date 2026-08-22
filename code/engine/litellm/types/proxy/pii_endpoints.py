@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 from litellm.pii.vault.scope import VaultScopeType
@@ -100,3 +102,19 @@ class PiiSearchResponse(BaseModel):
     hits: tuple[PiiSearchHitModel, ...]
     scanned: int
     scope_type: VaultScopeType
+
+
+class PiiTokenMetadataModel(BaseModel):
+    """Everything but the value. No ciphertext, no plaintext, ever."""
+
+    token: str
+    entity_type: str
+    subject_id: str | None
+    created_at: datetime | None
+    expires_at: datetime | None
+
+
+class PiiSessionResponse(BaseModel):
+    session_id: str
+    scope_type: VaultScopeType
+    tokens: tuple[PiiTokenMetadataModel, ...]

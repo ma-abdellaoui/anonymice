@@ -24,6 +24,7 @@ class VaultRow:
     subject_id: str | None = None
     created_by: str | None = None
     expires_at: datetime | None = None
+    created_at: datetime | None = None
 
 
 def row_to_record(row: VaultRow) -> dict[str, object]:  # mutable-ok: Prisma takes a plain dict
@@ -59,6 +60,7 @@ def record_to_row(record: Mapping[str, object]) -> VaultRow | None:
         return None
     version: Final = record.get("key_version")
     expires_at: Final = record.get("expires_at")
+    created: Final = record.get("created_at")
     return VaultRow(
         token_id=token_id,
         entity_type=_text(record.get("entity_type")) or "",
@@ -69,6 +71,7 @@ def record_to_row(record: Mapping[str, object]) -> VaultRow | None:
         subject_id=_text(record.get("subject_id")),
         created_by=_text(record.get("created_by")),
         expires_at=expires_at if isinstance(expires_at, datetime) else None,
+        created_at=created if isinstance(created, datetime) else None,
     )
 
 
@@ -167,6 +170,12 @@ class PiiVaultRepository:
             "subject_id": subject_id,
         }
         await self.table.delete_many(where=where)
+
+    async def find_session(self, scope: VaultScope, session_id: str, now: datetime) -> tuple[VaultRow, ...]:
+        where: Final = {**live_filter(scope, now), "session_id": session_id}  # mutable-ok: Prisma takes a dict
+        records: Final = await self.table.find_many(where=where)
+        parsed: Final = (record_to_row(record) for record in records)
+        return tuple(row for row in parsed if row is not None)
 
     async def find_subject(self, scope: VaultScope, subject_id: str, now: datetime) -> tuple[VaultRow, ...]:
         where: Final = {**live_filter(scope, now), "subject_id": subject_id}  # mutable-ok: Prisma takes a dict

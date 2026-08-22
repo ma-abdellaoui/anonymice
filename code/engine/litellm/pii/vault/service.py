@@ -6,6 +6,7 @@ from typing import Final
 from litellm.pii.codec.transform import decode_text
 from litellm.pii.service import DraftedBatch, EncodedBatch, EncodeFailure, PiiService
 from litellm.pii.types import StoreError
+from litellm.pii.vault.repository import VaultRow
 from litellm.pii.vault.scope import VaultScope
 from litellm.pii.vault.store import DatabaseTokenStore, MintRequest
 
@@ -85,6 +86,9 @@ class VaultService:
             texts=tuple(decode_text(text, resolved, self.pii.codec.grammar) for text in texts),
             resolved=len(resolved),
         )
+
+    async def session_tokens(self, scope: VaultScope, session_id: str) -> "tuple[VaultRow, ...] | StoreError":
+        return await self.store.session_tokens(scope, session_id)
 
     async def revoke_session(self, scope: VaultScope, session_id: str) -> None | StoreError:
         return await self.store.revoke_session(scope, session_id)

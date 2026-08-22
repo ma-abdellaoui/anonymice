@@ -107,6 +107,15 @@ class DatabaseTokenStore:
         )
         return MappingProxyType({token: value for token, value in opened if isinstance(value, str)})
 
+    async def session_tokens(self, scope: VaultScope, session_id: str) -> tuple[VaultRow, ...] | StoreError:
+        """What a session holds, without opening any of it.
+
+        Deliberately never decrypts: a browser needs to show what exists and
+        when it expires, which is a different question from what it says.
+        """
+        rows: Final = await guarded(self.repository.find_session(scope, session_id, utcnow()), "read")
+        return rows if isinstance(rows, tuple) else rows
+
     async def revoke_session(self, scope: VaultScope, session_id: str) -> None | StoreError:
         deleted: Final = await guarded(self.repository.delete_session(scope, session_id), "delete")
         return deleted if isinstance(deleted, StoreUnavailable) else None

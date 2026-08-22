@@ -767,3 +767,65 @@ class TestSearchAudit:
         client.post("/pii/encode", json={"texts": ["Ada met Grace"]})
         client.post("/pii/search", json={"query": "ada"})
         assert search_audit.entries == []
+
+
+class TestSessionBrowsing:
+    def test_it_lists_the_tokens_a_session_holds(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada", "Grace"))
+        as_key(DECODE_KEY)
+        client.post("/pii/encode", json={"texts": ["Ada met Grace"], "session_id": "s1"})
+
+        body = client.get("/pii/session/s1").json()
+        assert len(body["tokens"]) == 2
+        assert body["session_id"] == "s1"
+
+    def test_it_reports_the_entity_type_and_expiry(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"], "session_id": "s1"})
+
+        token = client.get("/pii/session/s1").json()["tokens"][0]
+        assert token["entity_type"] == "PERSON"
+        assert token["expires_at"] is not None
+
+    def test_it_never_returns_the_value_or_the_ciphertext(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"], "session_id": "s1"})
+
+        raw = client.get("/pii/session/s1").text
+        assert "Ada" not in raw
+        assert "ciphertext" not in raw
+        assert "p1:gcm:" not in raw
+
+    def test_it_carries_the_subject_tag_so_erasure_can_be_targeted(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"], "session_id": "s1", "subject_id": "subject-a"})
+        assert client.get("/pii/session/s1").json()["tokens"][0]["subject_id"] == "subject-a"
+
+    def test_browsing_does_not_need_the_decode_permission(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        assert client.get("/pii/session/s1").status_code == 200
+
+    def test_another_key_sees_nothing_of_this_session(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"], "session_id": "s1"})
+
+        as_key(OTHER_DECODE_KEY)
+        assert client.get("/pii/session/s1").json()["tokens"] == []
+
+    def test_an_unknown_session_is_empty_rather_than_an_error(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        response = client.get("/pii/session/never-existed")
+        assert (response.status_code, response.json()["tokens"]) == (200, [])
+
+    def test_a_revoked_session_lists_nothing(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"], "session_id": "s1"})
+        client.delete("/pii/session/s1")
+        assert client.get("/pii/session/s1").json()["tokens"] == []
