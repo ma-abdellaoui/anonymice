@@ -23,11 +23,16 @@ services:
       # DATABASE_URL_READ_REPLICA: "postgresql://llmproxy:dbpassword9090@db-reader:5432/litellm"
       STORE_MODEL_IN_DB: "True" # allows adding models to proxy via UI
       PRESIDIO_ANALYZER_API_BASE: "http://presidio:3000"
+      # Mandatory second stage. Without it the rules stage covers only pattern
+      # and checksum entities, so names would reach the provider in the clear
+      # and the guardrail refuses every request.
+      LITELLM_PII_NER_API_BASE: "http://piiranha:8080"
     env_file:
       - .env # Load local .env file
     depends_on:
       - db  # Indicates that this service depends on the 'db' service, ensuring 'db' starts first
       - presidio  # PII detection; the guardrail and /pii routes are inert without it
+      - piiranha  # NER stage; names are undetectable without it
     healthcheck:  # Defines the health check configuration for the container
       test:
         - CMD-SHELL
@@ -68,6 +73,16 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  piiranha:
+    # Model-based NER stage. Built locally because the weights are baked into
+    # the image at build time rather than fetched on start.
+    build:
+      context: ./docker/piiranha
+    image: anonymice/pii-ner:local
+    restart: always
+    ports:
+      - "8080:8080"
 
   prometheus:
     image: prom/prometheus

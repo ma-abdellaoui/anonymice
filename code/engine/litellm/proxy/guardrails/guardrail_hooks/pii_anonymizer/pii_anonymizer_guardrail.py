@@ -135,6 +135,8 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
         default_action: PiiAction | str = PiiAction.ENCODE,
         pii_mapping_scope: str | None = None,
         session_cache: DualCache | None = None,
+        fail_closed: bool = True,
+        unmet_requirement: str | None = None,
         **kwargs,  # kwargs-ok: forwarded verbatim to CustomGuardrail, which owns the shared guardrail options
     ):
         kwargs.setdefault("supported_event_hooks", list(SUPPORTED_EVENT_HOOKS))  # mutable-ok: base class wants a list
@@ -145,6 +147,8 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
         self.streaming_transform_mode = "incremental_diff"
         self.mask_response_content = True
         self.detector: Final = detector
+        self.fail_closed: Final = fail_closed
+        self.unmet_requirement: Final = unmet_requirement
         configured: Final = pii_entities_config.items() if pii_entities_config else ()
         actions: Final = {e: _to_span_action(a) for e, a in configured}  # mutable-ok: frozen just below
         self.actions: Final[Mapping[str, SpanAction]] = MappingProxyType(actions)
@@ -278,9 +282,21 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
 
         service: Final = self._service(request_data)
         if service is None:
+            # Forwarding unscanned is the one outcome a PII guardrail must never
+            # have by default: it looks like success while sending the very data
+            # it exists to withhold.
+            reason: Final = self.unmet_requirement or "no PII detector is configured"
+            if self.fail_closed:
+                raise GuardrailRaisedException(
+                    guardrail_name=self.guardrail_name,
+                    message=f"PII anonymization is not available: {reason}",
+                    should_wrap_with_default_message=False,
+                )
             verbose_proxy_logger.warning(
-                "PII anonymizer guardrail %s has no analyzer configured; passing text through unchanged.",
+                "PII anonymizer guardrail %s is forwarding text unscanned (%s). "
+                "This sends unredacted PII to the provider.",
                 self.guardrail_name,
+                reason,
             )
             return inputs
 
@@ -309,3 +325,24 @@ def build_guardrail_detector(
         fail_closed=base_settings.fail_closed if fail_closed is None else fail_closed,
     )
     return build_detector(settings)
+
+
+def guardrail_settings(
+    presidio_analyzer_api_base: str | None,
+    ner_api_base: str | None,
+    ner_stage_policy: str | None,
+    ner_score_threshold: float | None,
+    fail_closed: bool | None,
+) -> PiiSettings:
+    base_settings: Final = PiiSettings.from_env()
+    return PiiSettings(
+        analyzer_api_base=presidio_analyzer_api_base or base_settings.analyzer_api_base,
+        ner_api_base=ner_api_base or base_settings.ner_api_base,
+        ner_stage_policy=(NerStagePolicy(ner_stage_policy) if ner_stage_policy else base_settings.ner_stage_policy),
+        ner_score_threshold=(
+            ner_score_threshold if ner_score_threshold is not None else base_settings.ner_score_threshold
+        ),
+        session_ttl_seconds=base_settings.session_ttl_seconds,
+        fail_closed=base_settings.fail_closed if fail_closed is None else fail_closed,
+        require_ner=base_settings.require_ner,
+    )
