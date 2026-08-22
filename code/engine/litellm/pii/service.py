@@ -6,7 +6,7 @@ from typing import Final, TypeAlias
 
 from litellm._uuid import uuid
 from litellm.pii.codec.base import PiiCodec
-from litellm.pii.codec.transform import BatchDraft, decode_text, encode_batch
+from litellm.pii.codec.transform import BatchDraft, Placement, decode_text, encode_batch
 from litellm.pii.detection.cascade import CascadingDetector
 from litellm.pii.store.base import PiiTokenStore, TokenScope
 from litellm.pii.types import (
@@ -29,6 +29,8 @@ class EncodedBatch:
     tokens: tuple[IssuedToken, ...]
     session_id: str
     spans_by_text: tuple[tuple[PiiSpan, ...], ...]
+    placements: tuple[Placement, ...] = ()
+    ner_stage_ran: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +43,7 @@ class DraftedBatch:
 
     draft: BatchDraft
     spans_by_text: tuple[tuple[PiiSpan, ...], ...]
+    ner_stage_ran: bool = False
 
 
 def new_session_id() -> str:
@@ -100,7 +103,11 @@ class PiiService:
         )
         if not isinstance(drafted, BatchDraft):
             return drafted
-        return DraftedBatch(draft=drafted, spans_by_text=spans_by_text)
+        return DraftedBatch(
+            draft=drafted,
+            spans_by_text=spans_by_text,
+            ner_stage_ran=any(result.ner_stage_ran for result in detected),
+        )
 
     async def encode(
         self,
@@ -124,6 +131,8 @@ class PiiService:
             tokens=drafted.draft.tokens,
             session_id=scope.session_id,
             spans_by_text=drafted.spans_by_text,
+            placements=drafted.draft.placements,
+            ner_stage_ran=drafted.ner_stage_ran,
         )
 
     async def encode_one(

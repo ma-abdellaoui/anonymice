@@ -2,6 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from litellm.pii.config import CodecId
 from litellm.pii.vault.scope import VaultScopeType
 from litellm.pii.vault.search import MatchMode
 
@@ -44,6 +45,10 @@ class PiiEncodeRequest(BaseModel):
     subject_id: str | None = Field(
         default=None,
         description="Opaque subject reference for erasure and export. Never an email address or a name.",
+    )
+    codec: CodecId | None = Field(
+        default=None,
+        description="Token shape to mint. Defaults to the handle form; 'placeholder' mints the ordinal form the LLM path uses.",
     )
 
 

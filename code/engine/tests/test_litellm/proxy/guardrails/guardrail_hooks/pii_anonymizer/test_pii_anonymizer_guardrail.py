@@ -562,3 +562,96 @@ class TestUnconfiguredGuardrailFailsClosed:
         assert await guardrail.apply_guardrail(inputs={"texts": []}, request_data={}, input_type="request") == {
             "texts": []
         }
+
+
+@pytest.fixture
+def recorded(monkeypatch):
+    """A fresh activity ring, since the log is a process-wide singleton."""
+    from litellm.pii.activity import PiiActivityLog
+
+    fresh = PiiActivityLog(capacity=50)
+    monkeypatch.setattr("litellm.pii.activity._LOG", fresh)
+    return fresh
+
+
+class TestActivityRecording:
+    @pytest.mark.asyncio
+    async def test_an_encode_is_recorded_with_what_it_found(self, recorded):
+        from litellm.pii.activity import Applied, PiiDirection, PiiSurface
+
+        await run(guardrail({"Ada": "PERSON"}), ["hello Ada"], {}, "request")
+        event = recorded.recent(limit=1)[0]
+        assert (event.surface, event.direction, event.outcome) == (
+            PiiSurface.GUARDRAIL,
+            PiiDirection.ENCODE,
+            Applied(),
+        )
+        assert dict(event.entity_counts) == {"PERSON": 1} and event.token_count == 1
+
+    @pytest.mark.asyncio
+    async def test_records_the_action_each_entity_took(self, recorded):
+        guard = guardrail({"Ada": "PERSON", "111-22-3333": "US_SSN"}, entities_config={"US_SSN": PiiAction.MASK})
+        await run(guard, ["Ada 111-22-3333"], {}, "request")
+        assert dict(recorded.recent(limit=1)[0].action_counts) == {"ENCODE": 1, "MASK": 1}
+
+    @pytest.mark.asyncio
+    async def test_a_blocked_entity_is_recorded_before_the_request_is_refused(self, recorded):
+        from litellm.pii.activity import Blocked
+
+        guard = guardrail({"4111 1111 1111 1111": "CREDIT_CARD"}, entities_config={"CREDIT_CARD": PiiAction.BLOCK})
+        with pytest.raises(BlockedPiiEntityError):
+            await run(guard, ["card 4111 1111 1111 1111"], {}, "request")
+        assert recorded.recent(limit=1)[0].outcome == Blocked(entity_type="CREDIT_CARD")
+
+    @pytest.mark.asyncio
+    async def test_a_detector_outage_is_recorded_as_a_failure(self, recorded):
+        from litellm.pii.activity import Failed
+
+        guard = guardrail(error=DetectorUnavailable(detector=DetectorKind.RULES, reason="down"))
+        with pytest.raises(GuardrailRaisedException):
+            await run(guard, ["hello Ada"], {}, "request")
+        outcome = recorded.recent(limit=1)[0].outcome
+        assert isinstance(outcome, Failed) and "down" in outcome.reason
+
+    @pytest.mark.asyncio
+    async def test_a_decode_records_how_much_it_resolved(self, recorded):
+        from litellm.pii.activity import PiiDirection
+
+        guard = guardrail({"Ada": "PERSON"})
+        data = {}
+        await run(guard, ["hello Ada"], data, "request")
+        await run(guard, ["hi <PERSON_1> and <PERSON_7>"], data, "response")
+        event = recorded.recent(limit=1, direction=PiiDirection.DECODE)[0]
+        assert (event.token_count, event.resolved_count) == (2, 1)
+
+    @pytest.mark.asyncio
+    async def test_nothing_detected_still_leaves_a_record(self, recorded):
+        """A request that carried no PII is a fact worth showing, not an absence."""
+        await run(guardrail({"Ada": "PERSON"}), ["nothing here"], {}, "request")
+        event = recorded.recent(limit=1)[0]
+        assert dict(event.entity_counts) == {} and event.token_count == 0
+
+    @pytest.mark.asyncio
+    async def test_no_text_is_recorded_unless_capture_is_switched_on(self, recorded, monkeypatch):
+        from litellm.pii.activity import ENV_CAPTURE_TEXT
+
+        monkeypatch.delenv(ENV_CAPTURE_TEXT, raising=False)
+        await run(guardrail({"Ada": "PERSON"}), ["hello Ada"], {}, "request")
+        assert recorded.recent(limit=1)[0].capture is None
+
+    @pytest.mark.asyncio
+    async def test_capture_pairs_each_value_with_its_token_when_switched_on(self, recorded, monkeypatch):
+        from litellm.pii.activity import ENV_CAPTURE_TEXT
+
+        monkeypatch.setenv(ENV_CAPTURE_TEXT, "true")
+        await run(guardrail({"Ada": "PERSON"}), ["hello Ada"], {}, "request")
+        capture = recorded.recent(limit=1)[0].capture
+        assert capture.before == ("hello Ada",) and capture.after == ("hello <PERSON_1>",)
+        assert [(p.token, p.value) for p in capture.placements] == [("<PERSON_1>", "Ada")]
+
+    @pytest.mark.asyncio
+    async def test_attributes_the_event_to_the_calling_key_and_model(self, recorded):
+        data = {"model": "gpt-4o-mini", "metadata": {"user_api_key_alias": "demo-key", "user_api_key_user_id": "u1"}}
+        await run(guardrail({"Ada": "PERSON"}), ["hello Ada"], data, "request")
+        event = recorded.recent(limit=1)[0]
+        assert (event.model, event.key_alias, event.user_id) == ("gpt-4o-mini", "demo-key", "u1")

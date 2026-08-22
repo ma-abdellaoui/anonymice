@@ -849,3 +849,90 @@ class TestSessionBrowsing:
         client.post("/pii/encode", json={"texts": ["hello Ada"], "session_id": "s1"})
         client.delete("/pii/session/s1")
         assert client.get("/pii/session/s1").json()["tokens"] == []
+
+
+@pytest.fixture
+def recorded(monkeypatch):
+    from litellm.pii.activity import PiiActivityLog
+
+    fresh = PiiActivityLog(capacity=50)
+    monkeypatch.setattr("litellm.pii.activity._LOG", fresh)
+    return fresh
+
+
+class TestCodecSelection:
+    def test_defaults_to_the_handle_form(self, client, install_service, as_key):
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"]}).json()
+        assert encoded["texts"][0].startswith("hello <PERSON:")
+
+    def test_placeholder_mints_the_ordinal_form_the_llm_path_uses(self, client, install_service, as_key):
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"], "codec": "placeholder"}).json()
+        assert encoded["texts"] == ["hello <PERSON_1>"]
+
+    def test_a_placeholder_token_still_decodes(self, client, install_service, as_key):
+        """The grammar recognises both forms, so decode needs no matching option."""
+        install_service(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"], "codec": "placeholder"}).json()
+        decoded = client.post(
+            "/pii/decode", json={"texts": encoded["texts"], "session_id": encoded["session_id"]}
+        ).json()
+        assert decoded["texts"] == ["hello Ada"]
+
+    def test_rejects_a_codec_that_does_not_exist(self, client, install_service, as_key):
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        response = client.post("/pii/encode", json={"texts": ["hello Ada"], "codec": "rot13"})
+        assert response.status_code == 422
+
+
+class TestEndpointActivityRecording:
+    def test_a_detect_is_recorded(self, client, install_service, as_key, recorded):
+        from litellm.pii.activity import PiiDirection, PiiSurface
+
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        client.post("/pii/detect", json={"texts": ["hello Ada"]})
+        event = recorded.recent(limit=1)[0]
+        assert (event.surface, event.direction) == (PiiSurface.ENDPOINT, PiiDirection.DETECT)
+        assert dict(event.entity_counts) == {"PERSON": 1}
+
+    def test_an_encode_records_its_session_so_the_two_halves_can_be_joined(
+        self, client, install_service, as_key, recorded
+    ):
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"]}).json()
+        assert recorded.recent(limit=1)[0].session_id == encoded["session_id"]
+
+    def test_a_decode_records_how_much_it_resolved(self, client, install_service, as_key, recorded):
+        from litellm.pii.activity import PiiDirection
+
+        install_service(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"], "codec": "placeholder"}).json()
+        client.post(
+            "/pii/decode",
+            json={"texts": ["<PERSON_1> and <PERSON_9>"], "session_id": encoded["session_id"]},
+        )
+        event = recorded.recent(limit=1, direction=PiiDirection.DECODE)[0]
+        assert (event.token_count, event.resolved_count) == (2, 1)
+
+    def test_a_detector_outage_is_recorded_as_a_failure(self, client, install_service, as_key, recorded):
+        from litellm.pii.activity import Failed
+
+        install_service(SubstringDetector("Ada", error=DetectorUnavailable(detector=DetectorKind.RULES, reason="down")))
+        as_key(NO_DECODE_KEY)
+        client.post("/pii/detect", json={"texts": ["hello Ada"]})
+        outcome = recorded.recent(limit=1)[0].outcome
+        assert isinstance(outcome, Failed) and "down" in outcome.reason
+
+    def test_attributes_the_event_to_the_calling_key(self, client, install_service, as_key, recorded):
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"]})
+        assert recorded.recent(limit=1)[0].user_id == "test-user"
