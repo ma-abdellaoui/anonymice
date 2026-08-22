@@ -40,6 +40,15 @@ class PiiAnonymizerConfigModelOptionalParams(BaseModel):
             "Turning this off can send unredacted PII to the provider during an outage."
         ),
     )
+    pii_mapping_scope: Literal["request", "conversation"] | None = Field(
+        default="request",
+        description=(
+            "How long a token mapping lives. 'request' (default) persists nothing: the proxy "
+            "decodes before returning, so the next turn re-encodes from real values. "
+            "'conversation' keys the mapping on the session id for prompt-cache stability and "
+            "cross-turn coreference, holds it in the shared cache, and needs Redis."
+        ),
+    )
 
 
 class PiiAnonymizerConfigModel(GuardrailConfigModel[PiiAnonymizerConfigModelOptionalParams]):
@@ -75,4 +84,8 @@ class PiiAnonymizerLitellmParams(BaseModel):
     pii_fail_closed: bool | None = Field(
         default=None,
         description="Reject the request when a detector is unreachable, rather than forwarding it unscanned.",
+    )
+    pii_mapping_scope: Literal["request", "conversation"] | None = Field(
+        default=None,
+        description="Token mapping lifetime: 'request' (default) or 'conversation'. Conversation scope needs Redis.",
     )

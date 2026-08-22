@@ -6,6 +6,7 @@ import pytest
 
 from litellm.exceptions import BlockedPiiEntityError, GuardrailRaisedException
 from litellm.pii.detection.cascade import CascadingDetector, NerStagePolicy
+from litellm.pii.store.scope import MappingScope
 from litellm.pii.types import (
     CodecError,
     DecodeFailed,
@@ -70,12 +71,34 @@ class SubstringDetector:
         )
 
 
-def guardrail(mapping=None, error=None, entities_config=None, codec_id="placeholder"):
+class FakeSharedCache:
+    """Stands in for a Redis-backed DualCache shared across workers."""
+
+    def __init__(self):
+        self.entries = {}
+
+    async def async_set_cache(self, key, value, **kwargs):
+        self.entries[key] = value
+
+    async def async_batch_get_cache(self, keys, **kwargs):
+        return [self.entries.get(key) for key in keys]
+
+
+def guardrail(
+    mapping=None,
+    error=None,
+    entities_config=None,
+    codec_id="placeholder",
+    mapping_scope=None,
+    session_cache=None,
+):
     return PiiAnonymizerGuardrail(
         guardrail_name="pii-anonymizer",
         detector=CascadingDetector(rules=SubstringDetector(mapping, error), ner=None, policy=NerStagePolicy.NEVER),
         codec_id=codec_id,
         pii_entities_config=entities_config,
+        pii_mapping_scope=mapping_scope,
+        session_cache=session_cache,
     )
 
 
@@ -217,6 +240,100 @@ class TestFailureModes:
     async def test_missing_detector_passes_through_instead_of_crashing(self):
         guard = PiiAnonymizerGuardrail(guardrail_name="g", detector=None)
         assert await run(guard, ["hello Ada"], {}, "request") == ["hello Ada"]
+
+
+class TestMappingScope:
+    def test_request_scope_is_the_default(self):
+        assert guardrail().scope_resolver.mapping_scope is MappingScope.REQUEST
+
+    def test_request_scope_keeps_tokens_in_the_request_dict_rather_than_a_cache(self):
+        assert guardrail().session_cache is None
+
+    def test_an_unrecognised_scope_falls_back_to_request_rather_than_crashing(self):
+        assert guardrail(mapping_scope="nonsense").scope_resolver.mapping_scope is MappingScope.REQUEST
+
+    def test_conversation_scope_refuses_to_start_without_a_shared_cache(self):
+        with pytest.raises(ValueError, match="shared cache"):
+            guardrail(mapping_scope="conversation")
+
+    @pytest.mark.asyncio
+    async def test_the_scope_namespace_comes_from_the_calling_key(self):
+        guard = guardrail({"Ada": "PERSON"})
+        first = guard._scope({"metadata": {"user_api_key": "hashed-a"}})
+        second = guard._scope({"metadata": {"user_api_key": "hashed-b"}})
+        assert first.namespace != second.namespace
+
+    @pytest.mark.asyncio
+    async def test_request_scope_ignores_the_session_id_the_proxy_resolved(self):
+        guard = guardrail({"Ada": "PERSON"})
+        scope = guard._scope({"metadata": {"user_api_key": "hashed-a"}, "litellm_session_id": "sess-1"})
+        assert scope.session_id == "request"
+
+    @pytest.mark.asyncio
+    async def test_request_data_without_metadata_still_resolves(self):
+        assert guardrail()._scope({}).session_id == "request"
+
+    @pytest.mark.asyncio
+    async def test_a_non_string_session_id_is_ignored(self):
+        assert guardrail()._scope({"litellm_session_id": 42}).session_id == "request"
+
+    @pytest.mark.asyncio
+    async def test_two_keys_cannot_read_each_others_tokens_in_one_process(self):
+        guard = guardrail({"Ada": "PERSON"})
+        first_data = {"metadata": {"user_api_key": "hashed-a"}}
+        encoded = await run(guard, ["hello Ada"], first_data, "request")
+        assert encoded == ["hello <PERSON_1>"]
+        second_data = {"metadata": {"user_api_key": "hashed-b"}}
+        assert await run(guard, encoded, second_data, "response") == ["hello <PERSON_1>"]
+
+
+class TestConversationScope:
+    def conversational(self, mapping):
+        return guardrail(mapping, mapping_scope="conversation", session_cache=FakeSharedCache())
+
+    @pytest.mark.asyncio
+    async def test_a_token_minted_in_one_request_decodes_in_the_next(self):
+        guard = self.conversational({"Ada": "PERSON"})
+        turn_one = {"metadata": {"user_api_key": "hashed-a"}, "litellm_session_id": "sess-1"}
+        encoded = await run(guard, ["hello Ada"], turn_one, "request")
+        assert encoded == ["hello <PERSON_1>"]
+
+        turn_two = {"metadata": {"user_api_key": "hashed-a"}, "litellm_session_id": "sess-1"}
+        assert await run(guard, encoded, turn_two, "response") == ["hello Ada"]
+
+    @pytest.mark.asyncio
+    async def test_another_conversation_cannot_decode_the_token(self):
+        guard = self.conversational({"Ada": "PERSON"})
+        first = {"metadata": {"user_api_key": "hashed-a"}, "litellm_session_id": "sess-1"}
+        encoded = await run(guard, ["hello Ada"], first, "request")
+
+        other = {"metadata": {"user_api_key": "hashed-a"}, "litellm_session_id": "sess-2"}
+        assert await run(guard, encoded, other, "response") == encoded
+
+    @pytest.mark.asyncio
+    async def test_another_key_in_the_same_conversation_cannot_decode_the_token(self):
+        guard = self.conversational({"Ada": "PERSON"})
+        first = {"metadata": {"user_api_key": "hashed-a"}, "litellm_session_id": "sess-1"}
+        encoded = await run(guard, ["hello Ada"], first, "request")
+
+        other = {"metadata": {"user_api_key": "hashed-b"}, "litellm_session_id": "sess-1"}
+        assert await run(guard, encoded, other, "response") == encoded
+
+    @pytest.mark.asyncio
+    async def test_tokens_go_to_the_shared_cache_rather_than_the_request_dict(self):
+        cache = FakeSharedCache()
+        guard = guardrail({"Ada": "PERSON"}, mapping_scope="conversation", session_cache=cache)
+        data = {"metadata": {"user_api_key": "hashed-a"}, "litellm_session_id": "sess-1"}
+        await run(guard, ["hello Ada"], data, "request")
+        assert cache.entries
+        assert "pii_tokens" not in data["metadata"]
+
+    @pytest.mark.asyncio
+    async def test_a_turn_without_a_session_id_falls_back_to_request_scope(self):
+        guard = self.conversational({"Ada": "PERSON"})
+        data = {"metadata": {"user_api_key": "hashed-a"}}
+        encoded = await run(guard, ["hello Ada"], data, "request")
+        assert await run(guard, encoded, data, "response") == ["hello Ada"]
 
 
 class TestStreamingContract:

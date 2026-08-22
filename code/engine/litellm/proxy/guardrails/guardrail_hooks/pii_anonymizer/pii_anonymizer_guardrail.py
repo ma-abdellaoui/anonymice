@@ -3,14 +3,18 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal, Optional, assert_never
 
 from litellm._logging import verbose_proxy_logger
+from litellm.caching.dual_cache import DualCache
 from litellm.exceptions import BlockedPiiEntityError, GuardrailRaisedException
 from litellm.integrations.custom_guardrail import CustomGuardrail, log_guardrail_information
 from litellm.pii.codec.action_aware import ActionAwareCodec, SpanAction, blocked_entities
 from litellm.pii.config import CodecId, PiiSettings, build_codec, build_detector
 from litellm.pii.detection.cascade import CascadingDetector, NerStagePolicy
 from litellm.pii.service import EncodedBatch, PiiService
-from litellm.pii.store.base import TokenScope
+from litellm.pii.store.base import PiiTokenStore, TokenScope
+from litellm.pii.store.cipher import cipher_from_env
+from litellm.pii.store.dual_cache import DualCacheStore
 from litellm.pii.store.request_scoped import RequestScopedStore
+from litellm.pii.store.scope import MappingScope, ScopeResolver
 from litellm.pii.types import (
     CodecError,
     DecodeFailed,
@@ -33,12 +37,30 @@ if TYPE_CHECKING:
     from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
 
 TOKEN_BUCKET_KEY: Final = "pii_tokens"
-REQUEST_SESSION_ID: Final = "request"
+SESSION_ID_KEY: Final = "litellm_session_id"
+API_KEY_METADATA_KEY: Final = "user_api_key"
 SUPPORTED_EVENT_HOOKS: Final = (
     GuardrailEventHooks.pre_call,
     GuardrailEventHooks.during_call,
     GuardrailEventHooks.post_call,
 )
+
+
+def _to_mapping_scope(scope: str | None) -> MappingScope:
+    return MappingScope(scope) if scope in MappingScope.__members__.values() else MappingScope.REQUEST
+
+
+def _shared_cache() -> DualCache | None:
+    """The proxy's cross-worker cache, or None when only a per-worker one exists.
+
+    Imported here rather than at module load, which would be a cycle.
+    """
+    from litellm.proxy.proxy_server import proxy_logging_obj
+
+    cache: Final = getattr(getattr(proxy_logging_obj, "internal_usage_cache", None), "dual_cache", None)
+    if not isinstance(cache, DualCache) or cache.redis_cache is None:
+        return None
+    return cache
 
 
 def _to_span_action(action: PiiAction | str) -> SpanAction:
@@ -92,6 +114,8 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
         codec_id: CodecId = "placeholder",
         pii_entities_config: Mapping[str, PiiAction | str] | None = None,
         default_action: PiiAction | str = PiiAction.ENCODE,
+        pii_mapping_scope: str | None = None,
+        session_cache: DualCache | None = None,
         **kwargs,  # kwargs-ok: forwarded verbatim to CustomGuardrail, which owns the shared guardrail options
     ):
         kwargs.setdefault("supported_event_hooks", list(SUPPORTED_EVENT_HOOKS))  # mutable-ok: base class wants a list
@@ -110,19 +134,40 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
             actions=self.actions,
             default_action=_to_span_action(default_action),
         )
+        self.scope_resolver: Final = ScopeResolver(mapping_scope=_to_mapping_scope(pii_mapping_scope))
+        self.session_cache: Final = (
+            (session_cache or _shared_cache()) if self.scope_resolver.needs_shared_cache() else None
+        )
+        if self.scope_resolver.needs_shared_cache() and self.session_cache is None:
+            raise ValueError(
+                f"PII guardrail {self.guardrail_name}: pii_mapping_scope='conversation' needs a shared cache, "
+                "since a conversation outlives one request and workers would otherwise each hold their own "
+                "mapping and fail to decode each other's tokens. Configure Redis, or use the default "
+                "pii_mapping_scope='request'."
+            )
 
     def _token_bucket(self, request_data: dict) -> dict:  # mutable-ok: live per-request map
         metadata: Final[dict] = request_data.setdefault("metadata", {})  # mutable-ok: live dict
         return metadata.setdefault(TOKEN_BUCKET_KEY, {})  # mutable-ok: written through by the store
 
+    def _store(self, request_data: dict) -> PiiTokenStore:  # mutable-ok: framework passes a dict
+        if self.session_cache is None:
+            return RequestScopedStore(self._token_bucket(request_data))
+        return DualCacheStore(cache=self.session_cache, cipher=cipher_from_env())
+
+    def _scope(self, request_data: dict) -> TokenScope:  # mutable-ok: framework passes a dict
+        metadata: Final = request_data.get("metadata")
+        api_key: Final = metadata.get(API_KEY_METADATA_KEY) if isinstance(metadata, dict) else None
+        session_id: Final = request_data.get(SESSION_ID_KEY)
+        return self.scope_resolver.resolve(
+            api_key=api_key if isinstance(api_key, str) else None,
+            session_id=session_id if isinstance(session_id, str) else None,
+        )
+
     def _service(self, request_data: dict) -> PiiService | None:  # mutable-ok: framework passes a dict
         if self.detector is None:
             return None
-        return PiiService(
-            detector=self.detector,
-            codec=self.codec,
-            store=RequestScopedStore(self._token_bucket(request_data)),
-        )
+        return PiiService(detector=self.detector, codec=self.codec, store=self._store(request_data))
 
     def _raise_public(self, error: DetectionError | CodecError | StoreError) -> None:
         raise GuardrailRaisedException(
@@ -191,7 +236,7 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
             )
             return inputs
 
-        scope: Final = TokenScope(namespace=REQUEST_SESSION_ID, session_id=REQUEST_SESSION_ID)
+        scope: Final = self._scope(request_data)
         if input_type == "response":
             return await self._decode(service, inputs, texts, scope)
         return await self._encode(service, inputs, texts, scope)
