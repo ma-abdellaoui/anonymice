@@ -335,16 +335,38 @@ await chrome.runtime.sendMessage({ type: 'anonymice:diagnostics' });
 `expired` means the pull has been failing long enough that its lists are gone,
 `disabled` means no pull was ever configured.
 
-## 6. Not required yet
+## 6. The vault
 
-Listed so the shape is known, not to be built now. All of these belong to the
-same origin and the same trust boundary.
+All of these belong to the same origin and the same trust boundary as `/v1/detect`
+— the detector already sees every value on the page, so the vault sharing that
+boundary adds no exposure (SPEC §3.1). The browser client derives their URL from
+`detectEndpoint` rather than taking one from configuration, so a policy pull that
+is already forbidden from moving the detector (§2.4) cannot move the vault either.
 
 | Endpoint | For | Spec |
 |---|---|---|
 | `POST /v1/tokens` | Mint a token on copy; mint a child on partial copy or edit | §6.3, §7, §8.4 |
-| `POST /v1/tokens/resolve` | Resolve a token to its value for the reveal clone, re-scoped to the destination | §6.3, §8 |
+| `POST /v1/tokens/resolve` | Resolve a token to its value, re-scoped to the destination | §6.3, §8 |
 | `DELETE /v1/tokens/{id}` | Revocation, immediate and independent of the retention clock | §6.7 |
+
+**Built in the mock only** (`browser/mock/tokens-api.ts`), in memory, for the
+cross-extension flow in [QA-SYNC.md](../QA-SYNC.md). The service of §7 does not
+serve them yet — child tokens on partial copy are unbuilt in both.
+
+`POST /v1/tokens` is batched, because one selection can cover several values and
+a request per value would be a round trip per value while the user is mid-drag:
+
+```json
+{ "mints": [ { "cls": "IBAN", "value": "CH93 …", "normalized": "CH9300…", "scopeId": "source:https://crm.example" } ] }
+```
+```json
+{ "tokens": ["ANM1-IBAN-K3F9QW2MX7VBNC4H8"] }
+```
+
+`POST /v1/tokens/resolve` takes `{ token, scopeId? }` and **always answers 200** —
+a dead token is a legible answer, not an error (§6.7), so the tombstone rows are
+part of the schema. With a `scopeId` it also returns `alias`, the destination's
+own token for the same value, which is what the paste handler writes.
 
 Two constraints from SPEC §6.7 that will shape them: a resolve failure must be
 **legible** — class, age, origin, never a bare "unknown" — which means the
@@ -388,8 +410,10 @@ explicitly **not** part of this contract: nothing in the extension calls it.
 `code/extensions/browser/mock/` implements all three endpoints for local work
 and QA. It is a stand-in, not a reference implementation — [§7](#7-the-service)
 is the service: the rule pass is real
-(regex plus the shared checksums), the "model" pass is a fixed gazetteer, and it
-holds no vault.
+(regex plus the shared checksums) and the "model" pass is a fixed gazetteer. It
+*does* hold the vault of §6 — the only thing that does — in memory, so both
+extensions can resolve against one. Restarting it destroys every token ever
+minted, which is the honest shape of a mock and not something to rely on.
 
 ```sh
 npm run mock          # http://localhost:8788, bearer dev-token

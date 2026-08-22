@@ -36,7 +36,12 @@ const devPolicy = qa
       policyRefreshMinutes: Number(argValue('policy-refresh', '1')),
       locale: argValue('locale', 'de-CH'),
       painter: argValue('painter', 'auto'),
+      // QA needs TRUSTED to paint, because the class gate and the reveal path
+      // are both only observable on a page that has something on it.
+      scanTrusted: argValue('scan-trusted', 'readonly'),
       notifications: argValue('notifications', 'on'),
+      // QA needs the gate on; the shipped default stays `off` (SPEC §11.6).
+      egress: argValue('egress', 'enforce'),
     }
   : null;
 
@@ -47,6 +52,12 @@ await build({
   entryPoints: {
     'service-worker': `${root}src/background/service-worker.ts`,
     content: `${root}src/content/main.ts`,
+    // The reveal frame is its own document on the extension origin (SPEC §8.1),
+    // so it is a separate entry rather than part of the content bundle.
+    reveal: `${root}src/ui/reveal.ts`,
+    // The egress shim runs in the page's own realm (SPEC §11.2), so it shares no
+    // module instance with the content bundle and must be its own entry.
+    egress: `${root}src/content/egress-main.ts`,
   },
   outdir: out,
   bundle: true,
@@ -81,12 +92,14 @@ if (qa) {
 writeFileSync(`${out}/manifest.json`, JSON.stringify(manifest, null, 2));
 cpSync(`${root}platform/chrome/managed-schema.json`, `${out}/managed-schema.json`);
 cpSync(`${root}platform/chrome/icons`, `${out}/icons`, { recursive: true });
+cpSync(`${root}src/ui/reveal.html`, `${out}/reveal.html`);
 
 if (devPolicy) {
   console.log(`built -> ${out} (QA build)`);
   console.log(`  host access : pre-granted (*://*/*)`);
   console.log(`  NATIVE      : ${devPolicy.native.join(', ') || '(none)'}`);
-  console.log(`  TRUSTED     : ${devPolicy.trusted.join(', ') || '(none — not scanned yet anyway)'}`);
+  console.log(`  TRUSTED     : ${devPolicy.trusted.join(', ') || '(none)'} (scan: ${devPolicy.scanTrusted})`);
+  console.log(`  egress      : ${devPolicy.egress} (SPEC §10 — ships \`off\`; --egress=off|report|enforce)`);
   console.log(`  backend     : ${devPolicy.detectEndpoint}`);
   console.log(
     `  policy pull : ${devPolicy.policyEndpoint || '(off — baked lists only)'}` +

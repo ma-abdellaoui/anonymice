@@ -19,7 +19,8 @@ Merged from `docs/extensions/browser/DETECTION.md` and
 - [7. Clipboard: the one decision point](#7-clipboard-the-one-decision-point)
 - [8. Replacement: reading a value the page holds as a token](#8-replacement-reading-a-value-the-page-holds-as-a-token)
 - [9. Verification](#9-verification)
-- [10. Open](#10-open)
+- [10. Egress: the gate that makes the guarantee](#10-egress-the-gate-that-makes-the-guarantee)
+- [11. Open](#11-open)
 
 ## 0. Scope and settled decisions
 
@@ -714,6 +715,35 @@ Consequences that bind the rest of the spec:
   exactly what an unhijacked copy would have produced — the sanitiser operates
   on the true selection, not on a decorated approximation.
 
+**A selection is almost never one value.** The ordinary gesture is a sentence, a
+table row, a paragraph — prose with two or three sensitive values sitting inside
+it. So substitution is *interleaving*, not replacement: every registry range in
+the selection becomes its own token and everything between them is carried
+through byte for byte.
+
+```
+Kunde Anna Meier, IBAN CH93 0076 2011 6238 5295 7, Tel 044 668 18 00
+     └── PERSON ──┘       └────────── IBAN ──────────┘     └ PHONE ┘
+
+Kunde ANM1-PERSON-K3F9QW2MX7VBNC4H8, IBAN ANM1-IBAN-9QW2MX7VBNC4H8K3F, Tel ANM1-PHONE-…
+```
+
+Three consequences follow, and each is load-bearing:
+
+- **The prose survives.** `Kunde`, `, IBAN `, `, Tel ` are not ours to touch. A
+  clipboard that lost them would be useless for the thing users actually do,
+  which is quote a record into a message.
+- **One token per *value*, not per occurrence.** A value the selection covers
+  twice gets one token in both places, because the registry is keyed by value
+  (§5) and the vault by normalised form (§5.2).
+- **Offsets come from the selection, never from a search.** The registry's
+  `ranges[]` say where each value sits; locating the values by searching the
+  copied text for them would substitute the wrong span the moment a value
+  appears as a substring of the prose around it.
+
+A copy that intersects nothing is not touched at all — not even re-emitted —
+so an ordinary copy keeps every flavour the browser would have given it.
+
 ## 8. Replacement: reading a value the page holds as a token
 
 How the user sees a real value in a field whose value the untrusted client reads
@@ -821,11 +851,12 @@ without the former, a page handler still on the propagation path receives a live
 - **Empty-field or full-replace pastes only.** Pasting into the middle of
   existing content means reconciling mixed state — some typed plaintext, some
   previously tokenized. Fall back to a plain tokenized paste with no reveal.
-- **Single-value inputs first.** A `<textarea>` receiving a paragraph with three
+- **Editing is single-value only.** A field receiving a paragraph with three
   tokens gives three spans to track through arbitrary edits, and there is no way
-  to render an atomic chip inside a textarea to make them indivisible. Separate,
-  harder problem — the rich-editor path, where chips *are* available, is where
-  it gets solved.
+  to render an atomic chip inside a plain input to make them indivisible. So a
+  mixed paste is *revealed* but not *cloned* — see §8.10. Editing mixed content
+  is the rich-editor path, where chips are available, and it is a separate
+  problem.
 - **Tear down on blur or on declassification.** The clone's lifetime is bounded
   to one active interaction.
 - **Copy the computed accessible name** into the iframe input's `aria-label` at
@@ -1003,8 +1034,9 @@ arbitrary inputs on arbitrary sites.
 
 ### 8.9 Ship order
 
-1. **Reveal-on-demand tooltip.** Field holds the token; hover or focus pops a
-   read-only extension-iframe popover with the real value. No focus transfer, no
+1. **Reveal-on-demand tooltip.** Field holds the token — or prose with several
+   tokens in it (§8.10); hover or focus pops a read-only extension-iframe popover
+   with the real values. No focus transfer, no
    caret placement, no accessibility regression, no style matching beyond a
    popover. Covers "paste it, glance to confirm it is the right customer, move
    on", which is most of the traffic.
@@ -1013,6 +1045,53 @@ arbitrary inputs on arbitrary sites.
 
 The paste-triggered mount is the right mechanism for both; the question is only
 what gets mounted.
+
+### 8.10 Mixed content: prose with tokens in it
+
+The copy side interleaves (§7), so the paste side receives interleaving. `Kunde
+ANM1-PERSON-…, IBAN ANM1-IBAN-…` pasted into a field is the *normal* case, not an
+edge one, and a reveal path that only understands a field whose entire contents
+are one token would miss most of the traffic it exists for.
+
+**Reveal handles many tokens. The clone handles one.** That split is not
+squeamishness; the two problems are different sizes:
+
+| | reveal | clone |
+|---|---|---|
+| what the field holds | prose with N tokens in it | exactly one token |
+| what the frame draws | the same prose, each token replaced by its value | an `<input>` holding the value |
+| editable | no | yes |
+| what an edit has to track | N spans through arbitrary text edits | one value |
+
+Editing mixed content means keeping N spans aligned while the user types between
+them, and the moment a token is partly deleted there is no honest answer to what
+the field now holds. §8.4's child-token model is per value and does not
+generalise. A plain `<input>` also has nowhere to render an atomic chip, which is
+the affordance that would make a token indivisible to the caret. So mixed content
+is read-only until the rich-editor path exists, and that is a *stated* limit: the
+field keeps its tokens, the user can read them, and nothing is silently wrong.
+
+**Rules.**
+
+- **One or more tokens anywhere in the pasted text mounts a reveal.** The field
+  takes the text as pasted; the frame draws it with each token resolved.
+- **Exactly one token, and nothing else in the payload, mounts a clone** — the
+  §8.3 path, unchanged.
+- **Tokens are canonicalised into the field on the way in.** A token mangled by a
+  rich editor — zero-width characters, a non-breaking hyphen, lower case — is
+  recognised by the §6.4 normalisation and written back in its clean form, so the
+  field holds something the *next* reader can resolve too. This is the one edit we
+  make to pasted text, and it never changes which token a string denotes.
+- **A token that does not resolve renders in place, legibly.** Expired, revoked,
+  foreign and damaged (§6.7) each render where the token sits, inside the
+  surrounding prose, rather than collapsing the whole reveal into one failure.
+- **Focus reveals whatever the field already holds**, however it got there —
+  pasted, typed, or filled by the page. The paste path is how a clone is reached;
+  it is not how a reveal is reached.
+
+**The invariant is unchanged.** The field holds tokens and prose. The prose was
+never sensitive — it is what the user selected around the values — and the values
+are still only in the vault and in this frame.
 
 ## 9. Verification
 
@@ -1052,7 +1131,228 @@ The eval is the contract; it lands before anything else
   prefix, truncation, re-spacing — is refused; a genuine replacement is written
   through and audited, with the literal absent from the audit record.
 
-## 10. Open
+## 10. Egress: the gate that makes the guarantee
+
+§1 promises that a `TRUSTED` destination never receives a plaintext value. §7 and
+§8 deliver that promise for values that arrive by **copy and paste**. This
+section is what makes it hold for values that arrive any other way — typed
+straight into the page, pasted from Excel, a PDF or an email client, or pasted
+from a host that is in no list at all.
+
+### 10.1 Why the page is the wrong place to make it
+
+Every mechanism in §8 controls what the *page* holds. On a form that is a
+complete control: the page holds the token, the submit sends the token, done.
+
+On a collaborative destination it is not, and the reason is structural rather
+than a matter of effort:
+
+> **There is no moment where the page holds a complete value and has not yet
+> sent it.**
+
+A collaborative editor ships keystrokes. By the time `CH93 0076 2011 6238 5295 7`
+is recognisable as an IBAN, `CH93 0076 2011 62` has already been transmitted,
+stored, and fanned out to everyone else in the room. Detect-then-rewrite in the
+DOM loses that race by construction, and no amount of editor integration wins
+it — §8's clone, and the rich-editor decoration path it defers to, both control
+the document *model*, which is the right target for a pasted token and no help
+at all against typing.
+
+The last place where a complete value exists and has not yet left is the
+**outbound request**. That is where this gate sits.
+
+**It is not a replacement for §7 or §8.** They are cheaper, they are the only
+thing that works when the value is going somewhere outside the browser entirely,
+and they are what make the destination's copy readable to the user. This is the
+backstop that turns a coverage claim into an enforceable one.
+
+```mermaid
+flowchart LR
+  U[user types a value] --> E["editor / form<br/>(page realm)"]
+  E --> T{"egress gate<br/>MAIN world"}
+  T -->|"clean"| N[network]
+  T -->|"tokenised"| N
+  T -->|"no token in hand"| X["held<br/>§10.4"]
+  X -.->|"mint, warm, app retries"| T
+  B["bridge<br/>(isolated world)"] -->|"known values<br/>digest → token"| T
+  B <-->|"chrome.runtime"| V[("vault")]
+
+  style X fill:#fee,stroke:#c66
+  style N fill:#fee,stroke:#c66
+```
+
+### 10.2 Where it runs, and what that costs
+
+The gate wraps `fetch`, `XMLHttpRequest.prototype.send`,
+`WebSocket.prototype.send` and `navigator.sendBeacon`. Those have to be wrapped
+in the page's own JS realm — `world: "MAIN"`, at `document_start`:
+
+- an isolated world patches **its own copies**, which the application never
+  calls;
+- an isolated world cannot read expando properties the page set on a DOM node,
+  because each world gets its own wrappers;
+- anything later than `document_start` has already lost the race for the
+  original references.
+
+Being in the page's realm means the page can read the shim, re-patch over it, or
+hand it a forged config. Each of those is affordable **here specifically**, and
+the argument is worth stating rather than assuming:
+
+| the page could… | what it gets |
+|---|---|
+| read the shim's code | nothing; the code is not a secret |
+| read the token map | digests, not values — it names nothing the shim has not already found in a body the page itself was sending |
+| read `known` | values that page's own DOM already contains |
+| forge a config | disables the gate; loud, and fails in §10.4's direction |
+| re-patch over the shim | same |
+
+The vault is never reachable from the page's realm. **No plaintext the shim did
+not already see in the page's own outbound body ever crosses into it.**
+
+Registration is per class: `TRUSTED` hosts only. A gate that drops requests has
+no business on a `NATIVE` host, where nothing is rewritten in the first place.
+
+### 10.3 The gate is synchronous, and that is not a limitation to fix
+
+`WebSocket.send` returns `void`. `XMLHttpRequest.send` returns `void`.
+`sendBeacon` returns a boolean. None of them can await a round trip to the
+vault, and the WebSocket is the transport that matters on a collaborative
+destination.
+
+So the decision is made from what is already in hand. This is the same shape as
+§7's copy handler, and for the same reason: **the token is minted while the
+value is being found, not while the request is being sent.**
+
+`fetch` alone *could* await. It deliberately does not. One decision path is
+worth more than one transport's extra capability — a gate that behaves
+differently per transport is a gate nobody can reason about, and a bug in the
+rare path is a bug nobody finds.
+
+Two passes find what must not leave, and neither is a new detector:
+
+1. **Registry pass.** Values the page's own registry already holds, which came
+   from the backend (§3.1). This is the only pass that can see a `PERSON` or an
+   `ADDR`, because those have no intrinsic shape to anchor on. Longest match
+   first, so a street name inside an address does not shadow the address.
+2. **Checksum pass.** Candidate shapes validated against `checksums.ts` — the
+   one shared library §8.7.2 already requires the clone to validate against, so
+   the gate cannot disagree with the detector about what a valid IBAN is. This
+   is the pass that catches the typed-in-place value, and it adds no
+   per-destination rule pack.
+
+On overlap the registry wins: it carries the class the *detector* assigned, and
+a locally-guessed class on the same characters is the weaker claim (§3.3).
+
+A token already in the body is skipped. Finding one is the system working.
+
+### 10.4 Fail closed
+
+A body we could only partly tokenise still carries the part we could not, so it
+is not a body that may leave.
+
+| transport | held how |
+|---|---|
+| `fetch` | the returned promise rejects with an `AbortError` |
+| `XMLHttpRequest` | `send()` returns without calling through |
+| `WebSocket` | the frame is dropped |
+| `sendBeacon` | returns `false` |
+
+**Dropping a WebSocket frame desynchronises the application's own protocol.**
+That is the intended outcome and not an accident of implementation: a
+desynchronised editor is recoverable by a reload, and a leaked value is not.
+
+A held request is a request the vault owes us a token for. The bridge mints
+exactly what was missing, warms the shim's cache, and the application's **own**
+retry then goes out tokenised. We do not replay the request on the application's
+behalf — that means guessing its headers, its ordering and its idempotency, and
+getting any of those wrong is worse than the retry the app already knows how to
+do.
+
+If the vault is unreachable, the request stays held. That is the safe arm.
+
+A gate that throws is a gate that is not gating, so an exception inside the scan
+is treated as a miss: held in `enforce`, forwarded in `report`.
+
+### 10.5 Keeping the cache warm
+
+The shim can decide but cannot mint — it has no `chrome.*`. The isolated-world
+bridge owns the vault route and pushes down, over `window.postMessage`:
+
+- `known` — this page's registry entries, refreshed when a scan completes;
+- `tokens` — keyed by `sha256(normalized + '|' + cls)`, never by a plaintext
+  key, so the map names nothing the shim has not already found for itself.
+
+The bridge attaches **before the first scan**, for the same reason the copy
+guard does: an empty registry blocks nothing the checksum pass would not have
+caught anyway, and attaching late leaves a window where the application's first
+request goes out unexamined.
+
+The channel is a frame filter, not a security boundary. The page can post on it
+and can read it; §10.2's table is why that is survivable.
+
+### 10.6 Modes, and how this rolls out
+
+`policy.egress`, a managed-policy setting, three positions:
+
+- **`off`** — no shim is injected at all. **This is the shipped default**,
+  because a gate that drops requests is not something to turn on by surprise.
+- **`report`** — substitutes where it can, forwards what it cannot, and reports
+  every decision. This is the mode that tells an administrator what `enforce`
+  would have broken, on their own destinations, before it breaks it.
+- **`enforce`** — §10.4 applies.
+
+`report` → `enforce` per host, never globally in one step. The failure mode of
+this feature is a destination that stops working, and that is a conversation to
+have one application at a time.
+
+### 10.7 Known costs
+
+Stated plainly, in the manner of §8.8, because each one bounds the guarantee.
+
+- **The prefix problem is reduced, not solved.** On a keystroke-streaming
+  protocol the gate sees each frame as it is sent, so a value is caught on the
+  frame that completes it — the frames carrying its prefix have already gone.
+  This converts a whole-value leak into a prefix leak. For a non-streaming
+  destination (a form POST, an autosave) there is no prefix problem at all. A
+  destination where the prefix itself is unacceptable needs the collab socket
+  suppressed while an editable holds a partial match, which is not built.
+- **Only bodies we can read as text are gated.** A `Blob`, an `ArrayBuffer`, a
+  `FormData` or a `ReadableStream` body passes through unexamined. This is a
+  known gap and is deliberately not a silent block — blocking every binary
+  upload would make the feature unshippable, and pretending to inspect one would
+  be worse.
+- **Compressed or encrypted payloads are opaque.** A destination that gzips in
+  JavaScript before sending, or that end-to-end encrypts, defeats the gate
+  entirely.
+- **The page can remove the shim.** §10.2 is explicit about this. It is a
+  control against an application that is careless, not against one that is
+  hostile.
+- **Free-text classes are registry-only.** A `PERSON` typed into a page that was
+  never scanned is invisible to the checksum pass, because a name has no
+  checksum. This gate is strongest exactly where §8 is weakest — structured
+  values — and shares §8's blind spot on unstructured ones.
+- **Cost per request.** Both passes run on every text body on a `TRUSTED` host.
+  The registry pass is `indexOf` per known value; the checksum pass is four
+  regexes plus a checksum per candidate.
+- **A dropped WebSocket frame is visible to the user as a broken editor.** §10.4
+  accepts this; the notifier (§10.8) is what stops it being mysterious.
+
+### 10.8 Telling the user
+
+A held request that produces no signal is a bug report about the destination,
+filed against the destination. Every decision is reported to the isolated world,
+which owns the surfaces:
+
+- **held** — the in-page pill and the badge, naming the class and the
+  destination origin, not the value;
+- **tokenised** — counted, not announced; announcing the success case on every
+  request trains the user to ignore the pill.
+
+The audit entry records the class, the transport, the destination origin, a hash
+of the value rather than the value, and the verdict — the same shape as §8.5's
+declassification entry, and for the same reason.
+
+## 11. Open
 
 Everything previously listed here is now decided in the section that owns it:
 scoping and `session` in §6.3, `PERSON` identity in §5.1, token lifetime and
@@ -1079,3 +1379,11 @@ validation in §8.7, the `TRUSTED` rollout in §1. What is left is genuinely ope
 - **`UNTRUSTED` activation UX.** §1 settles the security model (opt-in per host,
   no script until then); how the user discovers and grants it, and whether a
   grant is remembered or per-session, is undesigned.
+- **Whether the prefix leak of §10.7 is acceptable per destination.** Suppressing
+  a collaborative socket while an editable holds a partial match would close it
+  and would also make the editor feel broken while typing. Nobody has decided
+  which destinations, if any, warrant that; measure a real editing trace first.
+- **Non-text bodies (§10.7).** `FormData` and `ReadableStream` are the two that
+  a real destination is most likely to use for something worth gating. Whether
+  either is worth reading — and at what cost to every upload on the host — is
+  unmeasured.

@@ -7,6 +7,7 @@
  * backend.
  */
 import { DetectClient } from './detect-client.ts';
+import { VaultClient, type MintSpec } from './vault-client.ts';
 import { chromeStore, CACHE_KEY, PolicyClient, type PolicyResult } from './policy-client.ts';
 import {
   classifyHost,
@@ -21,6 +22,8 @@ import { createSerializer } from '../lib/serialize.ts';
 import { planNotification, type Notified } from '../lib/notify.ts';
 
 const SCRIPT_ID = 'anonymice-content';
+/** Separate id: the shim has a different world, a different runAt and a narrower host list (SPEC §10.2). */
+const EGRESS_SCRIPT_ID = 'anonymice-egress';
 const POLICY_ALARM = 'anonymice:policy-refresh';
 
 /**
@@ -34,14 +37,26 @@ const bakedPolicy: Partial<Policy> | null =
 
 let policy: Policy = DEFAULT_POLICY;
 let client = new DetectClient({ policy });
+let vault = new VaultClient({ policy });
 /** Last pull outcome, and what registration did with it — read by QA (§4). */
-let health: Diagnostics = { policyStatus: 'disabled', rejected: [], registered: [], registrationError: null };
+let health: Diagnostics = {
+  policyStatus: 'disabled',
+  rejected: [],
+  registered: [],
+  registrationError: null,
+  egress: null,
+};
 
 export interface Diagnostics {
   policyStatus: PolicyResult['status'];
   rejected: string[];
   registered: string[];
   registrationError: string | null;
+  /**
+   * Null when the gate is `off`. Otherwise what it registered on, and why not
+   * if it could not — an absent gate must be visible in diagnostics (SPEC §10.8).
+   */
+  egress: { mode: string; matches: string[]; error?: string } | null;
   policyVersion?: string;
   expiresAt?: number;
 }
@@ -49,6 +64,27 @@ export interface Diagnostics {
 export interface DetectMessage {
   type: 'anonymice:detect';
   chunks: DetectChunkRequest[];
+}
+
+export interface MintMessage {
+  type: 'anonymice:mint';
+  specs: MintSpec[];
+}
+
+/**
+ * The reveal frame's own traffic. It runs as an extension page, so it talks to
+ * this worker directly rather than relaying through the content script — which
+ * means the plaintext never enters the content script's world at all. The page's
+ * own JavaScript could not reach it either way; keeping it out of the isolated
+ * world too means one less place it can be read from by accident.
+ */
+export interface VaultMessage {
+  type: 'anonymice:vault';
+  op: 'resolve' | 'child' | 'update' | 'commit';
+  token: string;
+  scopeId?: string;
+  value?: string;
+  normalized?: string;
 }
 
 export interface StateMessage {
@@ -62,6 +98,8 @@ export interface StateMessage {
 
 type Message =
   | DetectMessage
+  | MintMessage
+  | VaultMessage
   | StateMessage
   | { type: 'anonymice:policy' }
   | { type: 'anonymice:diagnostics' };
@@ -105,7 +143,9 @@ async function loadPolicy(mode: 'cached' | 'refresh'): Promise<{ policy: Policy;
  */
 async function registerContentScripts(): Promise<void> {
   const matches = matchPatternsFor(policy);
-  await chrome.scripting.unregisterContentScripts({ ids: [SCRIPT_ID] }).catch(() => {});
+  await chrome.scripting
+    .unregisterContentScripts({ ids: [SCRIPT_ID, EGRESS_SCRIPT_ID] })
+    .catch(() => {});
   health.registered = [];
   health.registrationError = null;
   if (matches.length === 0) return;
@@ -127,7 +167,9 @@ async function registerContentScripts(): Promise<void> {
       // serialised so it should not happen, but the recovery is cheap and the
       // failure mode — no content script at all — is not.
       if (!/duplicate script id/i.test(err instanceof Error ? err.message : String(err))) throw err;
-      await chrome.scripting.unregisterContentScripts({ ids: [SCRIPT_ID] }).catch(() => {});
+      await chrome.scripting
+        .unregisterContentScripts({ ids: [SCRIPT_ID, EGRESS_SCRIPT_ID] })
+        .catch(() => {});
       await register();
     }
     health.registered = matches;
@@ -137,6 +179,52 @@ async function registerContentScripts(): Promise<void> {
     // is the correct outcome, but it must not be a silent one (ENDPOINTS.md §2.5).
     health.registrationError = err instanceof Error ? err.message : String(err);
     console.error('anonymice: content-script registration failed', err);
+  }
+
+  await registerEgressShim();
+}
+
+/**
+ * The egress shim, registered **separately and last** — SPEC §10.2.
+ *
+ * Separate because `world: "MAIN"` needs Chrome 111 and the manifest floor is
+ * 105. In one call an unsupported `world` rejects the whole array, so a Chrome
+ * between 105 and 110 would end up with *no* content script at all and lose
+ * detection, highlighting and reveal to a feature that ships `off`. Its own
+ * call, its own catch: the gate is absent, everything else still runs.
+ *
+ * Last because the ordering of the failure matters more than the ordering of
+ * the success. There is no page load between the two calls.
+ *
+ * TRUSTED hosts only: a gate that drops requests has no business on a NATIVE
+ * host, where nothing is rewritten in the first place.
+ */
+async function registerEgressShim(): Promise<void> {
+  health.egress = null;
+  if (policy.egress === 'off') return;
+
+  const matches = matchPatternsFor(policy, 'TRUSTED');
+  if (matches.length === 0) return;
+
+  try {
+    await chrome.scripting.registerContentScripts([
+      {
+        id: EGRESS_SCRIPT_ID,
+        js: ['egress.js'],
+        matches,
+        runAt: 'document_start',
+        world: 'MAIN',
+        allFrames: false,
+      },
+    ]);
+    health.egress = { mode: policy.egress, matches };
+  } catch (err) {
+    // On Chrome < 111 this is "world is not supported". Either way the gate is
+    // not running, and a gate that is silently absent is the one failure this
+    // feature cannot afford (SPEC §10.4).
+    const message = err instanceof Error ? err.message : String(err);
+    health.egress = { mode: policy.egress, matches: [], error: message };
+    console.error('anonymice: egress shim NOT registered — no egress gate on this browser', err);
   }
 }
 
@@ -161,6 +249,7 @@ async function boot(mode: BootMode = 'refresh'): Promise<void> {
   const { policy: resolved, result } = await loadPolicy(mode);
   policy = resolved;
   client = new DetectClient({ policy });
+  vault = new VaultClient({ policy });
   health = {
     ...health,
     policyStatus: result.status,
@@ -238,6 +327,38 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     return true; // async
   }
 
+  if (message.type === 'anonymice:mint') {
+    // Scoping is the content script's call — it knows the source origin — but the
+    // credential and the endpoint are not the page's business, so the request is
+    // made here (SPEC §6.3, ENDPOINTS.md §6).
+    ready
+      .then(() => vault.mint(message.specs))
+      .then((tokens) => sendResponse(tokens))
+      .catch(() => sendResponse(null));
+    return true; // async
+  }
+
+  if (message.type === 'anonymice:vault') {
+    const m = message;
+    const run = async (): Promise<unknown> => {
+      await ready;
+      switch (m.op) {
+        case 'resolve':
+          return vault.resolve(m.token, m.scopeId);
+        case 'child':
+          return vault.mintChild(m.token, m.value ?? '', m.normalized ?? '', m.scopeId ?? '');
+        case 'update':
+          return vault.updateDraft(m.token, m.value ?? '', m.normalized ?? '');
+        case 'commit':
+          return vault.commitDraft(m.token);
+      }
+    };
+    run()
+      .then((result) => sendResponse(result ?? null))
+      .catch(() => sendResponse(null));
+    return true; // async
+  }
+
   if (message.type === 'anonymice:state') {
     const tabId = sender.tab?.id;
     if (tabId !== undefined) {
@@ -276,6 +397,8 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
         hostClass: classifyHost(host, policy),
         locale: policy.locale,
         painter: policy.painter,
+        scanTrusted: policy.scanTrusted,
+        egress: policy.egress,
       }),
     );
     return true; // async — answering before boot would classify everything UNTRUSTED

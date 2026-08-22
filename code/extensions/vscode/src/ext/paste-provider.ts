@@ -12,6 +12,7 @@
  */
 import * as vscode from 'vscode';
 import { looksLikeToken, parseToken } from '../lib/tokens.ts';
+import type { RemoteVault } from '../lib/remote-vault.ts';
 import type { Cls } from '../lib/types.ts';
 import type { Resolution, Vault } from '../lib/vault.ts';
 
@@ -24,6 +25,7 @@ export const PASTE_KIND = vscode.DocumentDropOrPasteEditKind.Text.append('anonym
 
 export class AnonymicePasteProvider implements vscode.DocumentPasteEditProvider {
   readonly #vault: Vault;
+  readonly #remote: RemoteVault | undefined;
   readonly #scopeFor: (doc: vscode.TextDocument) => string;
   readonly #classify: QuickClassifier;
   readonly #onRevealNeeded: (doc: vscode.TextDocument) => void;
@@ -33,8 +35,10 @@ export class AnonymicePasteProvider implements vscode.DocumentPasteEditProvider 
     scopeFor: (doc: vscode.TextDocument) => string,
     classify: QuickClassifier,
     onRevealNeeded: (doc: vscode.TextDocument) => void,
+    remote?: RemoteVault,
   ) {
     this.#vault = vault;
+    this.#remote = remote;
     this.#scopeFor = scopeFor;
     this.#classify = classify;
     this.#onRevealNeeded = onRevealNeeded;
@@ -62,18 +66,28 @@ export class AnonymicePasteProvider implements vscode.DocumentPasteEditProvider 
         const res: Resolution = this.#vault.resolve(parsed.token);
         if (res.kind === 'value') {
           // Re-scope to this document's destination (SPEC §6.3): the clipboard
-          // token was scoped to wherever it was copied from.
-          const alias = await this.#vault.mint({
-            cls: res.cls,
-            value: res.value,
-            normalized: res.value,
-            scopeId: scope,
-          });
+          // token was scoped to wherever it was copied from. By token, not by
+          // value — `resolve` returns the plaintext, not the normalised form the
+          // value index is built from, and minting on the wrong one forks the
+          // record.
+          const alias = this.#vault.rescope(parsed.token, scope);
           this.#onRevealNeeded(document);
-          return [this.#edit(alias, 'Paste as Anonymice token')];
+          return [this.#edit(alias ?? parsed.token, 'Paste as Anonymice token')];
         }
-        // Dead or foreign token: paste it literally. It stays legible (SPEC §6.7)
-        // and we must not invent a value for it.
+        // Not ours. It may still be a token from the browser extension, minted
+        // into the shared vault — which is the whole point of there being one.
+        // Re-scoping happens on that side, so what lands in the buffer is this
+        // destination's alias, not the clipboard token (SPEC §6.3).
+        if (res.kind === 'foreign' && this.#remote?.enabled) {
+          const reply = await this.#remote.resolveForPaste(parsed.token, scope);
+          if (token.isCancellationRequested) return undefined;
+          if (reply?.resolution.kind === 'value') {
+            this.#onRevealNeeded(document);
+            return [this.#edit(reply.alias ?? parsed.token, 'Paste as Anonymice token')];
+          }
+        }
+        // Dead, damaged, or from a vault nobody here can reach: paste it
+        // literally. It stays legible (SPEC §6.7) and we must not invent a value.
         return undefined;
       }
       return undefined;

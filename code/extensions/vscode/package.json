@@ -88,6 +88,18 @@
               }
             }
           }
+        },
+        "anonymice.vault.endpoint": {
+          "type": "string",
+          "scope": "machine",
+          "default": "",
+          "markdownDescription": "Base URL of the shared vault (`.../v1/tokens`, ENDPOINTS.md \u00a76). Empty \u2014 the default \u2014 keeps this editor entirely local: it resolves only what it minted itself, and a token from the browser extension reads as *from another vault*. Machine scope, so a cloned repo cannot point the editor at a vault of its own choosing."
+        },
+        "anonymice.vault.token": {
+          "type": "string",
+          "scope": "machine",
+          "default": "",
+          "markdownDescription": "Bearer credential for the shared vault. The vault returns plaintext, so treat this as a secret \u2014 it belongs in user settings, never in a repository."
         }
       }
     },
@@ -150,7 +162,7 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "npm run build && node --test \"test/*.test.ts\"",
-    "format-parity": "diff ../browser/src/lib/tokens.ts src/lib/tokens.ts && diff ../browser/test/tokens.test.ts test/tokens.test.ts && echo 'token format: browser == vscode'",
+    "format-parity": "diff ../browser/src/lib/tokens.ts src/lib/tokens.ts && diff ../browser/test/tokens.test.ts test/tokens.test.ts && echo 'token format: browser == vscode' && node dev/vault-parity.mjs",
     "check": "npm run typecheck && npm test && npm run format-parity",
     "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.cjs --log-level=warning",
     "watch": "npm run build -- --watch",

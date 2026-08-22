@@ -1,5 +1,17 @@
 /**
- * The vault — browser SPEC §5.2, §6.3, §6.7.
+ * The vault — SPEC §5.2, §6.3, §6.7.
+ *
+ * VENDORED from `vscode/src/lib/vault.ts`, which is where it was written and
+ * where it still runs for VS Code's own mints. `diff` the two; they must match
+ * apart from the two import paths and this note — `vscode/dev/vault-parity.mjs`
+ * checks it. Extracting a shared package would put a build step between the
+ * mock and `node mock/detect-server.ts`, which is the one thing the mock exists
+ * to avoid.
+ *
+ * Mock-grade in one respect only, and it is the process boundary rather than
+ * the code: this state lives in memory and dies with the server. The retention
+ * clocks, tombstones and revocation below are all real, and all pointless
+ * across a restart.
  *
  * Two keyspaces that never meet:
  *   - the **value index**, `HMAC-SHA256(k, normalized)`, is how the vault finds
@@ -10,8 +22,8 @@
  * One value record may hold several aliases — one per scope — so the same
  * subject pasted into two destinations does not correlate (SPEC §6.3).
  */
-import { mintToken, parseToken } from './tokens.ts';
-import type { Cls } from './types.ts';
+import { mintToken, parseToken } from '../src/lib/tokens.ts';
+import type { Cls } from '../src/lib/types.ts';
 
 export interface ValueRecord {
   id: string;

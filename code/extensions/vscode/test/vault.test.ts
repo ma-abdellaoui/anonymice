@@ -148,3 +148,40 @@ test('a mangled token reads as damaged, ordinary text as none', async () => {
   assert.equal(v.resolve(bad).kind, 'damaged');
   assert.equal(v.resolve('just prose').kind, 'none');
 });
+
+test('rescope gives a second alias for one record, not a second record', async () => {
+  const vault = await Vault.open(Vault.newKey());
+  const source = await vault.mint({
+    cls: 'IBAN',
+    value: 'CH93 0076 2011 6238 5295 7',
+    normalized: 'CH9300762011623852957',
+    scopeId: 'source:https://crm.example',
+  });
+
+  const alias = vault.rescope(source, 'file:///ws')!;
+  assert.notEqual(alias, source, 'two destinations must not correlate (SPEC §6.3)');
+  assert.equal(Object.keys(vault.state.records).length, 1, 'one value, one record');
+
+  const resolved = vault.resolve(alias);
+  assert.equal(resolved.kind, 'value');
+  assert.equal(resolved.kind === 'value' && resolved.value, 'CH93 0076 2011 6238 5295 7');
+
+  assert.equal(vault.rescope(alias, 'file:///ws'), alias, 'the same destination reuses its alias');
+});
+
+test('rescoping a token this vault does not hold invents nothing', async () => {
+  const vault = await Vault.open(Vault.newKey());
+  assert.equal(vault.rescope('ANM1-IBAN-K3F9QW2MX7VBNC4H8', 'file:///ws'), null);
+  assert.equal(Object.keys(vault.state.records).length, 0);
+});
+
+test('revoking the source kills the alias it was re-scoped into', async () => {
+  const vault = await Vault.open(Vault.newKey());
+  const source = await vault.mint({
+    cls: 'PERSON', value: 'Anna Meier', normalized: 'anna meier', scopeId: 's1',
+  });
+  const alias = vault.rescope(source, 's2')!;
+
+  assert.equal(vault.revoke(source), 2);
+  assert.equal(vault.resolve(alias).kind, 'tombstone');
+});

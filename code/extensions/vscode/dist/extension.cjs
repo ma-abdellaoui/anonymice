@@ -462,11 +462,13 @@ var vscode2 = __toESM(require("vscode"), 1);
 var PASTE_KIND = vscode2.DocumentDropOrPasteEditKind.Text.append("anonymice", "tokenize");
 var AnonymicePasteProvider = class {
   #vault;
+  #remote;
   #scopeFor;
   #classify;
   #onRevealNeeded;
-  constructor(vault, scopeFor2, classify2, onRevealNeeded) {
+  constructor(vault, scopeFor2, classify2, onRevealNeeded, remote) {
     this.#vault = vault;
+    this.#remote = remote;
     this.#scopeFor = scopeFor2;
     this.#classify = classify2;
     this.#onRevealNeeded = onRevealNeeded;
@@ -482,14 +484,17 @@ var AnonymicePasteProvider = class {
       if (parsed.kind === "token") {
         const res = this.#vault.resolve(parsed.token);
         if (res.kind === "value") {
-          const alias = await this.#vault.mint({
-            cls: res.cls,
-            value: res.value,
-            normalized: res.value,
-            scopeId: scope
-          });
+          const alias = this.#vault.rescope(parsed.token, scope);
           this.#onRevealNeeded(document);
-          return [this.#edit(alias, "Paste as Anonymice token")];
+          return [this.#edit(alias ?? parsed.token, "Paste as Anonymice token")];
+        }
+        if (res.kind === "foreign" && this.#remote?.enabled) {
+          const reply = await this.#remote.resolveForPaste(parsed.token, scope);
+          if (token.isCancellationRequested) return void 0;
+          if (reply?.resolution.kind === "value") {
+            this.#onRevealNeeded(document);
+            return [this.#edit(reply.alias ?? parsed.token, "Paste as Anonymice token")];
+          }
         }
         return void 0;
       }
@@ -707,12 +712,123 @@ function quickClassify(input) {
   return void 0;
 }
 
+// src/lib/remote-vault.ts
+var RemoteVault = class {
+  #config;
+  #fetch;
+  /** token -> what the shared vault last said. */
+  #cache = /* @__PURE__ */ new Map();
+  /** Tokens with a lookup in flight or already answered, so a redraw is free. */
+  #asked = /* @__PURE__ */ new Set();
+  constructor(config, fetchImpl = fetch) {
+    this.#config = config;
+    this.#fetch = fetchImpl;
+  }
+  get enabled() {
+    return this.#config.endpoint !== "";
+  }
+  configure(config) {
+    if (config.endpoint === this.#config.endpoint && config.token === this.#config.token) return;
+    this.#config = config;
+    this.#cache.clear();
+    this.#asked.clear();
+  }
+  /** What we already know, without going anywhere. Synchronous by design. */
+  cached(token) {
+    return this.#cache.get(token);
+  }
+  /**
+   * Ask about a token we have not asked about before. Returns true when the
+   * cache changed and the caller should redraw.
+   *
+   * One lookup per token per window: a token the shared vault does not know is
+   * not going to start knowing it, and re-asking on every keystroke would turn a
+   * document full of foreign tokens into a request storm.
+   */
+  async lookup(token, scopeId) {
+    if (!this.enabled || this.#asked.has(token)) return false;
+    this.#asked.add(token);
+    const reply = await this.#post(token, scopeId);
+    if (!reply) {
+      this.#asked.delete(token);
+      return false;
+    }
+    this.#cache.set(token, reply.resolution);
+    return true;
+  }
+  /**
+   * Resolve and re-scope in one call, for the paste path where the answer is
+   * needed now rather than at the next redraw (SPEC §6.3, stage two).
+   */
+  async resolveForPaste(token, scopeId) {
+    if (!this.enabled) return null;
+    const reply = await this.#post(token, scopeId);
+    if (!reply) return null;
+    this.#cache.set(token, reply.resolution);
+    this.#asked.add(token);
+    if (reply.alias) {
+      this.#cache.set(reply.alias, reply.resolution);
+      this.#asked.add(reply.alias);
+    }
+    return reply;
+  }
+  async #post(token, scopeId) {
+    try {
+      const res = await this.#fetch(`${this.#config.endpoint}/resolve`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${this.#config.token}`
+        },
+        body: JSON.stringify(scopeId ? { token, scopeId } : { token })
+      });
+      if (!res.ok) throw new Error(`resolve ${res.status}`);
+      const body = await res.json();
+      const resolution = readResolution(body);
+      if (!resolution) throw new Error("resolve: malformed response");
+      const reply = { resolution };
+      if (typeof body["alias"] === "string") reply.alias = body["alias"];
+      return reply;
+    } catch (err) {
+      console.error("anonymice: shared vault lookup failed", err);
+      return null;
+    }
+  }
+};
+function readResolution(body) {
+  const kind = body["kind"];
+  if (kind === "value") {
+    const value = body["value"];
+    const cls = body["cls"];
+    if (typeof value !== "string" || typeof cls !== "string") return null;
+    return {
+      kind: "value",
+      value,
+      cls,
+      expiresAt: typeof body["expiresAt"] === "number" ? body["expiresAt"] : 0,
+      expiringSoon: body["expiringSoon"] === true
+    };
+  }
+  if (kind === "tombstone") {
+    const t = body["tombstone"];
+    if (typeof t !== "object" || t === null) return null;
+    return { kind: "tombstone", tombstone: t };
+  }
+  if (kind === "foreign") return { kind: "foreign", cls: String(body["cls"] ?? "") };
+  if (kind === "damaged") {
+    return { kind: "damaged", cls: typeof body["cls"] === "string" ? body["cls"] : null };
+  }
+  if (kind === "none") return { kind: "none" };
+  return null;
+}
+
 // src/lib/vault.ts
 var DEFAULT_POLICY = {
   idleMs: 12 * 60 * 60 * 1e3,
   maxMs: 7 * 24 * 60 * 60 * 1e3,
   retainMs: 90 * 24 * 60 * 60 * 1e3,
-  warnMs: 7 * 24 * 60 * 60 * 1e3
+  warnMs: 7 * 24 * 60 * 60 * 1e3,
+  draftMs: 15 * 60 * 1e3
 };
 function emptyState() {
   return { records: {}, index: {}, aliases: {}, tombstones: {} };
@@ -794,6 +910,132 @@ var Vault = class _Vault {
       lastUsedAt: now
     };
     return token;
+  }
+  /**
+   * A second alias for an existing token's value, under another scope — stage
+   * two of SPEC §6.3, reached once the destination is finally known.
+   *
+   * By record id, deliberately. Re-minting through `mint()` would need the
+   * caller to hand back the `normalized` form, which a resolve does not return;
+   * passing the plaintext in its place indexes to a different digest and forks
+   * the record in two — same value, twice, no lineage, and revoking one leaves
+   * the other alive.
+   *
+   * Null when the token is not live here: a dead or foreign token has no value
+   * to re-scope, and inventing a record for it is the one thing §6.7 forbids.
+   */
+  rescope(token, scopeId) {
+    const alias = this.#state.aliases[token];
+    if (!alias) return null;
+    const rec = this.#state.records[alias.valueId];
+    if (!rec) return null;
+    const now = this.#now();
+    const existing = this.#aliasFor(rec.id, scopeId, now);
+    if (existing) {
+      existing.lastUsedAt = now;
+      return existing.token;
+    }
+    const minted = mintToken(rec.cls);
+    this.#state.aliases[minted] = {
+      token: minted,
+      scopeId,
+      valueId: rec.id,
+      mintedAt: now,
+      lastUsedAt: now
+    };
+    return minted;
+  }
+  /**
+   * A child of an existing token — SPEC §8.4. The edit path: the user changes a
+   * revealed value, and the field must hold *a* token throughout, so one is
+   * minted for the value being typed rather than the field reverting to
+   * plaintext while it is unclassifiable.
+   *
+   * **Depth 1, always.** A child edited again reparents to the root rather than
+   * extending the chain: lineage stays readable and revocation stays a single
+   * pass rather than a graph traversal.
+   *
+   * **Not indexed while it is a draft.** The value is about to change on the
+   * next keystroke, and an index entry for a value that no longer exists is
+   * worse than none. `commit` indexes it once it has stopped moving.
+   */
+  mintChild(parentToken, value, normalized, scopeId) {
+    const parentAlias = this.#state.aliases[parentToken];
+    if (!parentAlias) return null;
+    const parent = this.#state.records[parentAlias.valueId];
+    if (!parent) return null;
+    const now = this.#now();
+    const id = randomId();
+    this.#state.records[id] = {
+      id,
+      cls: parent.cls,
+      value,
+      normalized,
+      mintedAt: now,
+      lastResolvedAt: now,
+      // The root, not the parent — a child of a child is still a child of the root.
+      parentId: parent.parentId ?? parent.id,
+      userModified: true,
+      state: "draft",
+      draftUntil: now + this.#policy.draftMs
+    };
+    const token = mintToken(parent.cls);
+    this.#state.aliases[token] = { token, scopeId, valueId: id, mintedAt: now, lastUsedAt: now };
+    return token;
+  }
+  /**
+   * Move a draft's value as the user types. One token for the whole edit, not
+   * one per keystroke: per-keystroke tokens would explode the vault and leak the
+   * edit cadence through the churn (SPEC §8.4).
+   */
+  updateDraft(token, value, normalized) {
+    const rec = this.#draftFor(token);
+    if (!rec) return false;
+    const now = this.#now();
+    rec.value = value;
+    rec.normalized = normalized;
+    rec.lastResolvedAt = now;
+    rec.draftUntil = now + this.#policy.draftMs;
+    return true;
+  }
+  /**
+   * Blur or submit. The record stops moving, joins the value index, and picks up
+   * the ordinary retention clock (SPEC §8.4).
+   */
+  async commitDraft(token) {
+    const rec = this.#draftFor(token);
+    if (!rec) return false;
+    const now = this.#now();
+    rec.state = "committed";
+    delete rec.draftUntil;
+    rec.lastResolvedAt = now;
+    const idx = await hmacIndex(this.#key, rec.normalized);
+    this.#state.index[idx] ??= rec.id;
+    return true;
+  }
+  /**
+   * Collect drafts whose clock ran out — SPEC §8.4. Leaves a tombstone rather
+   * than nothing: a draft token can escape before it is ever committed, because
+   * an autosaving page may submit the field mid-edit.
+   */
+  sweepDrafts() {
+    const now = this.#now();
+    let collected = 0;
+    for (const rec of Object.values(this.#state.records)) {
+      if (rec.state !== "draft" || rec.draftUntil === void 0 || rec.draftUntil > now) continue;
+      for (const alias of Object.values(this.#state.aliases)) {
+        if (alias.valueId !== rec.id) continue;
+        this.#expire(alias, rec, now);
+        collected++;
+      }
+    }
+    return collected;
+  }
+  #draftFor(token) {
+    const alias = this.#state.aliases[token];
+    if (!alias) return void 0;
+    const rec = this.#state.records[alias.valueId];
+    return rec?.state === "draft" ? rec : void 0;
   }
   #aliasFor(valueId, scopeId, now) {
     for (const a of Object.values(this.#state.aliases)) {
@@ -898,6 +1140,13 @@ var Vault = class _Vault {
 // src/extension.ts
 var KEY_SECRET = "anonymice.vaultKey";
 var STATE_KEY = "anonymice.vaultState";
+function remoteConfig() {
+  const cfg = vscode4.workspace.getConfiguration("anonymice");
+  return {
+    endpoint: cfg.get("vault.endpoint", "").replace(/\/$/, ""),
+    token: cfg.get("vault.token", "")
+  };
+}
 function rules() {
   return vscode4.workspace.getConfiguration("anonymice").get("resources", []);
 }
@@ -928,7 +1177,23 @@ async function activate(context) {
     return vscode4.workspace.getConfiguration("anonymice", doc.uri).get("reveal.mode", "annotate");
   };
   const detector = new DetectController(rules, relPath);
-  const reveal = new RevealController((t) => vault.resolve(t), modeFor);
+  const remote = new RemoteVault(remoteConfig());
+  const pendingLookups = /* @__PURE__ */ new Set();
+  const resolve = (token) => {
+    const local = vault.resolve(token);
+    if (local.kind !== "foreign" || !remote.enabled) return local;
+    const known = remote.cached(token);
+    if (known) return known;
+    if (!pendingLookups.has(token)) {
+      pendingLookups.add(token);
+      void remote.lookup(token).then((changed) => {
+        pendingLookups.delete(token);
+        if (changed) refreshAll();
+      });
+    }
+    return local;
+  };
+  const reveal = new RevealController(resolve, modeFor);
   const status = vscode4.window.createStatusBarItem(vscode4.StatusBarAlignment.Right, 100);
   status.command = "anonymice.revealToggleFile";
   context.subscriptions.push(reveal, detector, status);
@@ -963,7 +1228,7 @@ async function activate(context) {
     rememberOptIn();
     queueMicrotask(refreshAll);
     persist();
-  });
+  }, remote);
   context.subscriptions.push(
     vscode4.languages.registerDocumentPasteEditProvider({ scheme: "file" }, paste, {
       providedPasteEditKinds: [vscode4.DocumentDropOrPasteEditKind.Text.append("anonymice", "tokenize")],
@@ -985,7 +1250,9 @@ async function activate(context) {
       }
     }),
     vscode4.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration("anonymice")) refreshAll();
+      if (!e.affectsConfiguration("anonymice")) return;
+      remote.configure(remoteConfig());
+      refreshAll();
     }),
     vscode4.window.onDidChangeTextEditorSelection((e) => {
       void vscode4.commands.executeCommand(

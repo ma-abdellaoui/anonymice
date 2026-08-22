@@ -13,6 +13,7 @@ import { RevealController } from './ext/reveal-controller.ts';
 import { classify, mayReveal } from './lib/policy.ts';
 import type { ResourceRule } from './lib/policy.ts';
 import { quickClassify } from './lib/quick-rules.ts';
+import { RemoteVault } from './lib/remote-vault.ts';
 import { CLASSES } from './lib/types.ts';
 import type { Cls, RevealMode } from './lib/types.ts';
 import { Vault, emptyState } from './lib/vault.ts';
@@ -20,6 +21,19 @@ import type { VaultState } from './lib/vault.ts';
 
 const KEY_SECRET = 'anonymice.vaultKey';
 const STATE_KEY = 'anonymice.vaultState';
+
+/**
+ * Where the shared vault lives. Empty endpoint — the default — keeps this editor
+ * entirely local: nothing is asked of anyone, and a token from elsewhere reads
+ * as `foreign`, which is true.
+ */
+function remoteConfig(): { endpoint: string; token: string } {
+  const cfg = vscode.workspace.getConfiguration('anonymice');
+  return {
+    endpoint: cfg.get<string>('vault.endpoint', '').replace(/\/$/, ''),
+    token: cfg.get<string>('vault.token', ''),
+  };
+}
 
 function rules(): ResourceRule[] {
   return vscode.workspace.getConfiguration('anonymice').get<ResourceRule[]>('resources', []);
@@ -72,7 +86,36 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   };
 
   const detector = new DetectController(rules, relPath);
-  const reveal = new RevealController((t) => vault.resolve(t), modeFor);
+
+  /**
+   * The shared vault (ENDPOINTS.md §6), off unless configured. It is what makes
+   * a token minted in the browser resolvable here: the local vault has never
+   * heard of it and correctly says `foreign`.
+   */
+  const remote = new RemoteVault(remoteConfig());
+  const pendingLookups = new Set<string>();
+
+  /**
+   * Local first, always — this editor's own mints never leave the machine. Only
+   * a token the local vault cannot place is worth a question, and the answer
+   * arrives too late for this paint, so it schedules the next one.
+   */
+  const resolve = (token: string) => {
+    const local = vault.resolve(token);
+    if (local.kind !== 'foreign' || !remote.enabled) return local;
+    const known = remote.cached(token);
+    if (known) return known;
+    if (!pendingLookups.has(token)) {
+      pendingLookups.add(token);
+      void remote.lookup(token).then((changed) => {
+        pendingLookups.delete(token);
+        if (changed) refreshAll();
+      });
+    }
+    return local;
+  };
+
+  const reveal = new RevealController(resolve, modeFor);
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   status.command = 'anonymice.revealToggleFile';
   context.subscriptions.push(reveal, detector, status);
@@ -118,7 +161,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     rememberOptIn();
     queueMicrotask(refreshAll);
     persist();
-  });
+  }, remote);
 
   context.subscriptions.push(
     vscode.languages.registerDocumentPasteEditProvider({ scheme: 'file' }, paste, {
@@ -141,7 +184,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('anonymice')) refreshAll();
+      if (!e.affectsConfiguration('anonymice')) return;
+      remote.configure(remoteConfig());
+      refreshAll();
     }),
     vscode.window.onDidChangeTextEditorSelection((e) => {
       // Arms the ctrl+c binding only where it has something to do, so ordinary

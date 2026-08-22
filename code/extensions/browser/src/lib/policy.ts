@@ -34,6 +34,12 @@ export interface Policy extends PolicyLists {
   painter: 'auto' | 'overlay';
   /** Desktop notification when a page turns out to hold sensitive data. */
   notifications: 'on' | 'off';
+  /**
+   * The egress gate (SPEC §10). `off` injects no shim at all; `report` forwards
+   * and records; `enforce` blocks a body it cannot fully tokenise. Ships `off`,
+   * because a gate that drops requests is not something to turn on by surprise.
+   */
+  egress: 'off' | 'report' | 'enforce';
 }
 
 export const DEFAULT_POLICY: Policy = {
@@ -49,6 +55,7 @@ export const DEFAULT_POLICY: Policy = {
   scanTrusted: 'off',
   painter: 'auto',
   notifications: 'on',
+  egress: 'off',
 };
 
 export interface PolicySources {
@@ -102,10 +109,12 @@ export function classifyHost(host: string, lists: PolicyLists): HostClass {
 }
 
 /** Content-script match patterns for the classes we actually register on. */
-export function matchPatternsFor(lists: PolicyLists): string[] {
+export function matchPatternsFor(lists: PolicyLists, only?: 'NATIVE' | 'TRUSTED'): string[] {
   // Chrome reads a host without a wildcard as an exact host, and `*.example.org`
   // as "that host and its subdomains" — the same shape covers both list forms.
-  return [...lists.native, ...lists.trusted].map((p) => `*://${p}/*`);
+  const hosts =
+    only === 'NATIVE' ? lists.native : only === 'TRUSTED' ? lists.trusted : [...lists.native, ...lists.trusted];
+  return hosts.map((p) => `*://${p}/*`);
 }
 
 /**
@@ -125,6 +134,7 @@ const REMOTE_KEYS = [
   'native',
   'trusted',
   'scanTrusted',
+  'egress',
   'detectEndpoint',
   'detectToken',
 ] as const;
@@ -214,6 +224,14 @@ export function sanitizeRemotePolicy(body: unknown, pin: string): SanitizeResult
       policy.scanTrusted = raw.scanTrusted;
     } else {
       rejected.push(`scanTrusted: ${JSON.stringify(raw.scanTrusted)} is not off|readonly|full`);
+    }
+  }
+
+  if (raw.egress !== undefined) {
+    if (raw.egress === 'off' || raw.egress === 'report' || raw.egress === 'enforce') {
+      policy.egress = raw.egress;
+    } else {
+      rejected.push(`egress: ${JSON.stringify(raw.egress)} is not off|report|enforce`);
     }
   }
 

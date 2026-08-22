@@ -2,20 +2,28 @@
  * Mock backend — the three endpoints the extension needs, per
  * docs/extensions/browser/ENDPOINTS.md:
  *
- *   GET  /v1/health   liveness, unauthenticated
- *   GET  /v1/policy   the NATIVE / TRUSTED lists, with ETag and max-age
- *   POST /v1/detect   SPEC §3.2 exactly, caps and the 413 re-split included
+ *   GET    /v1/health          liveness, unauthenticated
+ *   GET    /v1/policy          the NATIVE / TRUSTED lists, with ETag and max-age
+ *   POST   /v1/detect          SPEC §3.2 exactly, caps and the 413 re-split included
+ *   POST   /v1/tokens          mint (ENDPOINTS.md §6)
+ *   POST   /v1/tokens/resolve  resolve, and re-scope to a destination
+ *   DELETE /v1/tokens/{token}  revoke
  *
- * Dev only: it holds no vault, and it runs on localhost so raw page text never
- * leaves the machine.
+ * Dev only, and it runs on localhost so neither raw page text nor the vault's
+ * plaintext leaves the machine. The vault is in memory and dies with the
+ * process — see mock/vault.ts.
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { LIMITS, type DetectRequest, type DetectResponse } from '../src/lib/protocol.ts';
 import { POLICY_FILE, servePolicy } from './policy-store.ts';
 import { detectChunk, MODEL_VERSION } from './rules.ts';
+import { createTokenApi, openMockVault, type Reply } from './tokens-api.ts';
 
 const PORT = Number(process.env.PORT ?? 8788);
 const TOKEN = process.env.DETECT_TOKEN ?? 'dev-token';
+
+/** One vault per process, shared by every client that authenticates. */
+const tokens = createTokenApi(await openMockVault());
 
 function handle(body: DetectRequest): DetectResponse {
   return {
@@ -52,6 +60,22 @@ function handlePolicy(req: IncomingMessage, res: ServerResponse): void {
   res.writeHead(200, { 'content-type': 'application/json' }).end(body);
 }
 
+function send(res: ServerResponse, reply: Reply): void {
+  res.writeHead(reply.status, { 'content-type': 'application/json' }).end(JSON.stringify(reply.body));
+}
+
+function readJson(req: IncomingMessage, then: (body: unknown) => void): void {
+  const parts: Buffer[] = [];
+  req.on('data', (c: Buffer) => parts.push(c));
+  req.on('end', () => {
+    try {
+      then(JSON.parse(Buffer.concat(parts).toString('utf8')));
+    } catch {
+      then(undefined);
+    }
+  });
+}
+
 const server = createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type, if-none-match');
@@ -71,6 +95,36 @@ const server = createServer((req, res) => {
   if (req.method === 'GET' && path === '/v1/policy') {
     if (!authorized(req)) return void res.writeHead(401).end('unauthorized');
     return void handlePolicy(req, res);
+  }
+
+  if (path?.startsWith('/v1/tokens')) {
+    if (!authorized(req)) return void res.writeHead(401).end('unauthorized');
+
+    if (req.method === 'DELETE') {
+      const token = decodeURIComponent(path.slice('/v1/tokens/'.length));
+      if (!token) return void res.writeHead(400).end('no token');
+      return void send(res, tokens.revoke(token));
+    }
+    if (req.method === 'POST' || req.method === 'PATCH') {
+      const rest = path.slice('/v1/tokens'.length);
+      return void readJson(req, (body) => {
+        if (body === undefined) return void res.writeHead(400).end('bad json');
+        if (req.method === 'POST' && rest === '') return void tokens.mint(body).then((r) => send(res, r));
+        if (req.method === 'POST' && rest === '/resolve') {
+          return void tokens.resolve(body).then((r) => send(res, r));
+        }
+        if (req.method === 'POST' && rest === '/child') return void send(res, tokens.child(body));
+        const commit = /^\/(.+)\/commit$/.exec(rest);
+        if (req.method === 'POST' && commit) {
+          return void tokens.commit(decodeURIComponent(commit[1]!)).then((r) => send(res, r));
+        }
+        if (req.method === 'PATCH' && rest.startsWith('/')) {
+          return void send(res, tokens.update(decodeURIComponent(rest.slice(1)), body));
+        }
+        res.writeHead(404).end('not found');
+      });
+    }
+    return void res.writeHead(404).end('not found');
   }
 
   if (req.method !== 'POST' || path !== '/v1/detect') {
@@ -127,4 +181,7 @@ server.listen(PORT, () => {
   console.log(`  GET  /v1/health`);
   console.log(`  GET  /v1/policy   <- ${POLICY_FILE} (edit it live; re-read per request)`);
   console.log(`  POST /v1/detect`);
+  console.log(`  POST /v1/tokens , /v1/tokens/resolve , /v1/tokens/child`);
+  console.log(`  PATCH /v1/tokens/{token} , POST /v1/tokens/{token}/commit , DELETE /v1/tokens/{token}`);
+  console.log(`  vault: in memory — every token dies when this process does`);
 });

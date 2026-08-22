@@ -8,18 +8,18 @@ dt{font-weight:600;margin-top:.4rem}dd{margin:0 0 0 1rem}
 </head>
 <body>
 <h1>Fallakte 8812 — TRUSTED</h1>
-<p>Served from <code>trusted.anonymice.test</code>. Same kinds of value as the
-NATIVE page, and the same content script is registered here — but
-<strong>nothing on this page should be highlighted today</strong>.</p>
+<p>Served from <code>trusted.anonymice.test</code>. <code>TRUSTED</code> is the
+class we are willing to <em>show real values to</em> — not the class we let hold
+them (SPEC §1).</p>
 
 <div class="note">
-  <p><strong>Why nothing is painted.</strong> Scanning is <code>NATIVE</code>-only
-  for now: <code>policy.scanTrusted</code> is <code>off</code>, and only
-  <code>off</code> is implemented (SPEC §1). A highlight here means the class gate
-  is not holding.</p>
-  <p>In the target state this page <em>would</em> highlight, and its inputs would
-  hold tokens while a clone showed the real value (SPEC §1, §8) — neither is
-  built.</p>
+  <p><strong>Highlighting here follows <code>policy.scanTrusted</code></strong>.
+  At <code>off</code> nothing is painted and a highlight means the class gate is
+  not holding. At <code>readonly</code> the read-only regions below paint exactly
+  as the NATIVE page does, and every editable is skipped.</p>
+  <p><strong>The form is the point of this page.</strong> Paste a token into it:
+  the input keeps the token, and the value appears in a frame the page cannot
+  read (SPEC §8).</p>
 </div>
 
 <h2>Annotated by the site</h2>
@@ -41,11 +41,109 @@ NATIVE page, and the same content script is registered here — but
 </dl>
 <p>Zuständig: Julia Steiner, Brunner Treuhand AG</p>
 
-<h2>A form, for when the paste path exists</h2>
-<form>
-  <p><label>IBAN <input type="text" size="34" value=""></label></p>
-  <p><label>Name <input type="text" size="34" value=""></label></p>
+<h2>Zahlungsauftrag</h2>
+<form id="pay" onsubmit="return false">
+  <p>
+    <label for="f-iban">IBAN</label><br>
+    <input id="f-iban" type="text" size="34" pattern="[A-Z0-9 ]{5,34}" maxlength="34"
+           inputmode="numeric" placeholder="CH.." value="">
+  </p>
+  <p>
+    <label for="f-name">Kontoinhaber</label><br>
+    <input id="f-name" type="text" size="34" value="">
+  </p>
+  <p>
+    <label for="f-memo">Verwendungszweck</label><br>
+    <input id="f-memo" type="text" size="60" value=""
+           placeholder="paste a whole sentence here">
+  </p>
+  <p><output id="seen"></output></p>
 </form>
-<p>These are here to paste into once SPEC §8 is built. Today they do nothing.</p>
+<h2>Egress</h2>
+<p><strong>This section is the site trying to send.</strong> Type or paste a value
+below and pick a transport. The gate (SPEC &sect;11) sits between this page and the
+network, so what the <em>server</em> recorded is the only thing that settles it —
+read it back with the last button, or <code>curl</code> it from a terminal.</p>
+<p>
+  <label for="e-body">Body</label><br>
+  <textarea id="e-body" rows="3" cols="60">{"op":"insert","text":"CH93 0076 2011 6238 5295 7"}</textarea>
+</p>
+<p>
+  <button id="e-fetch" type="button">fetch</button>
+  <button id="e-xhr" type="button">XHR</button>
+  <button id="e-ws" type="button">WebSocket</button>
+  <button id="e-beacon" type="button">sendBeacon</button>
+  <button id="e-read" type="button">what the server got</button>
+  <button id="e-clear" type="button">clear</button>
+</p>
+<pre id="e-out" style="background:#f6f6f6;padding:.75rem;white-space:pre-wrap"></pre>
+<script>
+  /* Also the site's own JavaScript. It uses the plain platform APIs on purpose:
+     if the gate only works against a wrapper we control, it does not work. */
+  const out = document.getElementById('e-out');
+  const bodyOf = () => document.getElementById('e-body').value;
+  const say = (t) => { out.textContent = t; };
+  const ORIGIN = location.origin;
+
+  document.getElementById('e-fetch').addEventListener('click', () => {
+    fetch(ORIGIN + '/collect', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-transport': 'fetch' },
+      body: bodyOf(),
+    }).then(
+      () => say('fetch: resolved — the request went out'),
+      (err) => say('fetch: rejected — ' + err.name + ': ' + err.message),
+    );
+  });
+
+  document.getElementById('e-xhr').addEventListener('click', () => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', ORIGIN + '/collect');
+    xhr.setRequestHeader('content-type', 'application/json');
+    xhr.setRequestHeader('x-transport', 'xhr');
+    xhr.onload = () => say('XHR: status ' + xhr.status);
+    xhr.onerror = () => say('XHR: network error');
+    xhr.send(bodyOf());
+    say('XHR: send() returned — check what the server got');
+  });
+
+  document.getElementById('e-ws').addEventListener('click', () => {
+    const ws = new WebSocket(ORIGIN.replace('http', 'ws') + '/collab');
+    ws.addEventListener('open', () => {
+      ws.send(bodyOf());
+      say('WebSocket: send() returned (it always does) — check what the server got');
+      setTimeout(() => ws.close(), 200);
+    });
+    ws.addEventListener('error', () => say('WebSocket: connection error'));
+  });
+
+  document.getElementById('e-beacon').addEventListener('click', () => {
+    const ok = navigator.sendBeacon(ORIGIN + '/collect', bodyOf());
+    say('sendBeacon returned ' + ok + (ok ? '' : ' — held'));
+  });
+
+  document.getElementById('e-read').addEventListener('click', () => {
+    fetch(ORIGIN + '/collected')
+      .then((r) => r.text())
+      .then((t) => say(t === '[]' ? 'the server received nothing' : t))
+      .catch((err) => say('could not read: ' + err.message));
+  });
+
+  document.getElementById('e-clear').addEventListener('click', () => {
+    fetch(ORIGIN + '/collected', { method: 'DELETE' }).then(() => say('cleared'));
+  });
+</script>
+
+<script>
+  /* Stands in for the site's own JavaScript. It reads the field on every input
+     event, exactly as a real payment form would — so whatever it prints is
+     what the site would have sent. It must never print a value. */
+  const form = document.getElementById('pay');
+  const seen = document.getElementById('seen');
+  form.addEventListener('input', () => {
+    const held = [...form.querySelectorAll('input')].map((i) => i.value).filter(Boolean);
+    seen.textContent = held.length ? 'the site reads: ' + held.join(' | ') : '';
+  });
+</script>
 </body>
 </html>

@@ -58,6 +58,14 @@
         "on",
         "off"
       ]
+    },
+    "egress": {
+      "type": "string",
+      "enum": [
+        "off",
+        "report",
+        "enforce"
+      ]
     }
   }
 }

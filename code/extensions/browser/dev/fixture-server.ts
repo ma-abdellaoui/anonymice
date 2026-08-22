@@ -17,7 +17,9 @@
  */
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { createHash } from 'node:crypto';
 import { extname, join } from 'node:path';
+import type { Duplex } from 'node:stream';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const ROOT = new URL('../', import.meta.url).pathname;
@@ -68,11 +70,57 @@ function setupPage(): string {
   <p>Expected results per page are in <code>docs/extensions/browser/QA.md</code>.</p>`;
 }
 
+/**
+ * What the *server* actually received — the only thing that settles whether the
+ * egress gate worked (SPEC §11, QA step 14). Held in memory, newest last, and
+ * cleared by `DELETE /collected` so a step can start from a clean slate.
+ */
+interface Collected {
+  transport: string;
+  body: string;
+  at: string;
+}
+const collected: Collected[] = [];
+const collect = (transport: string, body: string): void => {
+  collected.push({ transport, body, at: new Date().toISOString() });
+  if (collected.length > 200) collected.shift();
+};
+
 const server = createServer((req, res) => {
   const host = (req.headers.host ?? '').split(':')[0] ?? '';
   const path = (req.url ?? '/').split('?')[0] ?? '/';
 
+  const cors = {
+    'access-control-allow-origin': req.headers.origin ?? '*',
+    'access-control-allow-headers': 'content-type',
+    'access-control-allow-methods': 'GET,POST,DELETE,OPTIONS',
+  };
+
   try {
+    if (req.method === 'OPTIONS') return void res.writeHead(204, cors).end();
+
+    // The sink. Whatever arrives here is what a real destination would have
+    // stored, which is the assertion every egress QA step actually makes.
+    if (path === '/collect') {
+      const chunks: Buffer[] = [];
+      req.on('data', (c: Buffer) => chunks.push(c));
+      req.on('end', () => {
+        collect(String(req.headers['x-transport'] ?? 'http'), Buffer.concat(chunks).toString('utf8'));
+        res.writeHead(200, { ...cors, 'content-type': TYPES['.json']! }).end('{"ok":true}');
+      });
+      return;
+    }
+
+    if (path === '/collected') {
+      if (req.method === 'DELETE') {
+        collected.length = 0;
+        return void res.writeHead(200, { ...cors, 'content-type': TYPES['.json']! }).end('{"ok":true}');
+      }
+      return void res
+        .writeHead(200, { ...cors, 'content-type': TYPES['.json']! })
+        .end(JSON.stringify(collected, null, 2));
+    }
+
     if (path.startsWith('/dist/')) {
       const file = join(DIST, path.slice('/dist/'.length));
       if (!file.startsWith(DIST)) return void res.writeHead(403).end('no');
@@ -92,6 +140,60 @@ const server = createServer((req, res) => {
   } catch {
     res.writeHead(404).end('not found');
   }
+});
+
+/**
+ * A minimal RFC 6455 server, text frames only.
+ *
+ * Worth the ~40 lines rather than a dependency: WebSocket is the transport that
+ * forces the gate to be synchronous (SPEC §11.3), so a QA pass that cannot
+ * exercise it is not testing the interesting half.
+ */
+const WS_GUID = '258EAFA5-E914-47DA-95CA-5AB0DC85B11F';
+
+server.on('upgrade', (req, socket: Duplex) => {
+  if ((req.url ?? '').split('?')[0] !== '/collab') return void socket.destroy();
+  const key = req.headers['sec-websocket-key'];
+  if (typeof key !== 'string') return void socket.destroy();
+
+  const accept = createHash('sha1').update(key + WS_GUID).digest('base64');
+  socket.write(
+    'HTTP/1.1 101 Switching Protocols\r\n' +
+      'Upgrade: websocket\r\nConnection: Upgrade\r\n' +
+      `Sec-WebSocket-Accept: ${accept}\r\n\r\n`,
+  );
+
+  let buffer = Buffer.alloc(0);
+  socket.on('data', (chunk: Buffer) => {
+    buffer = Buffer.concat([buffer, chunk]);
+    for (;;) {
+      if (buffer.length < 2) return;
+      const opcode = buffer[0]! & 0x0f;
+      const masked = (buffer[1]! & 0x80) !== 0;
+      let length = buffer[1]! & 0x7f;
+      let offset = 2;
+      if (length === 126) {
+        if (buffer.length < offset + 2) return;
+        length = buffer.readUInt16BE(offset);
+        offset += 2;
+      } else if (length === 127) {
+        if (buffer.length < offset + 8) return;
+        length = Number(buffer.readBigUInt64BE(offset));
+        offset += 8;
+      }
+      const mask = masked ? buffer.subarray(offset, offset + 4) : null;
+      if (masked) offset += 4;
+      if (buffer.length < offset + length) return;
+
+      const payload = Buffer.from(buffer.subarray(offset, offset + length));
+      if (mask) for (let i = 0; i < payload.length; i++) payload[i] = payload[i]! ^ mask[i % 4]!;
+      buffer = buffer.subarray(offset + length);
+
+      if (opcode === 0x8) return void socket.end();
+      if (opcode === 0x1) collect('websocket', payload.toString('utf8'));
+    }
+  });
+  socket.on('error', () => socket.destroy());
 });
 
 server.on('error', (err: NodeJS.ErrnoException) => {
@@ -136,5 +238,6 @@ server.listen(PORT, () => {
   console.log(`  NATIVE   http://${HOSTS.native}:${PORT}/`);
   console.log(`  TRUSTED  http://${HOSTS.trusted}:${PORT}/`);
   console.log(`  setup    http://localhost:${PORT}/`);
+  console.log(`  egress   POST /collect · ws /collab · GET|DELETE /collected`);
   void warnIfPortEightyAnswers();
 });

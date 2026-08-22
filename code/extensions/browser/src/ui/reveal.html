@@ -1,0 +1,86 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>anonymice</title>
+<style>
+  /*
+   * This document is the only rendering surface the page cannot read (SPEC §8.1):
+   * separate origin, same-origin policy, usually a separate process. Everything
+   * visible here is plaintext, and none of it is reachable from the page's DOM,
+   * its MutationObservers, or getComputedStyle.
+   */
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    /* The page's own fonts do not cross the boundary (SPEC §8.8). The parent
+       passes its computed family and we fall back honestly rather than pretending. */
+    font: 14px system-ui, sans-serif;
+    color: CanvasText;
+  }
+
+  /* --- reveal-on-demand popover (SPEC §8.9, step 1) --- */
+  .popover {
+    display: inline-block;
+    max-width: 32rem;
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    background: Canvas;
+    border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+    box-shadow: 0 2px 10px rgb(0 0 0 / 18%);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .label {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.55;
+    margin-bottom: 0.15rem;
+  }
+  .muted {
+    opacity: 0.7;
+    font-style: italic;
+  }
+  /* Which parts of the line came out of the vault. The prose around them is the
+     user's own text and is drawn plainly (SPEC §8.10). */
+  .value {
+    background: color-mix(in srgb, CanvasText 8%, transparent);
+    border-radius: 3px;
+    padding: 0 2px;
+    font-weight: 600;
+  }
+  .expiring {
+    box-shadow: inset 0 -2px 0 color-mix(in srgb, orange 60%, transparent);
+  }
+
+  /* --- editable clone (SPEC §8.2) --- */
+  #field {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    letter-spacing: inherit;
+    text-align: inherit;
+    padding: 0;
+  }
+  /* Reproduced rather than inherited: :invalid on the clone is the destination's
+     own `pattern` and our class checksum, not the page's styling (SPEC §8.7). */
+  body.invalid #field {
+    text-decoration: underline wavy color-mix(in srgb, red 70%, transparent);
+    text-underline-offset: 3px;
+  }
+  body.clone {
+    background: Canvas;
+  }
+</style>
+<body>
+  <div id="root"></div>
+  <script type="module" src="reveal.js"></script>
+</body>
