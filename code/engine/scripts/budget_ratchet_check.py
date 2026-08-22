@@ -38,8 +38,9 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import NamedTuple
 
+from engine_layout import DEFAULT_BASE, engine_prefix
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_BASE = "origin/litellm_internal_staging"
 DEFAULT_BUDGETS: tuple[str, ...] = (
     "ruff-strict-budget.json",
     "type-discipline-budget.json",
@@ -87,7 +88,7 @@ def _load_base(rel: str, ref: str) -> dict | None:
     `ref` is verified as a real commit by the caller, so a non-zero `git show` here means
     the path was absent at that commit, not that the ref itself is unresolvable.
     """
-    proc = _run(["git", "show", f"{ref}:{rel}"])
+    proc = _run(["git", "show", f"{ref}:{engine_prefix(REPO_ROOT) / rel}"])
     if proc.returncode != 0:
         return None
     return json.loads(proc.stdout)

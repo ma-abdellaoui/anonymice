@@ -43,11 +43,12 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Final, NamedTuple
 
+from engine_layout import DEFAULT_BASE, base_engine_root
+
 REPO_ROOT: Final = Path(__file__).resolve().parent.parent
 CHECKER: Final = REPO_ROOT / "scripts" / "check_test_quality.py"
 BUDGET_PATH: Final = REPO_ROOT / "test-quality-budget.json"
 TARGET: Final = "tests"
-DEFAULT_BASE: Final = "origin/litellm_internal_staging"
 
 _HUNK: Final = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", re.MULTILINE)
 _FILE_HEADER: Final = re.compile(r"^\+\+\+ b/(.+)$", re.MULTILINE)
@@ -123,10 +124,11 @@ def base_counts(ref: str) -> Mapping[str, int]:
     worktree: Final = parent / "wt"
     try:
         _run(["git", "worktree", "add", "--detach", str(worktree), ref])
-        (worktree / "scripts").mkdir(parents=True, exist_ok=True)
-        checker: Final = worktree / "scripts" / "check_test_quality.py"
+        engine: Final = base_engine_root(worktree, REPO_ROOT)
+        (engine / "scripts").mkdir(parents=True, exist_ok=True)
+        checker: Final = engine / "scripts" / "check_test_quality.py"
         shutil.copy(CHECKER, checker)
-        return count_by_rule(_check(worktree, checker))
+        return count_by_rule(_check(engine, checker))
     finally:
         # Teardown must never raise, or it masks the real error when the body failed.
         subprocess.run(

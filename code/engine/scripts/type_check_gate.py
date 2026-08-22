@@ -67,11 +67,12 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Final, NamedTuple
 
+from engine_layout import DEFAULT_BASE, base_engine_root
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BUDGET_PATH = REPO_ROOT / "basedpyright-code-budget.json"
 PYRIGHT_CONFIG = REPO_ROOT / "pyrightconfig.json"
 UV_LOCK = REPO_ROOT / "uv.lock"
-DEFAULT_BASE = "origin/litellm_internal_staging"
 CACHE_FILE_PREFIX = "basedpyright-base-"
 CACHE_KEEP_ENTRIES = 8
 ARTIFACT_NAME_PREFIX = "basedpyright-counts-"
@@ -280,8 +281,9 @@ def base_counts(ref: str) -> dict[str, int]:
     config is copied in so the base is judged by today's rules, and the run uses
     the head environment's basedpyright (on PATH) so imports resolve the same."""
     with _temp_worktree(ref) as worktree:
-        shutil.copy(PYRIGHT_CONFIG, worktree / "pyrightconfig.json")
-        return count_basedpyright(run_basedpyright(worktree), root=worktree)
+        engine = base_engine_root(worktree, REPO_ROOT)
+        shutil.copy(PYRIGHT_CONFIG, engine / "pyrightconfig.json")
+        return count_basedpyright(run_basedpyright(engine), root=engine)
 
 
 def over_ceiling(

@@ -40,11 +40,12 @@ from collections import Counter
 from pathlib import Path
 from typing import Final, NamedTuple
 
+from engine_layout import DEFAULT_BASE, base_engine_root
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CHECKER = REPO_ROOT / "scripts" / "check_type_discipline.py"
 BUDGET_PATH = REPO_ROOT / "type-discipline-budget.json"
 TARGET = "litellm"
-DEFAULT_BASE = "origin/litellm_internal_staging"
 
 _HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 _LINE = re.compile(r"^(?P<file>.+?):(?P<line>\d+): (?P<code>LIT\d+) ")
@@ -120,11 +121,12 @@ def base_counts(ref: str) -> dict:
     worktree = parent / "wt"
     try:
         _run(["git", "worktree", "add", "--detach", str(worktree), ref])
+        engine = base_engine_root(worktree, REPO_ROOT)
         # Measure the base with the *current* rule logic, not whatever shipped at base.
-        (worktree / "scripts").mkdir(parents=True, exist_ok=True)
-        checker = worktree / "scripts" / "check_type_discipline.py"
+        (engine / "scripts").mkdir(parents=True, exist_ok=True)
+        checker = engine / "scripts" / "check_type_discipline.py"
         shutil.copy(CHECKER, checker)
-        return count_by_rule(_check(worktree, checker))
+        return count_by_rule(_check(engine, checker))
     finally:
         # Best-effort teardown: cleanup must never raise, or it masks the real error when
         # the body (or the `worktree add` itself) failed. rmtree is already best-effort.
