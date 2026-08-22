@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 
 from litellm.pii.vault.scope import VaultScopeType
+from litellm.pii.vault.search import MatchMode
 
 
 class PiiSpanModel(BaseModel):
@@ -78,3 +79,24 @@ class PiiExportResponse(BaseModel):
     subject_id: str
     scope_type: VaultScopeType
     values: tuple[PiiExportedValueModel, ...]
+
+
+class PiiSearchRequest(BaseModel):
+    query: str = Field(min_length=1)
+    mode: MatchMode = MatchMode.NORMALIZED
+    entity_type: str | None = None
+    subject_id: str | None = None
+    scope_type: VaultScopeType | None = None
+
+
+class PiiSearchHitModel(BaseModel):
+    token: str
+    entity_type: str
+    session_id: str | None
+    subject_id: str | None
+
+
+class PiiSearchResponse(BaseModel):
+    hits: tuple[PiiSearchHitModel, ...]
+    scanned: int
+    scope_type: VaultScopeType

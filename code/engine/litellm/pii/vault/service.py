@@ -1,5 +1,6 @@
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Final
 
 from litellm.pii.codec.transform import decode_text
@@ -79,7 +80,7 @@ class VaultService:
         if not isinstance(stored, Mapping):
             return stored
 
-        resolved: Final = {**recovered, **stored}
+        resolved: Final = MappingProxyType({**recovered, **stored})
         return DecodedBatch(
             texts=tuple(decode_text(text, resolved, self.pii.codec.grammar) for text in texts),
             resolved=len(resolved),

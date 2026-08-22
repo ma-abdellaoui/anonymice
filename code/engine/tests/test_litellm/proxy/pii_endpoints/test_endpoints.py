@@ -24,6 +24,8 @@ from litellm.pii.types import (
     DetectorUnavailable,
     KeyUnavailable,
     PiiSpan,
+    SearchError,
+    SearchRefused,
     StoreError,
     StoreUnavailable,
     TokenSpaceExhausted,
@@ -33,14 +35,17 @@ from litellm.pii.types import (
 from litellm.pii.vault.cipher import VaultCipher
 from litellm.pii.vault.keys import DerivedKeyProvider
 from litellm.pii.vault.repository import PiiVaultRepository
+from litellm.pii.vault.search import VaultSearch
 from litellm.pii.vault.service import VaultService
 from litellm.pii.vault.store import DatabaseTokenStore
 from litellm.proxy._types import LiteLLMRoutes, LitellmUserRoles, UserAPIKeyAuth
 from litellm.proxy.pii_endpoints.endpoints import (
     _raise_public,
     get_decode_recorder,
+    get_pii_search,
     get_pii_service,
     get_pii_vault,
+    get_search_recorder,
     require_pii_vault,
 )
 from litellm.proxy.proxy_server import app
@@ -276,6 +281,7 @@ class TestUnconfigured:
 
 ERROR_SAMPLES = {
     VaultForbidden: VaultForbidden(reason="not on that team"),
+    SearchRefused: SearchRefused(scanned=200_000, limit=100_000),
     DetectorUnavailable: DetectorUnavailable(detector=DetectorKind.RULES, reason="down"),
     DetectorInvalidResponse: DetectorInvalidResponse(detector=DetectorKind.NER, reason="not json"),
     UnknownToken: UnknownToken(token="<PERSON_9>"),
@@ -289,7 +295,7 @@ ERROR_SAMPLES = {
 def error_variants():
     return tuple(
         variant
-        for union in (DetectionError, CodecError, StoreError, AuthorizationError)
+        for union in (DetectionError, CodecError, StoreError, AuthorizationError, SearchError)
         for variant in (get_args(union) or (union,))
     )
 
@@ -604,3 +610,160 @@ class TestVaultUnconfigured:
         encoded = client.post("/pii/encode", json={"texts": ["hello Ada"], "session_id": "s1"}).json()
         decoded = client.post("/pii/decode", json={"texts": encoded["texts"], "session_id": "s1"}).json()
         assert decoded["texts"] == ["hello Ada"]
+
+
+SEARCH_KEY = UserAPIKeyAuth(
+    user_role=LitellmUserRoles.PROXY_ADMIN,
+    user_id="test-user",
+    api_key="sk-decoder",
+    permissions={"allow_pii_decode": True, "allow_pii_search": True},
+)
+
+
+@pytest.fixture
+def install_search(vault_table):
+    from ...pii.vault.test_search import OrderedFakeTable
+
+    def _install(candidate_cap=100_000):
+        ordered = OrderedFakeTable()
+        ordered.rows = vault_table.rows
+        searcher = VaultSearch(
+            repository=PiiVaultRepository(table=ordered),
+            cipher=VaultCipher(keys=DerivedKeyProvider(secret="root-secret")),
+            candidate_cap=candidate_cap,
+        )
+        app.dependency_overrides[get_pii_search] = lambda: searcher
+        return searcher
+
+    yield _install
+    app.dependency_overrides.pop(get_pii_search, None)
+
+
+class RecordingSearchAudit:
+    def __init__(self):
+        self.entries = []
+
+    async def record(self, user_api_key_dict, scope, entity_type, hit_count, scanned):
+        self.entries.append((scope, entity_type, hit_count, scanned))
+
+
+@pytest.fixture
+def search_audit():
+    recorder = RecordingSearchAudit()
+    app.dependency_overrides[get_search_recorder] = lambda: recorder.record
+    yield recorder
+    app.dependency_overrides.pop(get_search_recorder, None)
+
+
+class TestSearchRoute:
+    def test_the_route_is_registered_and_reachable_by_virtual_keys(self):
+        paths = {route.path for route in app.routes if hasattr(route, "path")}
+        assert "/pii/search" in paths
+        assert "/pii/search" in set(LiteLLMRoutes.pii_routes.value)
+
+    def test_it_finds_a_token_this_key_minted(self, client, install_vault, install_search, as_key):
+        install_vault(SubstringDetector("Ada"))
+        install_search()
+        as_key(SEARCH_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"]})
+
+        body = client.post("/pii/search", json={"query": "ada"}).json()
+        assert len(body["hits"]) == 1
+        assert body["hits"][0]["entity_type"] == "PERSON"
+
+    def test_search_needs_its_own_permission_not_the_decode_one(self, client, install_vault, install_search, as_key):
+        install_vault(SubstringDetector("Ada"))
+        install_search()
+        as_key(DECODE_KEY)
+        assert client.post("/pii/search", json={"query": "ada"}).status_code == 403
+
+    def test_a_key_with_only_search_may_search(self, client, install_vault, install_search, as_key):
+        install_vault(SubstringDetector("Ada"))
+        install_search()
+        as_key(UserAPIKeyAuth(api_key="sk-searcher", user_id="u", permissions={"allow_pii_search": True}))
+        assert client.post("/pii/search", json={"query": "ada"}).status_code == 200
+
+    def test_it_finds_nothing_from_another_key(self, client, install_vault, install_search, as_key):
+        install_vault(SubstringDetector("Ada"))
+        install_search()
+        as_key(SEARCH_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"]})
+
+        as_key(UserAPIKeyAuth(api_key="sk-elsewhere", user_id="other", permissions={"allow_pii_search": True}))
+        assert client.post("/pii/search", json={"query": "ada"}).json()["hits"] == []
+
+    def test_substring_mode_finds_a_partial_value(self, client, install_vault, install_search, as_key):
+        install_vault(SubstringDetector("Lovelace"))
+        install_search()
+        as_key(SEARCH_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Lovelace"]})
+
+        body = client.post("/pii/search", json={"query": "lovel", "mode": "substring"}).json()
+        assert len(body["hits"]) == 1
+
+    def test_exact_mode_does_not_match_a_different_case(self, client, install_vault, install_search, as_key):
+        install_vault(SubstringDetector("Ada"))
+        install_search()
+        as_key(SEARCH_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"]})
+        assert client.post("/pii/search", json={"query": "ada", "mode": "exact"}).json()["hits"] == []
+
+    def test_a_scan_over_the_cap_is_refused_with_422(self, client, install_vault, install_search, as_key):
+        install_vault(SubstringDetector("Ada", "Grace"))
+        install_search(candidate_cap=1)
+        as_key(SEARCH_KEY)
+        client.post("/pii/encode", json={"texts": ["Ada met Grace"]})
+        assert client.post("/pii/search", json={"query": "ada"}).status_code == 422
+
+    def test_an_empty_query_is_rejected(self, client, install_vault, install_search, as_key):
+        install_vault(SubstringDetector("Ada"))
+        install_search()
+        as_key(SEARCH_KEY)
+        assert client.post("/pii/search", json={"query": ""}).status_code == 422
+
+    def test_it_reports_how_much_it_scanned(self, client, install_vault, install_search, as_key):
+        install_vault(SubstringDetector("Ada", "Grace"))
+        install_search()
+        as_key(SEARCH_KEY)
+        client.post("/pii/encode", json={"texts": ["Ada met Grace"]})
+        assert client.post("/pii/search", json={"query": "ada"}).json()["scanned"] == 2
+
+
+class TestSearchAudit:
+    def test_a_query_is_audited(self, client, install_vault, install_search, as_key, search_audit):
+        install_vault(SubstringDetector("Ada"))
+        install_search()
+        as_key(SEARCH_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"]})
+        client.post("/pii/search", json={"query": "ada", "entity_type": "PERSON"})
+        assert len(search_audit.entries) == 1
+
+    def test_the_audit_records_the_entity_type_and_the_counts(
+        self, client, install_vault, install_search, as_key, search_audit
+    ):
+        install_vault(SubstringDetector("Ada"))
+        install_search()
+        as_key(SEARCH_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"]})
+        client.post("/pii/search", json={"query": "ada", "entity_type": "PERSON"})
+        scope, entity_type, hit_count, scanned = search_audit.entries[0]
+        assert (entity_type, hit_count, scanned) == ("PERSON", 1, 1)
+
+    def test_the_audit_never_carries_the_query_string(self, client, install_vault, install_search, as_key):
+        from litellm.pii.vault.scope import VaultScope, VaultScopeType
+        from litellm.proxy.pii_endpoints.audit import search_audit_entry
+
+        entry = search_audit_entry(
+            SEARCH_KEY, VaultScope(VaultScopeType.KEY, "k"), entity_type="PERSON", hit_count=1, scanned=1
+        )
+        assert "ada" not in entry.updated_values.lower()
+
+    def test_a_refused_search_is_not_recorded_as_a_successful_read(
+        self, client, install_vault, install_search, as_key, search_audit
+    ):
+        install_vault(SubstringDetector("Ada", "Grace"))
+        install_search(candidate_cap=1)
+        as_key(SEARCH_KEY)
+        client.post("/pii/encode", json={"texts": ["Ada met Grace"]})
+        client.post("/pii/search", json={"query": "ada"})
+        assert search_audit.entries == []

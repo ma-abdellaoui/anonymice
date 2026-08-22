@@ -42,6 +42,28 @@ def aad_for(token_id: str, scope: VaultScope, key_version: int) -> bytes:
     return AAD_SEPARATOR.join(part.encode("utf-8") for part in parts)
 
 
+def open_sealed(key: bytes, sealed: SealedValue, token_id: str, scope: VaultScope) -> str | CodecError:
+    """The decrypt itself, without the async key fetch.
+
+    Separate so a bulk scan can fetch one key per version and then run thousands
+    of decrypts on a worker thread instead of on the event loop.
+    """
+    from cryptography.exceptions import InvalidTag
+
+    if not sealed.ciphertext.startswith(VAULT_PREFIX):
+        return DecodeFailed(reason="missing PII vault prefix")
+    try:
+        raw: Final = base64.urlsafe_b64decode(sealed.ciphertext[len(VAULT_PREFIX) :])
+        opened: Final = _aead(key).decrypt(
+            raw[:NONCE_BYTES],
+            raw[NONCE_BYTES:],
+            aad_for(token_id, scope, sealed.key_version),
+        )
+    except (InvalidTag, ValueError, TypeError) as exc:
+        return DecodeFailed(reason=f"vault unseal failed ({type(exc).__name__})")
+    return opened.decode("utf-8")
+
+
 @dataclass(frozen=True, slots=True)
 class VaultCipher:
     """AES-256-GCM over a per-scope key, with the row's identity as AAD."""
@@ -50,7 +72,7 @@ class VaultCipher:
 
     async def seal(self, plaintext: str, token_id: str, scope: VaultScope) -> SealedValue | KeyUnavailable:
         version: Final = self.keys.current_version()
-        key: Final = await self._checked_key(scope, version)
+        key: Final = await self.checked_key(scope, version)
         if not isinstance(key, bytes):
             return key
         nonce: Final = os.urandom(NONCE_BYTES)
@@ -58,7 +80,7 @@ class VaultCipher:
         packed: Final = base64.urlsafe_b64encode(nonce + blob).decode("utf-8")
         return SealedValue(ciphertext=VAULT_PREFIX + packed, key_version=version)
 
-    async def _checked_key(self, scope: VaultScope, version: int) -> bytes | KeyUnavailable:
+    async def checked_key(self, scope: VaultScope, version: int) -> bytes | KeyUnavailable:
         """A provider returning the wrong key size is a configuration error, not a crash."""
         key: Final = await self.keys.key_for(scope, version)
         if isinstance(key, bytes) and len(key) != KEY_BYTES:
@@ -67,20 +89,7 @@ class VaultCipher:
 
     async def unseal(self, sealed: SealedValue, token_id: str, scope: VaultScope) -> str | CodecError:
         """Decrypt at the version the row names, which is what makes rotation lazy."""
-        from cryptography.exceptions import InvalidTag
-
-        if not sealed.ciphertext.startswith(VAULT_PREFIX):
-            return DecodeFailed(reason="missing PII vault prefix")
-        key: Final = await self._checked_key(scope, sealed.key_version)
+        key: Final = await self.checked_key(scope, sealed.key_version)
         if not isinstance(key, bytes):
             return key
-        try:
-            raw: Final = base64.urlsafe_b64decode(sealed.ciphertext[len(VAULT_PREFIX) :])
-            opened: Final = _aead(key).decrypt(
-                raw[:NONCE_BYTES],
-                raw[NONCE_BYTES:],
-                aad_for(token_id, scope, sealed.key_version),
-            )
-        except (InvalidTag, ValueError, TypeError) as exc:
-            return DecodeFailed(reason=f"vault unseal failed ({type(exc).__name__})")
-        return opened.decode("utf-8")
+        return open_sealed(key, sealed, token_id, scope)

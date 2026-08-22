@@ -7,6 +7,7 @@ from litellm.pii.vault.cipher import VaultCipher
 from litellm.pii.vault.keys import DEFAULT_KEY_VERSION, DerivedKeyProvider
 from litellm.pii.vault.repository import PiiVaultRepository, table_from_prisma
 from litellm.pii.vault.scope import VaultScopeType
+from litellm.pii.vault.search import DEFAULT_CANDIDATE_CAP, VaultSearch
 from litellm.pii.vault.service import VaultService
 from litellm.pii.vault.store import DEFAULT_RETENTION_DAYS, DatabaseTokenStore
 
@@ -15,6 +16,7 @@ ENV_RETENTION_DAYS: Final = "LITELLM_PII_RETENTION_DAYS"
 ENV_KEY_VERSION: Final = "LITELLM_PII_KEY_VERSION"
 ENV_DEFAULT_SCOPE: Final = "LITELLM_PII_VAULT_SCOPE"
 ENV_SALT_KEY: Final = "LITELLM_SALT_KEY"
+ENV_CANDIDATE_CAP: Final = "LITELLM_PII_SEARCH_CANDIDATE_CAP"
 
 TRUTHY: Final = frozenset({"1", "true", "yes", "on"})
 
@@ -43,6 +45,7 @@ class VaultSettings:
     retention_days: int = DEFAULT_RETENTION_DAYS
     key_version: int = DEFAULT_KEY_VERSION
     default_scope: VaultScopeType = VaultScopeType.KEY
+    candidate_cap: int = DEFAULT_CANDIDATE_CAP
 
     @classmethod
     def from_env(cls) -> "VaultSettings":
@@ -51,6 +54,7 @@ class VaultSettings:
             retention_days=_int_from_env(ENV_RETENTION_DAYS, DEFAULT_RETENTION_DAYS),
             key_version=_int_from_env(ENV_KEY_VERSION, DEFAULT_KEY_VERSION),
             default_scope=_scope_from_env(),
+            candidate_cap=_int_from_env(ENV_CANDIDATE_CAP, DEFAULT_CANDIDATE_CAP),
         )
 
 
@@ -88,3 +92,20 @@ def build_vault(
 ) -> VaultService | None:
     store: Final = build_vault_store(prisma_client, settings, secret)
     return None if store is None else VaultService(pii=pii, store=store)
+
+
+def build_search(
+    prisma_client: object | None,
+    settings: VaultSettings | None = None,
+    secret: str | None = None,
+) -> VaultSearch | None:
+    """Search reuses the vault's repository and cipher; it stores nothing of its own."""
+    resolved: Final = settings or VaultSettings.from_env()
+    store: Final = build_vault_store(prisma_client, resolved, secret)
+    if store is None:
+        return None
+    return VaultSearch(
+        repository=store.repository,
+        cipher=store.cipher,
+        candidate_cap=resolved.candidate_cap,
+    )

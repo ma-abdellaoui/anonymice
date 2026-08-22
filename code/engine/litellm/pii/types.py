@@ -114,4 +114,16 @@ class VaultForbidden:
 
 AuthorizationError: TypeAlias = VaultForbidden
 
+
+@dataclass(frozen=True, slots=True)
+class SearchRefused:
+    """A scan wider than the configured cap is refused rather than run slowly."""
+
+    scanned: int
+    limit: int
+    kind: Literal["search_refused"] = "search_refused"
+
+
+SearchError: TypeAlias = SearchRefused
+
 DEFAULT_NER_SCORE_THRESHOLD: Final = 0.5

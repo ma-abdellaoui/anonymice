@@ -1,5 +1,5 @@
 import json
-from typing import Final
+from typing import Final, ReadOnly, TypedDict
 
 from litellm._uuid import uuid
 from litellm.pii.vault.authorization import CallerIdentity
@@ -37,6 +37,35 @@ def scope_object_id(scope: VaultScope) -> str:
     return f"{scope.scope_type.value}:{scope.scope_id}"
 
 
+class DecodeDetails(TypedDict):
+    token_count: ReadOnly[int]
+    break_glass: ReadOnly[bool]
+    scope_type: ReadOnly[str]
+
+
+class SearchDetails(TypedDict):
+    operation: ReadOnly[str]
+    entity_type: ReadOnly[str | None]
+    hit_count: ReadOnly[int]
+    scanned: ReadOnly[int]
+    scope_type: ReadOnly[str]
+
+
+def _access_entry(user_api_key_dict: UserAPIKeyAuth, scope: VaultScope, updated_values: str) -> LiteLLM_AuditLogs:
+    from datetime import datetime, timezone
+
+    return LiteLLM_AuditLogs(
+        id=str(uuid.uuid4()),
+        updated_at=datetime.now(timezone.utc),
+        changed_by=user_api_key_dict.user_id,
+        changed_by_api_key=user_api_key_dict.api_key,
+        action="accessed",
+        table_name=LitellmTableNames.PII_TOKEN_TABLE_NAME,
+        object_id=scope_object_id(scope),
+        updated_values=updated_values,
+    )
+
+
 def decode_audit_entry(
     user_api_key_dict: UserAPIKeyAuth,
     scope: VaultScope,
@@ -49,23 +78,45 @@ def decode_audit_entry(
     tokens themselves are the index into them, so neither belongs in a log that
     is retained longer than the rows are.
     """
-    from datetime import datetime, timezone
-
-    details: Final = {  # mutable-ok: serialized straight to JSON
+    details: Final[DecodeDetails] = {
         "token_count": token_count,
         "break_glass": break_glass,
         "scope_type": scope.scope_type.value,
     }
-    return LiteLLM_AuditLogs(
-        id=str(uuid.uuid4()),
-        updated_at=datetime.now(timezone.utc),
-        changed_by=user_api_key_dict.user_id,
-        changed_by_api_key=user_api_key_dict.api_key,
-        action="accessed",
-        table_name=LitellmTableNames.PII_TOKEN_TABLE_NAME,
-        object_id=scope_object_id(scope),
-        updated_values=json.dumps(details),
-    )
+    return _access_entry(user_api_key_dict, scope, json.dumps(details))
+
+
+def search_audit_entry(
+    user_api_key_dict: UserAPIKeyAuth,
+    scope: VaultScope,
+    entity_type: str | None,
+    hit_count: int,
+    scanned: int,
+) -> LiteLLM_AuditLogs:
+    """Searching a PII vault is exactly the action that should leave a trace.
+
+    The query string is deliberately absent: it is attacker-chosen plaintext and
+    would put the very values the vault protects into a longer-lived log.
+    """
+    details: Final[SearchDetails] = {
+        "operation": "search",
+        "entity_type": entity_type,
+        "hit_count": hit_count,
+        "scanned": scanned,
+        "scope_type": scope.scope_type.value,
+    }
+    return _access_entry(user_api_key_dict, scope, json.dumps(details))
+
+
+async def _write(entry: LiteLLM_AuditLogs) -> None:
+    """Best effort, in one place: an audit write must never fail the read it describes."""
+    from litellm._logging import verbose_proxy_logger
+    from litellm.proxy.management_helpers.audit_logs import create_audit_log_for_update
+
+    try:
+        await create_audit_log_for_update(entry)
+    except Exception as exc:
+        verbose_proxy_logger.warning("PII vault audit write failed (%s)", type(exc).__name__)
 
 
 async def record_decode(
@@ -74,14 +125,17 @@ async def record_decode(
     token_count: int,
     break_glass: bool,
 ) -> None:
-    """Best effort: an audit write must never fail the read it is describing."""
-    from litellm._logging import verbose_proxy_logger
-    from litellm.proxy.management_helpers.audit_logs import create_audit_log_for_update
+    await _write(decode_audit_entry(user_api_key_dict, scope, token_count, break_glass))
 
-    try:
-        await create_audit_log_for_update(decode_audit_entry(user_api_key_dict, scope, token_count, break_glass))
-    except Exception as exc:
-        verbose_proxy_logger.warning("PII vault audit write failed (%s)", type(exc).__name__)
+
+async def record_search(
+    user_api_key_dict: UserAPIKeyAuth,
+    scope: VaultScope,
+    entity_type: str | None,
+    hit_count: int,
+    scanned: int,
+) -> None:
+    await _write(search_audit_entry(user_api_key_dict, scope, entity_type, hit_count, scanned))
 
 
 def default_mint_scope() -> VaultScopeType:

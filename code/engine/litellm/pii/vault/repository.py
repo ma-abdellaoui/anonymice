@@ -1,11 +1,13 @@
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from types import MappingProxyType
 from typing import Final, Protocol, runtime_checkable
 
 from litellm.pii.vault.scope import VaultScope, VaultScopeType
 
 TABLE_NAME: Final = "litellm_piitokentable"
+BY_TOKEN_ID: Final[Mapping[str, str]] = MappingProxyType({"token_id": "asc"})
 DEFAULT_ALGORITHM: Final = "aes-256-gcm"
 
 
@@ -84,6 +86,17 @@ def live_filter(scope: VaultScope, now: datetime) -> dict[str, object]:  # mutab
     }
 
 
+def scan_filters(
+    entity_type: str | None,
+    subject_id: str | None,
+    after_token_id: str | None,
+) -> Mapping[str, object]:
+    """Only the clauses actually supplied. Every one describes the record, never the value."""
+    keyset: Final = {"gt": after_token_id} if after_token_id else None  # mutable-ok: Prisma takes a plain dict
+    supplied: Final = (("entity_type", entity_type), ("subject_id", subject_id), ("token_id", keyset))
+    return MappingProxyType({column: value for column, value in supplied if value is not None})
+
+
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -94,7 +107,12 @@ class VaultTable(Protocol):
 
     async def create_many(self, data: Sequence[Mapping[str, object]], skip_duplicates: bool) -> object: ...
 
-    async def find_many(self, where: Mapping[str, object]) -> Sequence[Mapping[str, object]]: ...
+    async def find_many(
+        self,
+        where: Mapping[str, object],
+        order: Mapping[str, str] | None = None,
+        take: int | None = None,
+    ) -> Sequence[Mapping[str, object]]: ...
 
     async def delete_many(self, where: Mapping[str, object]) -> object: ...
 
@@ -153,6 +171,27 @@ class PiiVaultRepository:
     async def find_subject(self, scope: VaultScope, subject_id: str, now: datetime) -> tuple[VaultRow, ...]:
         where: Final = {**live_filter(scope, now), "subject_id": subject_id}  # mutable-ok: Prisma takes a dict
         records: Final = await self.table.find_many(where=where)
+        parsed: Final = (record_to_row(record) for record in records)
+        return tuple(row for row in parsed if row is not None)
+
+    async def scan(
+        self,
+        scope: VaultScope,
+        now: datetime,
+        limit: int,
+        entity_type: str | None = None,
+        subject_id: str | None = None,
+        after_token_id: str | None = None,
+    ) -> tuple[VaultRow, ...]:
+        """One keyset page of a scope, narrowed by metadata only.
+
+        Keyset rather than offset so the query cost does not grow with the page
+        number, and so a concurrent insert cannot make the walk skip a row.
+        Every filter here describes the record, never the value it holds.
+        """
+        filters: Final = scan_filters(entity_type, subject_id, after_token_id)
+        narrowed: Final = {**live_filter(scope, now), **filters}  # mutable-ok: Prisma takes a plain dict
+        records: Final = await self.table.find_many(where=narrowed, order=BY_TOKEN_ID, take=limit)
         parsed: Final = (record_to_row(record) for record in records)
         return tuple(row for row in parsed if row is not None)
 

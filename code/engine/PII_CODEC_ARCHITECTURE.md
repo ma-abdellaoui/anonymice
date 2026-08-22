@@ -413,7 +413,7 @@ Six phases. Each leaves the tree working, is independently reviewable, and carri
 through C need no database and harden the path every request already takes; the vault does not exist until
 phase D.
 
-**Status.** Phases A through E are complete. Phases F and G are not started. Live verification against
+**Status.** Phases A through F are complete. Phase G is not started. Live verification against
 real Presidio and real piiranha found two defects the fake-injected tests could not: streaming never decoded
 at all, and piiranha's spans include the leading whitespace. Both are fixed and covered. Nothing has yet run
 against a real LLM provider.
@@ -489,15 +489,16 @@ These are defects in code already merged, not new features, so they go first.
 
 ### Phase F: search
 
-- [ ] `PiiSearchIndex` protocol with `NullSearchIndex` as the default that stores nothing
-- [ ] `POST /pii/search`: filter on scope, `entity_type`, optional `subject_id`, then decrypt and compare
-- [ ] Keyset pagination in batches of roughly a thousand; never materialize the whole scope
-- [ ] Run decrypt-and-compare in a thread pool so bulk AES does not stall the event loop
-- [ ] Configurable candidate cap that refuses the query rather than stalling
-- [ ] Exact, case-insensitive, accent-folded, and substring matching
-- [ ] `allow_pii_search` permission, separate from `allow_pii_decode`
-- [ ] Audit entry per query recording scope and entity type, never the query string
-- [ ] Test: search is confined to the caller's scope and finds nothing from another
+- [x] `PiiSearchIndex` protocol with `NullSearchIndex` as the default that stores nothing
+- [x] `POST /pii/search`: filter on scope, `entity_type`, optional `subject_id`, then decrypt and compare
+- [x] Keyset pagination in batches of roughly a thousand; never materialize the whole scope
+- [x] Run decrypt-and-compare in a thread pool so bulk AES does not stall the event loop. The sync decrypt
+      is split out of `VaultCipher.unseal` so one key is derived per version per page, not one per row
+- [x] Configurable candidate cap that refuses the query rather than stalling
+- [x] Exact, case-insensitive, accent-folded, and substring matching
+- [x] `allow_pii_search` permission, separate from `allow_pii_decode`
+- [x] Audit entry per query recording scope and entity type, never the query string
+- [x] Test: search is confined to the caller's scope and finds nothing from another
 
 ### Phase G: UI
 

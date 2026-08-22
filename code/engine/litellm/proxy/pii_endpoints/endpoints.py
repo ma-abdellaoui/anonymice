@@ -6,8 +6,8 @@ the LLM path. A browser extension calling ``/pii/encode`` therefore gets exactly
 the behaviour an in-flight completion would.
 """
 
-from collections.abc import Awaitable, Callable, Mapping
-from typing import Annotated, Final, NoReturn, TypeAlias, assert_never
+from collections.abc import Mapping
+from typing import Annotated, Final, NoReturn, Protocol, assert_never
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -22,6 +22,8 @@ from litellm.pii.types import (
     DetectorInvalidResponse,
     DetectorUnavailable,
     KeyUnavailable,
+    SearchError,
+    SearchRefused,
     StoreError,
     StoreUnavailable,
     TokenSpaceExhausted,
@@ -29,12 +31,19 @@ from litellm.pii.types import (
     VaultForbidden,
 )
 from litellm.pii.vault.authorization import CallerIdentity, authorize_decode, scope_to_mint, used_break_glass
-from litellm.pii.vault.config import build_vault
+from litellm.pii.vault.config import build_search, build_vault
 from litellm.pii.vault.scope import VaultScope, VaultScopeType
+from litellm.pii.vault.search import SearchResult, VaultSearch
 from litellm.pii.vault.service import DecodedBatch, VaultService
 from litellm.proxy._types import UserAPIKeyAuth
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
-from litellm.proxy.pii_endpoints.audit import default_mint_scope, identity_from, record_decode
+from litellm.proxy.pii_endpoints.audit import (
+    default_mint_scope,
+    identity_from,
+    may_search,
+    record_decode,
+    record_search,
+)
 from litellm.types.proxy.pii_endpoints import (
     PiiDecodeRequest,
     PiiDecodeResponse,
@@ -47,6 +56,9 @@ from litellm.types.proxy.pii_endpoints import (
     PiiExportResponse,
     PiiIssuedTokenModel,
     PiiRevokeResponse,
+    PiiSearchHitModel,
+    PiiSearchRequest,
+    PiiSearchResponse,
     PiiSpanModel,
 )
 
@@ -74,7 +86,25 @@ def get_pii_service() -> PiiService:
     return service
 
 
-DecodeRecorder: TypeAlias = Callable[[UserAPIKeyAuth, VaultScope, int, bool], Awaitable[None]]
+class DecodeRecorder(Protocol):
+    async def __call__(
+        self,
+        user_api_key_dict: UserAPIKeyAuth,
+        scope: VaultScope,
+        token_count: int,
+        break_glass: bool,
+    ) -> None: ...
+
+
+class SearchRecorder(Protocol):
+    async def __call__(
+        self,
+        user_api_key_dict: UserAPIKeyAuth,
+        scope: VaultScope,
+        entity_type: str | None,
+        hit_count: int,
+        scanned: int,
+    ) -> None: ...
 
 
 def get_decode_recorder() -> DecodeRecorder:
@@ -82,11 +112,29 @@ def get_decode_recorder() -> DecodeRecorder:
     return record_decode
 
 
+def get_search_recorder() -> SearchRecorder:
+    return record_search
+
+
 def get_pii_vault(service: Annotated[PiiService, Depends(get_pii_service)]) -> VaultService | None:
     """``None`` when the vault is off or there is no database; encode and decode then use the cache store."""
     from litellm.proxy.proxy_server import prisma_client
 
     return build_vault(prisma_client=prisma_client, pii=service)
+
+
+def get_pii_search() -> VaultSearch:
+    from litellm.proxy.proxy_server import prisma_client
+
+    searcher: Final = build_search(prisma_client=prisma_client)
+    if searcher is None:
+        raise HTTPException(
+            status_code=501,
+            detail=_detail(
+                "The PII token vault is not configured. Set LITELLM_PII_VAULT_ENABLED=true and connect a database."
+            ),
+        )
+    return searcher
 
 
 def require_pii_vault(vault: Annotated[VaultService | None, Depends(get_pii_vault)]) -> VaultService:
@@ -100,7 +148,7 @@ def require_pii_vault(vault: Annotated[VaultService | None, Depends(get_pii_vaul
     return vault
 
 
-def _raise_public(error: DetectionError | CodecError | StoreError | AuthorizationError) -> NoReturn:
+def _raise_public(error: DetectionError | CodecError | StoreError | AuthorizationError | SearchError) -> NoReturn:
     """Map the internal error union onto the proxy's public HTTP contract."""
     match error:
         case DetectorUnavailable(detector=detector, reason=reason):
@@ -125,6 +173,14 @@ def _raise_public(error: DetectionError | CodecError | StoreError | Authorizatio
             raise HTTPException(
                 status_code=422,
                 detail=_detail(f"No free PII token remained for {entity_type}"),
+            )
+        case SearchRefused(scanned=scanned, limit=limit):
+            raise HTTPException(
+                status_code=422,
+                detail=_detail(
+                    f"PII search would scan more than {limit} rows ({scanned} so far). "
+                    "Narrow it with entity_type or subject_id, or raise LITELLM_PII_SEARCH_CANDIDATE_CAP."
+                ),
             )
         case VaultForbidden(reason=reason):
             raise HTTPException(status_code=403, detail=_detail(f"Not permitted to access this PII scope: {reason}"))
@@ -336,4 +392,53 @@ async def export_pii_subject(
         subject_id=subject_id,
         scope_type=scope.scope_type,
         values=tuple(PiiExportedValueModel(token=token, value=value) for token, value in sorted(exported.items())),
+    )
+
+
+@pii_router.post("/search", response_model=PiiSearchResponse)
+async def search_pii(
+    request: PiiSearchRequest,
+    user_api_key_dict: Annotated[UserAPIKeyAuth, Depends(user_api_key_auth)],
+    searcher: Annotated[VaultSearch, Depends(get_pii_search)],
+    record: Annotated[SearchRecorder, Depends(get_search_recorder)],
+) -> PiiSearchResponse:
+    """Find which tokens decode to a value.
+
+    A strictly more powerful capability than resolving one known token, so it
+    carries its own ``allow_pii_search`` permission rather than riding on
+    ``allow_pii_decode``, is confined to the caller's scope, and is audited.
+    """
+    if not may_search(user_api_key_dict):
+        raise HTTPException(
+            status_code=403,
+            detail=_detail("This key is not permitted to search PII. Set permissions.allow_pii_search = true."),
+        )
+
+    scope: Final = _requested_scope(identity_from(user_api_key_dict), request.scope_type)
+    if isinstance(scope, VaultForbidden):
+        _raise_public(scope)
+
+    result: Final = await searcher.search(
+        scope=scope,
+        query=request.query,
+        mode=request.mode,
+        entity_type=request.entity_type,
+        subject_id=request.subject_id,
+    )
+    if not isinstance(result, SearchResult):
+        _raise_public(result)
+
+    await record(user_api_key_dict, scope, request.entity_type, len(result.hits), result.scanned)
+    return PiiSearchResponse(
+        hits=tuple(
+            PiiSearchHitModel(
+                token=hit.token,
+                entity_type=hit.entity_type,
+                session_id=hit.session_id,
+                subject_id=hit.subject_id,
+            )
+            for hit in result.hits
+        ),
+        scanned=result.scanned,
+        scope_type=scope.scope_type,
     )
