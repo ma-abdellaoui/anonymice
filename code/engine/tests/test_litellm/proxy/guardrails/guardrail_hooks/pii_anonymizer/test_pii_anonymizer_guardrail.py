@@ -1,5 +1,6 @@
 """Tests for the reversible PII anonymizer guardrail on the LLM path."""
 
+import json
 from typing import get_args
 
 import pytest
@@ -240,6 +241,111 @@ class TestFailureModes:
     async def test_missing_detector_passes_through_instead_of_crashing(self):
         guard = PiiAnonymizerGuardrail(guardrail_name="g", detector=None)
         assert await run(guard, ["hello Ada"], {}, "request") == ["hello Ada"]
+
+
+def tool_call(arguments, name="lookup", call_id="call_1"):
+    return {"id": call_id, "type": "function", "function": {"name": name, "arguments": arguments}}
+
+
+class TestToolCalls:
+    """`<` and `>` need no JSON escaping, so a token can live inside an arguments string."""
+
+    @pytest.mark.asyncio
+    async def test_pii_inside_tool_call_arguments_is_encoded(self):
+        guard = guardrail({"Ada": "PERSON"})
+        arguments = json.dumps({"name": "Ada", "limit": 5})
+        result = await guard.apply_guardrail(
+            inputs={"texts": [], "tool_calls": [tool_call(arguments)]},
+            request_data={},
+            input_type="request",
+        )
+        encoded = result["tool_calls"][0]["function"]["arguments"]
+        assert "Ada" not in encoded
+        assert "<PERSON_1>" in encoded
+
+    @pytest.mark.asyncio
+    async def test_the_encoded_arguments_are_still_valid_json(self):
+        guard = guardrail({"Ada": "PERSON"})
+        arguments = json.dumps({"name": "Ada", "note": "call her", "limit": 5})
+        result = await guard.apply_guardrail(
+            inputs={"texts": [], "tool_calls": [tool_call(arguments)]},
+            request_data={},
+            input_type="request",
+        )
+        parsed = json.loads(result["tool_calls"][0]["function"]["arguments"])
+        assert parsed == {"name": "<PERSON_1>", "note": "call her", "limit": 5}
+
+    @pytest.mark.asyncio
+    async def test_the_rest_of_the_tool_call_is_left_alone(self):
+        guard = guardrail({"Ada": "PERSON"})
+        result = await guard.apply_guardrail(
+            inputs={"texts": [], "tool_calls": [tool_call(json.dumps({"name": "Ada"}), name="search", call_id="c9")]},
+            request_data={},
+            input_type="request",
+        )
+        call = result["tool_calls"][0]
+        assert (call["id"], call["type"], call["function"]["name"]) == ("c9", "function", "search")
+
+    @pytest.mark.asyncio
+    async def test_a_message_and_a_tool_call_share_one_token_space(self):
+        guard = guardrail({"Ada": "PERSON"})
+        result = await guard.apply_guardrail(
+            inputs={"texts": ["ask Ada about it"], "tool_calls": [tool_call(json.dumps({"name": "Ada"}))]},
+            request_data={},
+            input_type="request",
+        )
+        assert result["texts"] == ["ask <PERSON_1> about it"]
+        assert json.loads(result["tool_calls"][0]["function"]["arguments"]) == {"name": "<PERSON_1>"}
+
+    @pytest.mark.asyncio
+    async def test_tool_call_arguments_round_trip_through_decode(self):
+        guard = guardrail({"Ada": "PERSON"})
+        data = {}
+        arguments = json.dumps({"name": "Ada"})
+        encoded = await guard.apply_guardrail(
+            inputs={"texts": [], "tool_calls": [tool_call(arguments)]}, request_data=data, input_type="request"
+        )
+        decoded = await guard.apply_guardrail(
+            inputs={"texts": [], "tool_calls": encoded["tool_calls"]}, request_data=data, input_type="response"
+        )
+        assert json.loads(decoded["tool_calls"][0]["function"]["arguments"]) == {"name": "Ada"}
+
+    @pytest.mark.asyncio
+    async def test_a_request_with_only_tool_calls_is_not_skipped(self):
+        guard = guardrail({"Ada": "PERSON"})
+        result = await guard.apply_guardrail(
+            inputs={"tool_calls": [tool_call(json.dumps({"name": "Ada"}))]}, request_data={}, input_type="request"
+        )
+        assert "<PERSON_1>" in result["tool_calls"][0]["function"]["arguments"]
+
+    @pytest.mark.asyncio
+    async def test_a_tool_call_without_arguments_is_left_intact(self):
+        guard = guardrail({"Ada": "PERSON"})
+        malformed = {"id": "c1", "type": "function", "function": {"name": "ping"}}
+        result = await guard.apply_guardrail(
+            inputs={"texts": ["hi Ada"], "tool_calls": [malformed]}, request_data={}, input_type="request"
+        )
+        assert result["tool_calls"][0] == malformed
+        assert result["texts"] == ["hi <PERSON_1>"]
+
+    @pytest.mark.asyncio
+    async def test_inputs_with_neither_texts_nor_tool_calls_pass_through(self):
+        result = await guardrail({"Ada": "PERSON"}).apply_guardrail(
+            inputs={"texts": []}, request_data={}, input_type="request"
+        )
+        assert result == {"texts": []}
+
+    @pytest.mark.asyncio
+    async def test_holdback_covers_texts_only_not_tool_calls(self):
+        guard = guardrail({"Ada": "PERSON"})
+        data = {}
+        await guard.apply_guardrail(inputs={"texts": ["hi Ada"]}, request_data=data, input_type="request")
+        result = await guard.apply_guardrail(
+            inputs={"texts": ["one", "two"], "tool_calls": [tool_call(json.dumps({"n": "x"}))]},
+            request_data=data,
+            input_type="response",
+        )
+        assert len(result["stream_holdback_chars"]) == 2
 
 
 class TestMappingScope:

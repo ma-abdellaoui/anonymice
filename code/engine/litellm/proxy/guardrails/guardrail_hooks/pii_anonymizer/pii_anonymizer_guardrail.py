@@ -63,6 +63,25 @@ def _shared_cache() -> DualCache | None:
     return cache
 
 
+def _arguments_of(tool_call: object) -> str:
+    """The JSON argument string of a tool call, or empty when it has none."""
+    if not isinstance(tool_call, Mapping):
+        return ""
+    function: Final = tool_call.get("function")
+    arguments: Final = function.get("arguments") if isinstance(function, Mapping) else None
+    return arguments if isinstance(arguments, str) else ""
+
+
+def _with_arguments(tool_call: object, arguments: str) -> object:
+    if not isinstance(tool_call, Mapping):
+        return tool_call
+    function: Final = tool_call.get("function")
+    if not isinstance(function, Mapping) or not isinstance(function.get("arguments"), str):
+        return tool_call
+    rewritten: Final = {**function, "arguments": arguments}  # mutable-ok: plain tool-call dict
+    return {**tool_call, "function": rewritten}  # mutable-ok: plain tool-call dict
+
+
 def _to_span_action(action: PiiAction | str) -> SpanAction:
     raw: Final = action.value if isinstance(action, PiiAction) else action
     return SpanAction(raw) if raw in SpanAction.__members__ else SpanAction.ENCODE
@@ -176,32 +195,62 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
             should_wrap_with_default_message=False,
         )
 
+    def _rebuild(
+        self,
+        inputs: GenericGuardrailAPIInputs,
+        tool_calls: Sequence[object],
+        processed: Sequence[str],
+        text_count: int,
+        with_holdback: bool,
+    ) -> GenericGuardrailAPIInputs:
+        """Split the shared result back into texts and tool-call arguments.
+
+        Holdback is per text choice only, in the order the texts arrived, which
+        is what lets a token split across chunk boundaries be decoded rather
+        than emitted in pieces.
+        """
+        texts_out: Final = list(processed[:text_count])  # mutable-ok: typed as list[str]
+        args_out: Final = processed[text_count:]
+        calls_out: Final = [_with_arguments(c, a) for c, a in zip(tool_calls, args_out)]  # mutable-ok: list
+        holds: Final = [self.codec.grammar.holdback_chars(t) for t in texts_out]  # mutable-ok: list
+        optional: Final = (
+            *((("tool_calls", calls_out),) if tool_calls else ()),
+            *((("stream_holdback_chars", holds),) if with_holdback else ()),
+        )
+        updated: Final[GenericGuardrailAPIInputs] = {  # mutable-ok: TypedDict literal
+            **inputs,
+            "texts": texts_out,
+            **dict(optional),  # mutable-ok: spread into the literal above
+        }
+        return updated
+
     async def _decode(
         self,
         service: PiiService,
         inputs: GenericGuardrailAPIInputs,
         texts: Sequence[str],
+        tool_calls: Sequence[object],
         scope: TokenScope,
     ) -> GenericGuardrailAPIInputs:
-        decoded: Final = await service.decode(texts=texts, scope=scope)
+        combined: Final = (*texts, *(_arguments_of(call) for call in tool_calls))
+        decoded: Final = await service.decode(texts=combined, scope=scope)
         if not isinstance(decoded, tuple):
             self._raise_public(decoded)
-        # Per choice, in the order the texts arrived. This is what lets a token
-        # split across chunk boundaries be decoded rather than emitted in pieces.
-        holdback: Final = [self.codec.grammar.holdback_chars(t) for t in decoded]  # mutable-ok: typed as list[int]
-        texts_out: Final = list(decoded)  # mutable-ok: the TypedDict types texts as list[str]
-        both: Final = {"texts": texts_out, "stream_holdback_chars": holdback}  # mutable-ok: TypedDict
-        updated: Final[GenericGuardrailAPIInputs] = {**inputs, **both}  # mutable-ok: TypedDict
-        return updated
+        return self._rebuild(inputs, tool_calls, decoded, len(texts), with_holdback=True)
 
     async def _encode(
         self,
         service: PiiService,
         inputs: GenericGuardrailAPIInputs,
         texts: Sequence[str],
+        tool_calls: Sequence[object],
         scope: TokenScope,
     ) -> GenericGuardrailAPIInputs:
-        encoded: Final = await service.encode(texts=texts, scope=scope, is_reversible=self.codec.is_reversible)
+        # One shared token space across messages and tool-call arguments, so the same
+        # person named in both gets one token. `<` and `>` need no JSON escaping, so
+        # encoding inside an arguments string leaves it valid JSON.
+        combined: Final = (*texts, *(_arguments_of(call) for call in tool_calls))
+        encoded: Final = await service.encode(texts=combined, scope=scope, is_reversible=self.codec.is_reversible)
         if not isinstance(encoded, EncodedBatch):
             self._raise_public(encoded)
 
@@ -212,9 +261,7 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
         if blocked:
             raise BlockedPiiEntityError(entity_type=blocked[0], guardrail_name=self.guardrail_name)
 
-        texts_out: Final = list(encoded.texts)  # mutable-ok: the TypedDict types texts as list[str]
-        updated: Final[GenericGuardrailAPIInputs] = {**inputs, "texts": texts_out}  # mutable-ok: TypedDict
-        return updated
+        return self._rebuild(inputs, tool_calls, encoded.texts, len(texts), with_holdback=False)
 
     @log_guardrail_information
     async def apply_guardrail(
@@ -225,7 +272,8 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
         logging_obj: Optional["LiteLLMLoggingObj"] = None,
     ) -> GenericGuardrailAPIInputs:
         texts: Final[Sequence[str]] = inputs.get("texts") or ()
-        if not texts:
+        tool_calls: Final[Sequence[object]] = inputs.get("tool_calls") or ()
+        if not texts and not tool_calls:
             return inputs
 
         service: Final = self._service(request_data)
@@ -238,8 +286,8 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
 
         scope: Final = self._scope(request_data)
         if input_type == "response":
-            return await self._decode(service, inputs, texts, scope)
-        return await self._encode(service, inputs, texts, scope)
+            return await self._decode(service, inputs, texts, tool_calls, scope)
+        return await self._encode(service, inputs, texts, tool_calls, scope)
 
 
 def build_guardrail_detector(
