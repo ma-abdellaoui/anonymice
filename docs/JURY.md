@@ -82,7 +82,12 @@ Editor — und nicht erst am API-Gateway, wo sie längst kopiert wurden.
 7. **Zwei bewusst unterschiedliche Lebensdauern** für Tokens statt eines Kompromisses
    (siehe [Technischer Aufbau](#engine-codeengine)).
 
-8. **Der Detection-Service liegt innerhalb derselben Vertrauensgrenze wie der Vault.** Er
+8. **Keine proprietären Bestandteile im Repository.** LiteLLMs `enterprise/`-Verzeichnis
+   ist entfernt, damit der gesamte Baum unter MIT steht und nichts im Image liegt, das
+   ohne BerriAI-Subscription nicht produktiv genutzt werden darf. Details:
+   [`../code/engine/ENTERPRISE.md`](../code/engine/ENTERPRISE.md).
+
+9. **Der Detection-Service liegt innerhalb derselben Vertrauensgrenze wie der Vault.** Er
    empfängt rohen Seitentext und entscheidet, welche Seiten überhaupt gelesen werden.
    Daraus folgt alles Weitere: Loopback-Binding per Default, kein Default-Credential,
    **null Dependencies**, und kein Logging von Seitentext.
@@ -238,6 +243,7 @@ Bewusst nicht implementiert:
 | **Audio, Bild, Video, Realtime** | Der Codec ist textbasiert. Ein binäres Media-Payload durchliefe den Guardrail unberührt. Eine Oberfläche, die per Design leckt, ist schlechter als eine, die 404 liefert |
 | **Nur `texts`, noch nicht `tool_calls` / `structured_messages`** | Bekannte Lücke, gleiche Mechanik |
 | **Die Modellstufe im TS-Backend ist ein Gazetteer, kein LLM** | Das Interface ist die Naht, in die eine LLM-Implementation fällt. Wir nennen das offen, weil der Eval-Score sonst überzeichnet wäre: Der Gazetteer wurde gegen dieselben Fixtures geschrieben, die er findet |
+| **Enterprise-Teil von LiteLLM entfernt** | LiteLLMs `enterprise/`-Verzeichnis ist der einzige nicht-MIT-Teil (BerriAI Enterprise License, produktive Nutzung nur mit Subscription). Wir haben es entfernt: Fast alle Features darin sind ohnehin hinter einer Lizenzprüfung gesperrt, und ein proprietäres Verzeichnis in einem MIT-Repository macht dessen Lizenz vom Unterverzeichnis abhängig. Verlust in der Praxis: die Lese-Endpunkte für Audit-Logs samt UI-Seite — die Einträge selbst werden weiterhin geschrieben, da alle Writer im MIT-Kern liegen |
 | **Ausdünnen des LiteLLM-Forks** | Wir haben es evaluiert und gemessen — 189 → 159 Pakete, Image von ~1,4 auf 1,11 GB, Build grün — und **bewusst zurückgerollt**. Der Gewinn an Bytes wog das Divergenzrisiko gegenüber Upstream nicht auf. Die Laufzeit-Angriffsfläche wird ohnehin über eine Route-Allowlist in unserer eigenen Datei begrenzt, die beim Nachziehen nichts kostet |
 
 Eine Grenze, die kein Token-Format löst: Ein Request mit `response_format: json_schema` und
@@ -254,6 +260,7 @@ dokumentiert, nicht wegkonstruiert.
 | [`../README.md`](../README.md) | Überblick über das ganze Repository |
 | [`../code/engine/PII_ANONYMIZATION_PLAN.md`](../code/engine/PII_ANONYMIZATION_PLAN.md) | Architektur der PII-Schicht, Detektion, Modul-Layout |
 | [`../code/engine/PII_CODEC_ARCHITECTURE.md`](../code/engine/PII_CODEC_ARCHITECTURE.md) | Token-Format, Verschlüsselung, Vault-Design, Streaming |
+| [`../code/engine/ENTERPRISE.md`](../code/engine/ENTERPRISE.md) | Warum der proprietäre Enterprise-Teil entfernt wurde |
 | [`../code/engine/litellm/pii/README.md`](../code/engine/litellm/pii/README.md) | Die PII-Schicht aus der Nähe |
 | [`../code/extensions/SPEC.md`](../code/extensions/SPEC.md) | Vertrauensklassen und das Copy/Paste-Modell |
 | [`../code/extensions/browser/SPEC.md`](../code/extensions/browser/SPEC.md) | Design der Browser-Extension |

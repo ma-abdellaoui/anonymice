@@ -257,11 +257,17 @@ cd code/extensions/backend && npm run dev
 | [`docs/extensions/browser/DETECTION.md`](docs/extensions/browser/DETECTION.md) | Detection semantics |
 | [`code/engine/litellm/pii/README.md`](code/engine/litellm/pii/README.md) | The PII layer, close up |
 | [`code/engine/PII_CODEC_ARCHITECTURE.md`](code/engine/PII_CODEC_ARCHITECTURE.md) | Token format, encryption, the vault design |
+| [`code/engine/ENTERPRISE.md`](code/engine/ENTERPRISE.md) | Why the proprietary LiteLLM enterprise directory was removed, and how to re-apply it |
 
 ---
 
 ## Licence
 
-MIT, except `code/engine/`, which carries
-[LiteLLM's licensing](code/engine/LICENSE): MIT for the project, with everything
-under `code/engine/enterprise/` governed by the BerriAI Enterprise License.
+MIT throughout. `code/engine/` vendors
+[LiteLLM](https://github.com/BerriAI/litellm), whose only non-MIT part is its
+`enterprise/` directory (BerriAI Enterprise License, production use requires a
+subscription). **We removed that directory** — see
+[`code/engine/ENTERPRISE.md`](code/engine/ENTERPRISE.md) for what went, what it
+cost, and how to re-apply the removal after re-vendoring a newer upstream.
+[`code/engine/LICENSE`](code/engine/LICENSE) needs no edit: its enterprise clause
+reads *"if that directory exists"*.

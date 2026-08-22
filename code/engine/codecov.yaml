@@ -47,7 +47,6 @@ component_management:
         - "*/proxy/auth/**"
     - component_id: "Enterprise"
       paths:
-        - "enterprise/**"
     - component_id: "Batches"
       paths:
         - "*/proxy/batches_endpoints/**"

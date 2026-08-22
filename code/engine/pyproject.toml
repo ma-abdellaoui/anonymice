@@ -68,7 +68,6 @@ proxy = [
     "azure-storage-blob>=12.28.0,<13.0",
     "mcp>=1.28.1,<2.0",
     "litellm-proxy-extras==0.4.88",
-    "litellm-enterprise==0.1.58",
     "RestrictedPython>=8.1,<9.0",
     "rich>=13.9.4,<14.0",
     "InquirerPy>=0.3.4,<1.0",
@@ -271,8 +270,6 @@ python-source = "."
 bindings = "pyo3"
 include = ["litellm/proxy/_experimental/out/**"]
 exclude = [
-    "litellm/proxy/enterprise",
-    "litellm/proxy/enterprise/**",
     "**/__pycache__",
     "**/__pycache__/**",
     "**/.pytest_cache",
@@ -301,10 +298,9 @@ exclude-newer = "3 days"
 
 [tool.uv.sources]
 litellm-proxy-extras = { workspace = true }
-litellm-enterprise = { workspace = true }
 
 [tool.uv.workspace]
-members = ["enterprise", "litellm-proxy-extras"]
+members = ["litellm-proxy-extras"]
 
 [tool.isort]
 profile = "black"
