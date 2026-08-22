@@ -128,7 +128,7 @@ const mintIban = { cls: 'IBAN', value: IBAN, normalized: 'CH9300762011623852957'
 test('a token minted in the browser resolves to its value in the editor', async () => {
   const { browser, editor } = await wire();
 
-  const [token] = (await browser.mint([mintIban]))!;
+  const [token] = (await browser.mint([mintIban])).tokens!;
   assert.match(token!, /^ANM1-IBAN-/);
 
   assert.equal(editor.cached(token!), undefined, 'the editor knows nothing until it asks');
@@ -142,7 +142,7 @@ test('a token minted in the browser resolves to its value in the editor', async 
 
 test('the editor asks once per token, however often it repaints', async () => {
   const wired = await wire();
-  const [token] = (await wired.browser.mint([mintIban]))!;
+  const [token] = (await wired.browser.mint([mintIban])).tokens!;
 
   await wired.editor.lookup(token!);
   const after = wired.resolves;
@@ -163,7 +163,7 @@ test('a token this vault has never issued reads as foreign, not as a value', asy
 
 test('pasting re-scopes: the buffer gets the editor\'s alias, not the clipboard token', async () => {
   const { browser, editor } = await wire();
-  const [clipboard] = (await browser.mint([mintIban]))!;
+  const [clipboard] = (await browser.mint([mintIban])).tokens!;
 
   const reply = (await editor.resolveForPaste(clipboard!, EDITOR_SCOPE))!;
   assert.equal(reply.resolution.kind, 'value');
@@ -177,8 +177,8 @@ test('pasting re-scopes: the buffer gets the editor\'s alias, not the clipboard 
 
 test('the same value copied twice keeps one record, and one alias per scope', async () => {
   const { browser, editor } = await wire();
-  const [first] = (await browser.mint([mintIban]))!;
-  const [second] = (await browser.mint([mintIban]))!;
+  const [first] = (await browser.mint([mintIban])).tokens!;
+  const [second] = (await browser.mint([mintIban])).tokens!;
   assert.equal(first, second, 'one value, one token within a scope');
 
   const a = await editor.resolveForPaste(first!, EDITOR_SCOPE);
@@ -189,10 +189,10 @@ test('the same value copied twice keeps one record, and one alias per scope', as
 test('page formatting does not fork the record', async () => {
   const { browser, editor } = await wire();
   // The same IBAN, spelled without spaces on some other page.
-  const [spaced] = (await browser.mint([mintIban]))!;
+  const [spaced] = (await browser.mint([mintIban])).tokens!;
   const [bare] = (await browser.mint([
     { ...mintIban, value: 'CH9300762011623852957' },
-  ]))!;
+  ])).tokens!;
 
   assert.equal(spaced, bare, 'identity is the normalised form (SPEC §5.1)');
   await editor.lookup(spaced!);
@@ -202,14 +202,14 @@ test('page formatting does not fork the record', async () => {
 
 test('two source origins never share a token for one value (SPEC §6.3)', async () => {
   const { browser } = await wire();
-  const [here] = (await browser.mint([mintIban]))!;
-  const [there] = (await browser.mint([{ ...mintIban, scopeId: 'source:https://other.example' }]))!;
+  const [here] = (await browser.mint([mintIban])).tokens!;
+  const [there] = (await browser.mint([{ ...mintIban, scopeId: 'source:https://other.example' }])).tokens!;
   assert.notEqual(here, there);
 });
 
 test('revoking kills the clipboard token and the editor alias together', async () => {
   const { browser, editor, api } = await wire();
-  const [clipboard] = (await browser.mint([mintIban]))!;
+  const [clipboard] = (await browser.mint([mintIban])).tokens!;
   const reply = (await editor.resolveForPaste(clipboard!, EDITOR_SCOPE))!;
 
   const revoked = api.revoke(clipboard!).body as { revoked: number };
@@ -262,14 +262,14 @@ test('the browser refuses to invent a token when the vault is unreachable', asyn
       throw new Error('offline');
     }) as unknown as typeof fetch,
   });
-  assert.equal(await client.mint([mintIban]), null);
+  assert.equal((await client.mint([mintIban])).tokens, null);
 });
 
 // --- the edit path: child tokens and drafts (SPEC §8.4) ----------------------
 
 test('editing a revealed value mints a child, not a second unrelated token', async () => {
   const { browser, editor } = await wire();
-  const [parent] = (await browser.mint([mintIban]))!;
+  const [parent] = (await browser.mint([mintIban])).tokens!;
 
   const child = (await browser.mintChild(
     parent!,
@@ -287,7 +287,7 @@ test('editing a revealed value mints a child, not a second unrelated token', asy
 
 test('a draft moves as the user types, without minting again', async () => {
   const { browser, editor } = await wire();
-  const [parent] = (await browser.mint([mintIban]))!;
+  const [parent] = (await browser.mint([mintIban])).tokens!;
   const child = (await browser.mintChild(parent!, 'CH5', 'CH5', EDITOR_SCOPE))!;
 
   assert.equal(await browser.updateDraft(child, 'CH56 0483', 'CH560483'), true);
@@ -301,7 +301,7 @@ test('a draft moves as the user types, without minting again', async () => {
 test('committing a draft is what puts it in the value index', async () => {
   const vault = await openMockVault();
   const { browser } = await wire(vault);
-  const [parent] = (await browser.mint([mintIban]))!;
+  const [parent] = (await browser.mint([mintIban])).tokens!;
   const child = (await browser.mintChild(parent!, 'Anna', 'anna', EDITOR_SCOPE))!;
 
   const indexed = () => Object.keys(vault.state.index).length;
@@ -314,7 +314,7 @@ test('committing a draft is what puts it in the value index', async () => {
 test('a child of a child reparents to the root — depth 1, always (SPEC §8.4)', async () => {
   const vault = await openMockVault();
   const { browser } = await wire(vault);
-  const [root] = (await browser.mint([mintIban]))!;
+  const [root] = (await browser.mint([mintIban])).tokens!;
   const child = (await browser.mintChild(root!, 'first edit', 'first edit', EDITOR_SCOPE))!;
   const grandchild = (await browser.mintChild(child, 'second edit', 'second edit', EDITOR_SCOPE))!;
 
@@ -329,7 +329,7 @@ test('a child of a child reparents to the root — depth 1, always (SPEC §8.4)'
 
 test('revoking the parent kills every child with it', async () => {
   const { browser, api } = await wire();
-  const [parent] = (await browser.mint([mintIban]))!;
+  const [parent] = (await browser.mint([mintIban])).tokens!;
   const child = (await browser.mintChild(parent!, 'an edit', 'an edit', EDITOR_SCOPE))!;
 
   const { revoked } = api.revoke(parent!).body as { revoked: number };
@@ -342,7 +342,7 @@ test('revoking the parent kills every child with it', async () => {
 test('children are marked user-modified, so a destination knows they are not canonical', async () => {
   const vault = await openMockVault();
   const { browser } = await wire(vault);
-  const [parent] = (await browser.mint([mintIban]))!;
+  const [parent] = (await browser.mint([mintIban])).tokens!;
   const child = (await browser.mintChild(parent!, 'an edit', 'an edit', EDITOR_SCOPE))!;
   assert.equal(vault.state.records[vault.state.aliases[child]!.valueId]!.userModified, true);
 });
@@ -351,7 +351,7 @@ test('an abandoned draft is collected and leaves a tombstone, not nothing', asyn
   let clock = 1_000_000;
   const vault = await Vault.open(Vault.newKey(), undefined, VAULT_POLICY, () => clock);
   const { browser, api } = await wire(vault);
-  const [parent] = (await browser.mint([mintIban]))!;
+  const [parent] = (await browser.mint([mintIban])).tokens!;
   const child = (await browser.mintChild(parent!, 'half typed', 'half typed', EDITOR_SCOPE))!;
 
   clock += VAULT_POLICY.draftMs + 1;
@@ -365,7 +365,7 @@ test('a committed child is not swept away with the drafts', async () => {
   let clock = 1_000_000;
   const vault = await Vault.open(Vault.newKey(), undefined, VAULT_POLICY, () => clock);
   const { browser, api } = await wire(vault);
-  const [parent] = (await browser.mint([mintIban]))!;
+  const [parent] = (await browser.mint([mintIban])).tokens!;
   const child = (await browser.mintChild(parent!, 'kept', 'kept', EDITOR_SCOPE))!;
   await browser.commitDraft(child);
 
@@ -382,7 +382,7 @@ test('a child of a token the vault does not hold is refused, not orphaned', asyn
 
 test('updating something that is not a draft changes nothing', async () => {
   const { browser } = await wire();
-  const [committed] = (await browser.mint([mintIban]))!;
+  const [committed] = (await browser.mint([mintIban])).tokens!;
   assert.equal(await browser.updateDraft(committed!, 'nope', 'nope'), false);
 });
 
@@ -403,7 +403,7 @@ test('a sentence copied from NATIVE reveals identically on TRUSTED', async () =>
 
   const minter = createRemoteMinter(BROWSER_SCOPE, (specs) => browser.mint(specs));
   const { hits } = collectHits([range], registry);
-  assert.ok(await minter.ensure(hits));
+  assert.ok((await minter.ensure(hits)).ok);
   const clipboard = planCopy([range], original, registry, minter)!;
 
   // 2. The clipboard: prose intact, every value gone.

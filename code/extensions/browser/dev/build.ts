@@ -17,10 +17,34 @@ const root = new URL('../', import.meta.url).pathname;
 const out = `${root}dist`;
 const qa = process.argv.includes('--qa');
 
+/**
+ * Stamped into the bundle and printed at the end of every build.
+ *
+ * The extension logs it in its first banner, so a page console answers "is this
+ * the build I just made?" without guessing. Reloading the unpacked extension is
+ * a manual step and forgetting it costs a debugging session — this session lost
+ * one to a `dist/` that was two changes behind what the console claimed.
+ */
+const buildId = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+
 function argValue(name: string, fallback: string): string {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
   return hit ? hit.slice(name.length + 3) : fallback;
 }
+
+const passed = (name: string): boolean => process.argv.some((a) => a.startsWith(`--${name}=`));
+
+/**
+ * Naming hosts on the command line turns the policy pull off.
+ *
+ * The pull outranks the baked list by design (ENDPOINTS.md §2), and the mock
+ * serves the two fixture hosts — so a build with `--trusted=*.atlassian.net`
+ * would register on Confluence, then silently *unregister* within a minute when
+ * the first pull replaced the list. That cost a real debugging session: the page
+ * console showed nothing at all, which looks identical to the extension being
+ * broken. If you named the hosts, you meant them.
+ */
+const hostsNamed = passed('trusted') || passed('native');
 
 const hosts = (raw: string): string[] => raw.split(',').map((h) => h.trim()).filter(Boolean);
 
@@ -32,7 +56,7 @@ const devPolicy = qa
       detectEndpoint: argValue('endpoint', 'http://localhost:8788/v1/detect'),
       detectToken: argValue('token', 'dev-token'),
       // Empty disables the pull, which is how you test the baked lists alone.
-      policyEndpoint: argValue('policy-endpoint', 'http://localhost:8788/v1/policy'),
+      policyEndpoint: argValue('policy-endpoint', hostsNamed ? '' : 'http://localhost:8788/v1/policy'),
       policyRefreshMinutes: Number(argValue('policy-refresh', '1')),
       locale: argValue('locale', 'de-CH'),
       painter: argValue('painter', 'auto'),
@@ -42,6 +66,11 @@ const devPolicy = qa
       notifications: argValue('notifications', 'on'),
       // QA needs the gate on; the shipped default stays `off` (SPEC §11.6).
       egress: argValue('egress', 'enforce'),
+      // Off by default even in QA: it changes what is in the DOM, so it has to
+      // be asked for explicitly (SPEC §10.11).
+      reveal: argValue('reveal', 'off'),
+      // A QA build exists to be watched, so the banners are on unless asked off.
+      debug: argValue('debug', 'on') !== 'off',
     }
   : null;
 
@@ -70,6 +99,7 @@ await build({
   logLevel: 'info',
   define: {
     __DEV_POLICY__: devPolicy ? JSON.stringify(JSON.stringify(devPolicy)) : 'null',
+    __BUILD_ID__: JSON.stringify(buildId),
   },
 });
 
@@ -100,13 +130,21 @@ if (devPolicy) {
   console.log(`  NATIVE      : ${devPolicy.native.join(', ') || '(none)'}`);
   console.log(`  TRUSTED     : ${devPolicy.trusted.join(', ') || '(none)'} (scan: ${devPolicy.scanTrusted})`);
   console.log(`  egress      : ${devPolicy.egress} (SPEC §10 — ships \`off\`; --egress=off|report|enforce)`);
+  console.log(`  reveal      : ${devPolicy.reveal} (SPEC §10.9 — --reveal=off|dom puts real values in the DOM)`);
+  console.log(`  debug       : ${devPolicy.debug ? 'on' : 'off'} (loud console banners; --debug=off to silence)`);
   console.log(`  backend     : ${devPolicy.detectEndpoint}`);
   console.log(
     `  policy pull : ${devPolicy.policyEndpoint || '(off — baked lists only)'}` +
       (devPolicy.policyEndpoint ? ` every ${devPolicy.policyRefreshMinutes} min` : ''),
   );
-  console.log(`  note        : a pulled list outranks the baked one above`);
+  console.log(
+    devPolicy.policyEndpoint
+      ? `  note        : a pulled list OUTRANKS the baked one above`
+      : `  note        : pull disabled (hosts named on the command line), so the list above is final`,
+  );
   console.log(`  change hosts: rebuild with --native=host, or override chrome.storage.local at runtime`);
+  console.log(`  build id    : ${buildId}  <- must match the banner in the page console`);
 } else {
   console.log(`built -> ${out}`);
+  console.log(`  build id    : ${buildId}`);
 }

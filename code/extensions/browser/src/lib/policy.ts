@@ -40,6 +40,15 @@ export interface Policy extends PolicyLists {
    * because a gate that drops requests is not something to turn on by surprise.
    */
   egress: 'off' | 'report' | 'enforce';
+  /**
+   * `dom` puts real values in the page DOM and relies on the egress gate to keep
+   * tokens on the wire (SPEC §10.9). It is a deliberate downgrade of §8.1's
+   * invariant — see §10.11 for what it gives up — so it ships `off` and is only
+   * meaningful where `egress` is `enforce`.
+   */
+  reveal: 'off' | 'dom';
+  /** Loud per-decision logging in the page console (SPEC §10.8). Never on by default. */
+  debug: boolean;
 }
 
 export const DEFAULT_POLICY: Policy = {
@@ -56,6 +65,8 @@ export const DEFAULT_POLICY: Policy = {
   painter: 'auto',
   notifications: 'on',
   egress: 'off',
+  reveal: 'off',
+  debug: false,
 };
 
 export interface PolicySources {
@@ -135,6 +146,7 @@ const REMOTE_KEYS = [
   'trusted',
   'scanTrusted',
   'egress',
+  'reveal',
   'detectEndpoint',
   'detectToken',
 ] as const;
@@ -233,6 +245,19 @@ export function sanitizeRemotePolicy(body: unknown, pin: string): SanitizeResult
     } else {
       rejected.push(`egress: ${JSON.stringify(raw.egress)} is not off|report|enforce`);
     }
+  }
+
+  if (raw.reveal !== undefined) {
+    if (raw.reveal === 'off' || raw.reveal === 'dom') {
+      policy.reveal = raw.reveal;
+    } else {
+      rejected.push(`reveal: ${JSON.stringify(raw.reveal)} is not off|dom`);
+    }
+  }
+
+  if (raw.debug !== undefined) {
+    if (typeof raw.debug === 'boolean') policy.debug = raw.debug;
+    else rejected.push('debug: not a boolean');
   }
 
   if (typeof raw.detectToken === 'string' && raw.detectToken) policy.detectToken = raw.detectToken;

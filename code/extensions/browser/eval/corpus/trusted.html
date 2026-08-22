@@ -59,6 +59,76 @@ them (SPEC §1).</p>
   </p>
   <p><output id="seen"></output></p>
 </form>
+<h2>Round trip (reveal: dom)</h2>
+<p><strong>This is the seamless case.</strong> Type a real value, <em>Save</em>,
+then <em>Load</em>. The page should show you the real value both times, while
+<em>what the store holds</em> shows the destination only ever had a token
+(SPEC &sect;10.9).</p>
+<p>
+  <label for="r-doc">Document</label><br>
+  <textarea id="r-doc" rows="3" cols="60">{"title":"Zahlungsauftrag","body":"IBAN: CH93 0076 2011 6238 5295 7"}</textarea>
+</p>
+<p>
+  <button id="r-save" type="button">Save</button>
+  <button id="r-load" type="button">Load</button>
+  <button id="r-raw" type="button">what the store holds</button>
+</p>
+<pre id="r-out" style="background:#f6f6f6;padding:.75rem;white-space:pre-wrap"></pre>
+<p id="r-rendered" style="background:#eef;padding:.75rem"></p>
+<script>
+  /* The site's own code again. `r-rendered` is what a user would actually be
+     looking at, so it is the half that must show a value. */
+  const rOut = document.getElementById('r-out');
+  const rRendered = document.getElementById('r-rendered');
+  const rDoc = document.getElementById('r-doc');
+
+  document.getElementById('r-save').addEventListener('click', () => {
+    fetch(location.origin + '/doc', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: rDoc.value,
+    }).then(
+      () => { rOut.textContent = 'saved'; },
+      (err) => { rOut.textContent = 'save rejected — ' + err.name + ': ' + err.message; },
+    );
+  });
+
+  document.getElementById('r-load').addEventListener('click', () => {
+    fetch(location.origin + '/doc')
+      .then((r) => r.text())
+      .then((t) => {
+        rOut.textContent = 'loaded: ' + t;
+        rDoc.value = t;
+        try { rRendered.textContent = 'the page renders: ' + JSON.parse(t).body; }
+        catch { rRendered.textContent = 'the page renders: ' + t; }
+      });
+  });
+
+  /* Deliberately NOT through fetch — an <img> ping the shim does not patch, so
+     it reports the store untouched by ingress. */
+  document.getElementById('r-raw').addEventListener('click', () => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', location.origin + '/collected');
+    xhr.onload = () => { rOut.textContent = 'what the store received:\n' + xhr.responseText; };
+    xhr.send();
+  });
+</script>
+
+<h2>Form submit</h2>
+<p>A plain <code>&lt;form method="post"&gt;</code>. No JavaScript is on this path —
+it is a browser navigation, which is why it needs its own gate (SPEC &sect;10.10).</p>
+<form id="fsub" method="post" action="/collect">
+  <p>
+    <label for="s-iban">IBAN</label><br>
+    <input id="s-iban" name="iban" size="34" value="CH93 0076 2011 6238 5295 7">
+  </p>
+  <p>
+    <label for="s-memo">Memo</label><br>
+    <input id="s-memo" name="memo" size="34" value="invoice 12">
+  </p>
+  <p><button type="submit">Submit (navigates)</button></p>
+</form>
+
 <h2>Egress</h2>
 <p><strong>This section is the site trying to send.</strong> Type or paste a value
 below and pick a transport. The gate (SPEC &sect;11) sits between this page and the

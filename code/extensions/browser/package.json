@@ -13,7 +13,8 @@
     "check": "npm run typecheck && npm test && npm run eval",
     "build:qa": "node dev/build.ts --qa",
     "policy": "node dev/managed-policy.ts",
-    "hosts": "node dev/hosts.ts"
+    "hosts": "node dev/hosts.ts",
+    "roundtrip": "node dev/roundtrip.ts"
   },
   "devDependencies": {
     "@types/chrome": "^0.2.7",

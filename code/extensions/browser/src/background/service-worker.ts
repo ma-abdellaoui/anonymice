@@ -6,6 +6,7 @@
  * never touched at all, and be the only thing that talks to the detection
  * backend.
  */
+import type { PolicyLists } from '../lib/policy.ts';
 import { DetectClient } from './detect-client.ts';
 import { VaultClient, type MintSpec } from './vault-client.ts';
 import { chromeStore, CACHE_KEY, PolicyClient, type PolicyResult } from './policy-client.ts';
@@ -19,6 +20,7 @@ import {
 } from '../lib/policy.ts';
 import type { DetectChunkRequest, DetectResponse } from '../lib/protocol.ts';
 import { createSerializer } from '../lib/serialize.ts';
+import { alarm, banner, setDebug } from '../lib/debug.ts';
 import { planNotification, type Notified } from '../lib/notify.ts';
 
 const SCRIPT_ID = 'anonymice-content';
@@ -48,6 +50,8 @@ let health: Diagnostics = {
 };
 
 export interface Diagnostics {
+  /** Set when the last boot threw. Read by QA (§4) and by `anonymice.state()`. */
+  bootError?: string | null;
   policyStatus: PolicyResult['status'];
   rejected: string[];
   registered: string[];
@@ -87,6 +91,12 @@ export interface VaultMessage {
   normalized?: string;
 }
 
+/** A copy was cancelled and nothing could replace it (SPEC §7 fails closed). */
+export interface CopyFailedMessage {
+  type: 'anonymice:copy-failed';
+  reason: string;
+}
+
 export interface StateMessage {
   type: 'anonymice:state';
   values: number;
@@ -99,6 +109,7 @@ export interface StateMessage {
 type Message =
   | DetectMessage
   | MintMessage
+  | CopyFailedMessage
   | VaultMessage
   | StateMessage
   | { type: 'anonymice:policy' }
@@ -173,6 +184,13 @@ async function registerContentScripts(): Promise<void> {
       await register();
     }
     health.registered = matches;
+    banner('content scripts registered', {
+      NATIVE: matchPatternsFor(policy, 'NATIVE'),
+      TRUSTED: matchPatternsFor(policy, 'TRUSTED'),
+      'policy source': policy.policyEndpoint
+        ? `pulled from ${policy.policyEndpoint} — OUTRANKS the baked list`
+        : 'baked/managed only (no pull)',
+    });
   } catch (err) {
     // Almost always "cannot add script relating to a host it does not have
     // access to": the pull named a host nobody granted us. Registering nothing
@@ -199,6 +217,23 @@ async function registerContentScripts(): Promise<void> {
  * TRUSTED hosts only: a gate that drops requests has no business on a NATIVE
  * host, where nothing is rewritten in the first place.
  */
+/**
+ * A pull that drops a host is indistinguishable, from the page, from the
+ * extension being broken: no content script runs, so nothing can log. Say it
+ * here, loudly, because this is the only place that knows it happened.
+ */
+function warnIfPullDroppedHosts(before: PolicyLists, after: PolicyLists): void {
+  const lost = [
+    ...before.native.filter((h) => !after.native.includes(h)),
+    ...before.trusted.filter((h) => !after.trusted.includes(h)),
+  ];
+  if (lost.length === 0) return;
+  alarm(
+    `the policy pull REMOVED ${lost.length} host(s) that were baked in — ` +
+      `no content script will run there: ${lost.join(', ')}`,
+  );
+}
+
 async function registerEgressShim(): Promise<void> {
   health.egress = null;
   if (policy.egress === 'off') return;
@@ -207,6 +242,10 @@ async function registerEgressShim(): Promise<void> {
   if (matches.length === 0) return;
 
   try {
+    // The refresh alarm re-boots on a timer, and registering an id that is
+    // already held throws `Duplicate script ID` — which the catch below would
+    // then report as "no egress gate on this browser", wrongly.
+    await chrome.scripting.unregisterContentScripts({ ids: [EGRESS_SCRIPT_ID] }).catch(() => {});
     await chrome.scripting.registerContentScripts([
       {
         id: EGRESS_SCRIPT_ID,
@@ -218,6 +257,7 @@ async function registerEgressShim(): Promise<void> {
       },
     ]);
     health.egress = { mode: policy.egress, matches };
+    banner('egress shim registered', { mode: policy.egress, matches, world: 'MAIN' });
   } catch (err) {
     // On Chrome < 111 this is "world is not supported". Either way the gate is
     // not running, and a gate that is silently absent is the one failure this
@@ -245,9 +285,37 @@ function requestBoot(mode: BootMode = 'refresh'): Promise<void> {
   return boots.run(mode);
 }
 
+/**
+ * Never rejects, deliberately.
+ *
+ * `ready` gates every message handler, and each one answers `null` if it
+ * rejects. So a single unexpected throw anywhere in here — a malformed cached
+ * policy, a `chrome.*` call that behaves differently on some build — used to
+ * disable detection, minting and resolving *for the life of the worker*, with
+ * nothing in the page to say why. One bad boot must cost the boot, not the
+ * extension.
+ */
 async function boot(mode: BootMode = 'refresh'): Promise<void> {
+  try {
+    await bootOrThrow(mode);
+    bootFailure = null;
+  } catch (err) {
+    bootFailure = err instanceof Error ? err.message : String(err);
+    health = { ...health, bootError: bootFailure };
+    console.error('anonymice: boot failed — the extension is running on whatever policy it had', err);
+  }
+}
+
+/** Set when the last boot threw, so the next message can retry rather than
+ *  reusing a promise that will never resolve to anything useful. */
+let bootFailure: string | null = null;
+
+async function bootOrThrow(mode: BootMode = 'refresh'): Promise<void> {
+  const previous: PolicyLists = { native: policy.native, trusted: policy.trusted, activated: policy.activated };
   const { policy: resolved, result } = await loadPolicy(mode);
   policy = resolved;
+  setDebug(policy.debug);
+  warnIfPullDroppedHosts(previous, policy);
   client = new DetectClient({ policy });
   vault = new VaultClient({ policy });
   health = {
@@ -315,7 +383,7 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     // said, so a page cannot talk its way into a different trust class.
     const senderHost = sender.tab?.url ? new URL(sender.tab.url).hostname : '';
     // The content script never fetches: the worker holds the credential.
-    ready
+    whenReady()
       .then(() =>
         client.detect(
           message.chunks,
@@ -331,17 +399,19 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     // Scoping is the content script's call — it knows the source origin — but the
     // credential and the endpoint are not the page's business, so the request is
     // made here (SPEC §6.3, ENDPOINTS.md §6).
-    ready
+    whenReady()
       .then(() => vault.mint(message.specs))
-      .then((tokens) => sendResponse(tokens))
-      .catch(() => sendResponse(null));
+      .then((result) => sendResponse(result))
+      .catch((err: unknown) =>
+        sendResponse({ tokens: null, reason: err instanceof Error ? err.message : String(err) }),
+      );
     return true; // async
   }
 
   if (message.type === 'anonymice:vault') {
     const m = message;
     const run = async (): Promise<unknown> => {
-      await ready;
+      await whenReady();
       switch (m.op) {
         case 'resolve':
           return vault.resolve(m.token, m.scopeId);
@@ -359,11 +429,25 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     return true; // async
   }
 
+  if (message.type === 'anonymice:copy-failed') {
+    // The clipboard is empty and safe. Without a word, that reads as the copy
+    // simply not working, which is what teaches people to turn an extension off.
+    chrome.notifications?.create(`anonymice:copy-failed:${sender.tab?.id ?? 0}`, {
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
+      title: 'Nothing was copied',
+      message: 'This selection holds sensitive data and could not be tokenised, so the clipboard was left empty rather than carrying it in the clear.',
+      contextMessage: message.reason,
+      priority: 2,
+    });
+    return false;
+  }
+
   if (message.type === 'anonymice:state') {
     const tabId = sender.tab?.id;
     if (tabId !== undefined) {
       const { values, unscanned } = message;
-      void ready.then(() => notifyIfWorthIt(tabId, message));
+      void whenReady().then(() => notifyIfWorthIt(tabId, message));
       // "Not scanned" must be visible; silence would read as "nothing here".
       chrome.action.setBadgeText({ tabId, text: unscanned ? '?' : values ? String(values) : '' });
       chrome.action.setBadgeBackgroundColor({ tabId, color: unscanned ? '#8a6d3b' : '#c0392b' });
@@ -378,7 +462,7 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
   }
 
   if (message.type === 'anonymice:diagnostics') {
-    void ready.then(() =>
+    void whenReady().then(() =>
       sendResponse({
         ...health,
         policyEndpoint: policy.policyEndpoint,
@@ -392,13 +476,15 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
 
   if (message.type === 'anonymice:policy') {
     const host = sender.tab?.url ? new URL(sender.tab.url).hostname : '';
-    void ready.then(() =>
+    void whenReady().then(() =>
       sendResponse({
         hostClass: classifyHost(host, policy),
         locale: policy.locale,
         painter: policy.painter,
         scanTrusted: policy.scanTrusted,
         egress: policy.egress,
+        reveal: policy.reveal,
+        debug: policy.debug,
       }),
     );
     return true; // async — answering before boot would classify everything UNTRUSTED
@@ -420,7 +506,21 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
 const announced = new Map<number, Notified>();
 chrome.tabs?.onRemoved.addListener((tabId) => announced.delete(tabId));
 
-const ready: Promise<void> = requestBoot('cached');
+let ready: Promise<void> = requestBoot('cached');
+
+/**
+ * Every handler awaits this rather than `ready` directly. A boot that failed is
+ * retried on the next message the worker receives — which is the moment we know
+ * someone is depending on it — instead of leaving the worker wedged until Chrome
+ * happens to recycle it.
+ */
+function whenReady(): Promise<void> {
+  if (bootFailure !== null) {
+    bootFailure = null;
+    ready = requestBoot('refresh');
+  }
+  return ready;
+}
 
 /**
  * QA builds only. `chrome.runtime.sendMessage` from the worker's own console
@@ -434,7 +534,7 @@ if (typeof __DEV_POLICY__ === 'string') {
   Object.assign(globalThis, {
     anonymice: {
       async state() {
-        await ready;
+        await whenReady();
         return {
           ...health,
           policy: {
