@@ -1,0 +1,45 @@
+# NLP engines for the rules stage. English plus German: the corpus this proxy
+# is built for is Swiss, and asking the stock image for language "de" fails
+# outright with "No matching recognizers were found" rather than degrading.
+#
+# The rules stage pins its request to pattern and checksum entities, so the
+# spaCy NER here never contributes spans. It is loaded because Presidio needs
+# a language registered before it will run *any* recognizer for it, including
+# the purely regex ones.
+nlp_engine_name: spacy
+models:
+  - lang_code: en
+    model_name: en_core_web_lg
+  - lang_code: de
+    model_name: de_core_news_md
+
+ner_model_configuration:
+  model_to_presidio_entity_mapping:
+    PER: PERSON
+    PERSON: PERSON
+    NORP: NRP
+    FAC: LOCATION
+    LOC: LOCATION
+    LOCATION: LOCATION
+    GPE: LOCATION
+    ORG: ORGANIZATION
+    ORGANIZATION: ORGANIZATION
+    DATE: DATE_TIME
+    TIME: DATE_TIME
+
+  low_confidence_score_multiplier: 0.4
+  low_score_entity_names:
+    - ORG
+    - ORGANIZATION
+  labels_to_ignore:
+    - ORGANIZATION
+    - CARDINAL
+    - EVENT
+    - LANGUAGE
+    - LAW
+    - MONEY
+    - ORDINAL
+    - PERCENT
+    - PRODUCT
+    - QUANTITY
+    - WORK_OF_ART

@@ -7,7 +7,13 @@ from litellm.caching.dual_cache import DualCache
 from litellm.exceptions import BlockedPiiEntityError, GuardrailRaisedException
 from litellm.integrations.custom_guardrail import CustomGuardrail, log_guardrail_information
 from litellm.pii.codec.action_aware import ActionAwareCodec, SpanAction, blocked_entities
-from litellm.pii.config import CodecId, PiiSettings, build_codec, build_detector
+from litellm.pii.config import (
+    DEFAULT_LANGUAGE,
+    CodecId,
+    PiiSettings,
+    build_codec,
+    build_detector,
+)
 from litellm.pii.detection.cascade import CascadingDetector, NerStagePolicy
 from litellm.pii.service import EncodedBatch, PiiService
 from litellm.pii.store.base import PiiTokenStore, TokenScope
@@ -135,6 +141,9 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
         default_action: PiiAction | str = PiiAction.ENCODE,
         pii_mapping_scope: str | None = None,
         session_cache: DualCache | None = None,
+        fail_closed: bool = True,
+        unmet_requirement: str | None = None,
+        language: str = DEFAULT_LANGUAGE,
         **kwargs,  # kwargs-ok: forwarded verbatim to CustomGuardrail, which owns the shared guardrail options
     ):
         kwargs.setdefault("supported_event_hooks", list(SUPPORTED_EVENT_HOOKS))  # mutable-ok: base class wants a list
@@ -145,6 +154,9 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
         self.streaming_transform_mode = "incremental_diff"
         self.mask_response_content = True
         self.detector: Final = detector
+        self.fail_closed: Final = fail_closed
+        self.unmet_requirement: Final = unmet_requirement
+        self.language: Final = language
         configured: Final = pii_entities_config.items() if pii_entities_config else ()
         actions: Final = {e: _to_span_action(a) for e, a in configured}  # mutable-ok: frozen just below
         self.actions: Final[Mapping[str, SpanAction]] = MappingProxyType(actions)
@@ -250,7 +262,12 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
         # person named in both gets one token. `<` and `>` need no JSON escaping, so
         # encoding inside an arguments string leaves it valid JSON.
         combined: Final = (*texts, *(_arguments_of(call) for call in tool_calls))
-        encoded: Final = await service.encode(texts=combined, scope=scope, is_reversible=self.codec.is_reversible)
+        encoded: Final = await service.encode(
+            texts=combined,
+            scope=scope,
+            language=self.language,
+            is_reversible=self.codec.is_reversible,
+        )
         if not isinstance(encoded, EncodedBatch):
             self._raise_public(encoded)
 
@@ -278,9 +295,21 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
 
         service: Final = self._service(request_data)
         if service is None:
+            # Forwarding unscanned is the one outcome a PII guardrail must never
+            # have by default: it looks like success while sending the very data
+            # it exists to withhold.
+            reason: Final = self.unmet_requirement or "no PII detector is configured"
+            if self.fail_closed:
+                raise GuardrailRaisedException(
+                    guardrail_name=self.guardrail_name,
+                    message=f"PII anonymization is not available: {reason}",
+                    should_wrap_with_default_message=False,
+                )
             verbose_proxy_logger.warning(
-                "PII anonymizer guardrail %s has no analyzer configured; passing text through unchanged.",
+                "PII anonymizer guardrail %s is forwarding text unscanned (%s). "
+                "This sends unredacted PII to the provider.",
                 self.guardrail_name,
+                reason,
             )
             return inputs
 
@@ -290,15 +319,17 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
         return await self._encode(service, inputs, texts, tool_calls, scope)
 
 
-def build_guardrail_detector(
+def guardrail_settings(
     presidio_analyzer_api_base: str | None,
     ner_api_base: str | None,
     ner_stage_policy: str | None,
     ner_score_threshold: float | None,
     fail_closed: bool | None,
-) -> CascadingDetector | None:
+    language: str | None = None,
+) -> PiiSettings:
+    """Guardrail-level overrides layered onto the process environment."""
     base_settings: Final = PiiSettings.from_env()
-    settings: Final = PiiSettings(
+    return PiiSettings(
         analyzer_api_base=presidio_analyzer_api_base or base_settings.analyzer_api_base,
         ner_api_base=ner_api_base or base_settings.ner_api_base,
         ner_stage_policy=(NerStagePolicy(ner_stage_policy) if ner_stage_policy else base_settings.ner_stage_policy),
@@ -307,5 +338,28 @@ def build_guardrail_detector(
         ),
         session_ttl_seconds=base_settings.session_ttl_seconds,
         fail_closed=base_settings.fail_closed if fail_closed is None else fail_closed,
+        require_ner=base_settings.require_ner,
+        language=language or base_settings.language,
+        ner_max_chars=base_settings.ner_max_chars,
     )
-    return build_detector(settings)
+
+
+def build_guardrail_detector(
+    presidio_analyzer_api_base: str | None,
+    ner_api_base: str | None,
+    ner_stage_policy: str | None,
+    ner_score_threshold: float | None,
+    fail_closed: bool | None,
+    language: str | None = None,
+) -> CascadingDetector | None:
+    """Kept so the detector and the settings reported alongside it cannot drift apart."""
+    return build_detector(
+        guardrail_settings(
+            presidio_analyzer_api_base=presidio_analyzer_api_base,
+            ner_api_base=ner_api_base,
+            ner_stage_policy=ner_stage_policy,
+            ner_score_threshold=ner_score_threshold,
+            fail_closed=fail_closed,
+            language=language,
+        )
+    )

@@ -314,7 +314,7 @@ The `PiiDetector` protocol absorbs this difference: both stages return `tuple[Pi
 - [x] `litellm/pii/detection/base.py` — `PiiDetector` protocol
 - [x] `litellm/pii/detection/spans.py` — pure overlap resolution / merge
 - [x] `litellm/pii/detection/presidio_rules.py` — stage 1 over Presidio `/analyze`
-- [x] `litellm/pii/detection/piiranha_labels.py` — frozen label map
+- [x] `litellm/pii/detection/ner_labels.py` — frozen label map, one per supported model
 - [x] `litellm/pii/detection/piiranha.py` — stage 2 over HF token-classification
 - [x] `litellm/pii/detection/cascade.py` — `NerStagePolicy` + `CascadingDetector`
 - [x] tests: span merge table, staging policy with injected fakes, label mapping, fail-closed

@@ -29,7 +29,6 @@ from litellm.proxy.guardrails.guardrail_hooks.pii_anonymizer import (
 from litellm.proxy.guardrails.guardrail_hooks.pii_anonymizer.pii_anonymizer_guardrail import _public_message
 from litellm.types.guardrails import PiiAction, SupportedGuardrailIntegrations
 
-
 ERROR_SAMPLES = {
     DetectorUnavailable: DetectorUnavailable(detector=DetectorKind.RULES, reason="down"),
     DetectorInvalidResponse: DetectorInvalidResponse(detector=DetectorKind.NER, reason="not json"),
@@ -238,8 +237,16 @@ class TestFailureModes:
             await run(guard, ["hello Ada"], {}, "request")
 
     @pytest.mark.asyncio
-    async def test_missing_detector_passes_through_instead_of_crashing(self):
+    async def test_missing_detector_refuses_rather_than_passing_through(self):
+        """This used to forward the text unscanned, which sent the provider the
+        very PII the guardrail exists to withhold while reporting success."""
         guard = PiiAnonymizerGuardrail(guardrail_name="g", detector=None)
+        with pytest.raises(GuardrailRaisedException):
+            await run(guard, ["hello Ada"], {}, "request")
+
+    @pytest.mark.asyncio
+    async def test_passing_through_unscanned_is_available_but_opt_in(self):
+        guard = PiiAnonymizerGuardrail(guardrail_name="g", detector=None, fail_closed=False)
         assert await run(guard, ["hello Ada"], {}, "request") == ["hello Ada"]
 
 
@@ -493,3 +500,65 @@ class TestPublicMessage:
 
     def test_the_message_does_not_leak_the_stored_value(self):
         assert "Ada" not in _public_message(UnknownToken(token="<PERSON_9>"))
+
+
+class TestUnconfiguredGuardrailFailsClosed:
+    """Forwarding unscanned is the one outcome a PII guardrail must never have.
+
+    It looks like success while sending the provider exactly the data the
+    guardrail exists to withhold, so it has to be opt-in and loud.
+    """
+
+    @pytest.mark.asyncio
+    async def test_it_refuses_the_request_when_no_detector_is_configured(self):
+        from litellm.proxy.guardrails.guardrail_hooks.pii_anonymizer import PiiAnonymizerGuardrail
+
+        guardrail = PiiAnonymizerGuardrail(
+            guardrail_name="pii", detector=None, unmet_requirement="LITELLM_PII_NER_API_BASE is not set"
+        )
+        with pytest.raises(GuardrailRaisedException, match="not available"):
+            await guardrail.apply_guardrail(inputs={"texts": ["Ada Lovelace"]}, request_data={}, input_type="request")
+
+    @pytest.mark.asyncio
+    async def test_the_refusal_names_the_missing_setting(self):
+        from litellm.proxy.guardrails.guardrail_hooks.pii_anonymizer import PiiAnonymizerGuardrail
+
+        guardrail = PiiAnonymizerGuardrail(
+            guardrail_name="pii", detector=None, unmet_requirement="LITELLM_PII_NER_API_BASE is not set"
+        )
+        with pytest.raises(GuardrailRaisedException, match="LITELLM_PII_NER_API_BASE"):
+            await guardrail.apply_guardrail(inputs={"texts": ["Ada Lovelace"]}, request_data={}, input_type="request")
+
+    @pytest.mark.asyncio
+    async def test_failing_closed_is_the_default(self):
+        from litellm.proxy.guardrails.guardrail_hooks.pii_anonymizer import PiiAnonymizerGuardrail
+
+        assert PiiAnonymizerGuardrail(guardrail_name="pii", detector=None).fail_closed is True
+
+    @pytest.mark.asyncio
+    async def test_forwarding_unscanned_requires_opting_out(self):
+        from litellm.proxy.guardrails.guardrail_hooks.pii_anonymizer import PiiAnonymizerGuardrail
+
+        guardrail = PiiAnonymizerGuardrail(guardrail_name="pii", detector=None, fail_closed=False)
+        result = await guardrail.apply_guardrail(
+            inputs={"texts": ["Ada Lovelace"]}, request_data={}, input_type="request"
+        )
+        assert result["texts"] == ["Ada Lovelace"]
+
+    @pytest.mark.asyncio
+    async def test_a_response_is_refused_too_not_just_a_request(self):
+        from litellm.proxy.guardrails.guardrail_hooks.pii_anonymizer import PiiAnonymizerGuardrail
+
+        guardrail = PiiAnonymizerGuardrail(guardrail_name="pii", detector=None)
+        with pytest.raises(GuardrailRaisedException):
+            await guardrail.apply_guardrail(inputs={"texts": ["<PERSON_1>"]}, request_data={}, input_type="response")
+
+    @pytest.mark.asyncio
+    async def test_empty_input_still_passes_without_a_detector(self):
+        """Nothing to scan is not the same as failing to scan."""
+        from litellm.proxy.guardrails.guardrail_hooks.pii_anonymizer import PiiAnonymizerGuardrail
+
+        guardrail = PiiAnonymizerGuardrail(guardrail_name="pii", detector=None)
+        assert await guardrail.apply_guardrail(inputs={"texts": []}, request_data={}, input_type="request") == {
+            "texts": []
+        }

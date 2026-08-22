@@ -15,10 +15,11 @@ class PiiAnonymizerConfigModelOptionalParams(BaseModel):
         ),
     )
     pii_ner_stage_policy: Literal["never", "on_miss", "on_low_confidence", "always"] | None = Field(
-        default="on_miss",
+        default="always",
         description=(
-            "When the model-based stage runs. 'on_miss' (default) only calls it when the rule "
-            "stage finds nothing, so most requests pay only for the cheap deterministic pass."
+            "When the model-based stage runs. 'always' (default) scans every request with the "
+            "model. Under 'on_miss' a single email found by the rules stage suppresses it, and "
+            "every name in that same text reaches the provider in the clear."
         ),
     )
     pii_ner_score_threshold: float | None = Field(
@@ -38,6 +39,14 @@ class PiiAnonymizerConfigModelOptionalParams(BaseModel):
         description=(
             "When a detector is unreachable, reject the request instead of forwarding it unscanned. "
             "Turning this off can send unredacted PII to the provider during an outage."
+        ),
+    )
+    pii_language: str | None = Field(
+        default="en",
+        description=(
+            "Language passed to the rule-based analyzer. The analyzer must have been built with "
+            "this language registered; asking for one it does not know fails the request rather "
+            "than falling back to English. The bundled image registers 'en' and 'de'."
         ),
     )
     pii_mapping_scope: Literal["request", "conversation"] | None = Field(
@@ -71,7 +80,7 @@ class PiiAnonymizerLitellmParams(BaseModel):
     )
     pii_ner_stage_policy: Literal["never", "on_miss", "on_low_confidence", "always"] | None = Field(
         default=None,
-        description="When the model-based stage runs. Defaults to 'on_miss'.",
+        description="When the model-based stage runs. Defaults to 'always'.",
     )
     pii_ner_score_threshold: float | None = Field(
         default=None,
@@ -84,6 +93,10 @@ class PiiAnonymizerLitellmParams(BaseModel):
     pii_fail_closed: bool | None = Field(
         default=None,
         description="Reject the request when a detector is unreachable, rather than forwarding it unscanned.",
+    )
+    pii_language: str | None = Field(
+        default=None,
+        description="Language passed to the rule-based analyzer. Defaults to 'en'. The bundled analyzer knows 'en' and 'de'.",
     )
     pii_mapping_scope: Literal["request", "conversation"] | None = Field(
         default=None,

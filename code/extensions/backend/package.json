@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "description": "Anonymice detection backend — /v1/health, /v1/policy, /v1/detect (docs/extensions/browser/ENDPOINTS.md)",
+  "engines": { "node": ">=22.18.0" },
   "scripts": {
     "start": "node src/main.ts",
     "dev": "node src/main.ts --dev",
