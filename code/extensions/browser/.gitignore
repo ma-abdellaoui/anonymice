@@ -4,3 +4,7 @@ eval/report.json
 
 # dev artefacts
 dev/*.png
+
+# Network captures. A HAR exported while debugging contains the plaintext it was
+# exported to look for, so it must never be committed.
+*.har

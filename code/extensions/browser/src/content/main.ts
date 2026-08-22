@@ -5,7 +5,7 @@
 import { Scanner } from './scanner.ts';
 import { attachClipboardGuard, createRemoteMinter, type MintReply, type MintRequest } from './clipboard.ts';
 import { createRevealer } from './reveal.ts';
-import { attachEgressBridge } from './egress-bridge.ts';
+import { attachEgressBridge, type ResolveOutcome } from './egress-bridge.ts';
 import { attachDomReveal, tokensInDom } from './dom-reveal.ts';
 import { alarm, banner, note, setDebug } from '../lib/debug.ts';
 
@@ -118,43 +118,83 @@ async function main(): Promise<void> {
   /**
    * Ingress resolution (SPEC §10.9.3). Batched only by `Promise.all` — the vault
    * endpoint takes one token per call, and a page load asks about a handful.
+   *
+   * The two failure arms are kept apart, because the caller memoises one of them
+   * and must not memoise the other. A present `resolution` means the vault
+   * spoke: `value`, or one of §6.7's final answers — dead, foreign, damaged,
+   * none — every one of which is permanent and worth remembering. An absent one
+   * means nobody spoke at all: the worker was down, the vault was unreachable,
+   * the reply was malformed. That is a transient condition, and remembering it
+   * is what makes a token stay showing until the page is reloaded.
    */
-  const resolveTokens = async (tokens: string[]): Promise<Record<string, string>> => {
+  const resolveTokens = async (tokens: string[]): Promise<ResolveOutcome> => {
     const scopeId = `destination:${location.origin}`;
-    const pairs = await Promise.all(
+    const values: Record<string, string> = {};
+    const unreachable: string[] = [];
+    const answered: string[] = [];
+
+    await Promise.all(
       tokens.map(async (token) => {
-        const reply = (await chrome.runtime.sendMessage({
-          type: 'anonymice:vault',
-          op: 'resolve',
-          token,
-          scopeId,
-        })) as { resolution?: { kind: string; value?: string } } | null;
+        let reply: { resolution?: { kind: string; value?: string } } | null = null;
+        try {
+          reply = (await chrome.runtime.sendMessage({
+            type: 'anonymice:vault',
+            op: 'resolve',
+            token,
+            scopeId,
+          })) as { resolution?: { kind: string; value?: string } } | null;
+        } catch (err) {
+          // The worker was not there to answer — mid-teardown, or not yet up.
+          note(`could not ask the vault about ${token}`, err);
+          unreachable.push(token);
+          return;
+        }
         const resolution = reply?.resolution;
+        if (!resolution) {
+          note(`no answer for ${token} — worker or vault down; will ask again`);
+          unreachable.push(token);
+          return;
+        }
+        answered.push(token);
         // Every non-`value` arm — dead, revoked, wrong vault (§6.7) — leaves the
         // token showing, which is the honest thing to render for each of them.
-        if (resolution?.kind === 'value') return [token, resolution.value ?? ''] as const;
-        note(`vault could not resolve ${token}`, resolution ?? '(no answer — worker or vault down)');
-        return null;
+        if (resolution.kind === 'value') values[token] = resolution.value ?? '';
+        else note(`vault could not resolve ${token}`, resolution);
       }),
     );
-    const out = Object.fromEntries(pairs.filter((p): p is readonly [string, string] => p !== null));
+
     banner('vault resolve', {
       asked: tokens.length,
-      resolved: Object.keys(out).length,
-      unresolved: tokens.filter((t) => !(t in out)),
+      resolved: Object.keys(values).length,
+      'answered, but not with a value': answered.filter((t) => !(t in values)),
+      'no answer at all — will retry': unreachable,
     });
-    return out;
+    return { values, unreachable };
   };
 
   let domReveal: { rerun: () => void; detach: () => void } | null = null;
   /** token → value for the DOM pass. The bridge is the source; this mirrors it. */
   const revealed = new Map<string, string>();
 
+  /**
+   * Minting is the cheapest possible cache fill: the pair is already in hand and
+   * the vault is being told, not asked. Without this a paste of something copied
+   * moments ago on the same page still costs a resolve, and a `paste` cannot
+   * await one — which is precisely the round trip that made a pasted token sit
+   * there as a token until the user clicked away (SPEC §10.9.3).
+   */
+  const rememberMinted = (token: string, value: string): void => {
+    revealed.set(token, value);
+  };
+
   const bridge = gating
     ? attachEgressBridge(window, {
         registry: scanner.registry,
-        minter: createRemoteMinter(`source:${location.origin}`, (specs: MintRequest[]) =>
-          chrome.runtime.sendMessage({ type: 'anonymice:mint', specs }) as Promise<MintReply | null>,
+        minter: createRemoteMinter(
+          `source:${location.origin}`,
+          (specs: MintRequest[]) =>
+            chrome.runtime.sendMessage({ type: 'anonymice:mint', specs }) as Promise<MintReply | null>,
+          rememberMinted,
         ),
         mode: info.egress === 'enforce' ? 'enforce' : 'report',
         reveal: info.reveal,
@@ -194,6 +234,8 @@ async function main(): Promise<void> {
   if (gating && info.reveal === 'dom') {
     domReveal = attachDomReveal(document, {
       valueFor: (token) => revealed.get(token),
+      onPasteRevealed: (tokens) =>
+        note(`paste taken — ${tokens} token(s) revealed before the editor saw them`),
       onUnresolved: (tokens) => void bridge?.warm(tokens),
     });
     // The first pass finds tokens but resolves nothing; this is what turns them
@@ -219,6 +261,7 @@ async function main(): Promise<void> {
       `source:${location.origin}`,
       (specs: MintRequest[]) =>
         chrome.runtime.sendMessage({ type: 'anonymice:mint', specs }) as Promise<MintReply | null>,
+      rememberMinted,
     ),
     ...(country ? { country } : {}),
     onCopy: (plan) => {

@@ -1,7 +1,0 @@
-{
-  "anonymice.resources": [
-    { "glob": ".env", "class": "TRUSTED" },
-    { "glob": "customers/**", "class": "NATIVE" }
-  ],
-  "anonymice.reveal.mode": "annotate"
-}

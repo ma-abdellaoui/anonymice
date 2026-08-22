@@ -17,14 +17,28 @@ import type { KnownValue } from '../lib/egress.ts';
 import type { SpanRegistry } from '../lib/registry.ts';
 import type { Cls } from '../lib/types.ts';
 
+/**
+ * The result of one resolve round. `unreachable` is the arm that matters: a
+ * token nobody answered for is not a token the vault refused, and only the
+ * second of those is worth remembering (SPEC §6.7, §10.9.3).
+ */
+export interface ResolveOutcome {
+  /** token → value, for whatever the vault answered with a value for. */
+  values: Record<string, string>;
+  /** Asked, but nobody answered. Transient, and therefore retryable. */
+  unreachable: string[];
+}
+
 export interface BridgeOptions {
   registry: SpanRegistry;
   minter: Minter;
   mode: 'enforce' | 'report';
   /** `dom` turns on ingress in both the shim and the DOM pass (SPEC §10.9). */
   reveal?: 'off' | 'dom';
-  /** Resolve tokens to values. Returns only what the vault answered for. */
-  resolve?: (tokens: string[]) => Promise<Record<string, string>>;
+  /** Resolve tokens to values, keeping "no answer" apart from "answered: no". */
+  resolve?: (tokens: string[]) => Promise<ResolveOutcome>;
+  /** Delay before retrying tokens nobody answered for. Tests pass 0. */
+  retryMs?: number;
   /** Called when new values land, so a DOM pass can be re-run (SPEC §10.9.4). */
   onValues?: (values: Record<string, string>) => void;
   country?: string;
@@ -78,6 +92,8 @@ export function attachEgressBridge(win: Window, opts: BridgeOptions) {
   const values = new Map<string, string>();
   /** Asked about already, so a token the vault will not answer for is asked once. */
   const asked = new Set<string>();
+  /** One deferred retry per page for tokens nobody answered for — see `warm`. */
+  let retried = false;
 
   function push(): void {
     const config: EgressConfig = {
@@ -125,13 +141,38 @@ export function attachEgressBridge(win: Window, opts: BridgeOptions) {
     if (fresh.length === 0) return;
     for (const token of fresh) asked.add(token);
 
-    const resolved = await opts.resolve(fresh);
+    let outcome: ResolveOutcome;
+    try {
+      outcome = await opts.resolve(fresh);
+    } catch {
+      // Nothing came back at all. Forget the whole batch: the next trigger — a
+      // mutation, a blur — asks again, which is the difference between a slow
+      // reveal and one that never happens.
+      for (const token of fresh) asked.delete(token);
+      return;
+    }
+
+    // `asked` exists to stop a request storm against a *dead* token, which is a
+    // permanent answer. A token nobody answered for has no answer to remember,
+    // so it goes back on the pile.
+    for (const token of outcome.unreachable) asked.delete(token);
+
     let learned = false;
-    for (const [token, value] of Object.entries(resolved)) {
+    for (const [token, value] of Object.entries(outcome.values)) {
       if (!value) continue;
       values.set(token, value);
       learned = true;
     }
+
+    // A quiet page produces no further mutations and may never blur, so a
+    // rollback alone can leave the retry with nothing to trigger it. One
+    // deferred attempt closes that, and stops there: past the first retry this
+    // is a vault outage, and hammering it is not what fixes an outage.
+    if (outcome.unreachable.length && !retried) {
+      retried = true;
+      setTimeout(() => void warm(outcome.unreachable), opts.retryMs ?? 1000);
+    }
+
     if (!learned) return;
     push();
     opts.onValues?.(Object.fromEntries(values));

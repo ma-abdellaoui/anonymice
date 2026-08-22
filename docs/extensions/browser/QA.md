@@ -140,7 +140,7 @@ on its own — which is also what step 10 checks with the backend stopped.
 ```sh
 cd code/extensions/browser
 npm install          # first time only
-npm test             # expect: 254 pass, 0 fail
+npm test             # expect: 257 pass, 0 fail
 npm run build:qa     # prints the hosts and backend it baked in
 ```
 
@@ -701,7 +701,7 @@ The gate is `off` in a shipped build (SPEC §10.6). `build:qa` bakes it to
 
 ```sh
 cd code/extensions/browser
-npm test                 # expect: 254 pass, 0 fail
+npm test                 # expect: 257 pass, 0 fail
 npm run build:qa         # prints: egress : enforce
 npm run fixtures         # prints: egress   POST /collect · ws /collab · GET|DELETE /collected
 ```
