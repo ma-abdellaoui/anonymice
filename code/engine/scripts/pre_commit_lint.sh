@@ -52,29 +52,61 @@ if [ -z "${PRE_COMMIT_LINT_INNER:-}" ]; then
 fi
 
 repo_root=$(git rev-parse --show-toplevel)
-cd "$repo_root"
+# The engine may live in a subdirectory of the repo (this fork keeps it under
+# code/engine). Every pattern below is written engine-relative, so git's
+# repo-relative paths are rebased here; without this the patterns match nothing
+# and the run passes without having checked anything.
+engine_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+engine_prefix=${engine_root#"$repo_root"}
+engine_prefix=${engine_prefix#/}
+cd "$engine_root"
 
-staged=$(git diff --cached --name-only --diff-filter=ACMRD)
-unstaged=$(git diff --name-only)
-untracked=$(git ls-files --others --exclude-standard)
+# Drop paths outside the engine, and strip the prefix from the rest.
+engine_relative() {
+    if [ -z "$engine_prefix" ]; then
+        cat
+    else
+        sed -n "s|^$engine_prefix/||p"
+    fi
+}
+
+staged=$(git diff --cached --name-only --diff-filter=ACMRD | engine_relative)
+unstaged=$(git diff --name-only | engine_relative)
+untracked=$(git ls-files --others --exclude-standard | engine_relative)
 
 if [ -n "$staged" ]; then
     scope=$staged
 else
-    git fetch --quiet origin litellm_internal_staging 2>/dev/null || true
-    merge_base=$(git merge-base origin/litellm_internal_staging HEAD 2>/dev/null) || {
-        echo "check: cannot resolve the merge base with origin/litellm_internal_staging." >&2
-        echo "  Fix: git fetch origin litellm_internal_staging" >&2
+    # This repo is a hard fork, so upstream's base branch may not exist here.
+    # Prefer an explicit override, then upstream's name, then this fork's default.
+    base_branch=""
+    for candidate in ${LITELLM_LINT_BASE:-} litellm_internal_staging main; do
+        git fetch --quiet origin "$candidate" 2>/dev/null || true
+        if git rev-parse --verify --quiet "origin/$candidate" >/dev/null; then
+            base_branch=$candidate
+            break
+        fi
+    done
+    if [ -z "$base_branch" ]; then
+        echo "check: no base branch found on origin (tried ${LITELLM_LINT_BASE:+$LITELLM_LINT_BASE, }litellm_internal_staging, main)." >&2
+        echo "  Fix: set LITELLM_LINT_BASE to the branch this work is based on" >&2
+        echo "check: FAIL"
+        exit 1
+    fi
+    merge_base=$(git merge-base "origin/$base_branch" HEAD 2>/dev/null) || {
+        echo "check: cannot resolve the merge base with origin/$base_branch." >&2
+        echo "  Fix: git fetch origin $base_branch" >&2
         echo "check: FAIL"
         exit 1
     }
-    scope=$(printf '%s\n' "$(git diff --name-only --diff-filter=ACMRD "$merge_base")" "$untracked" | sed '/^$/d' | sort -u)
+    branch_changes=$(git diff --name-only --diff-filter=ACMRD "$merge_base" | engine_relative)
+    scope=$(printf '%s\n' "$branch_changes" "$untracked" | sed '/^$/d' | sort -u)
     if [ -z "$scope" ]; then
-        echo "check: nothing to check (no staged files, no working-tree changes, no branch changes vs origin/litellm_internal_staging)"
+        echo "check: nothing to check (no staged files, no working-tree changes, no branch changes vs origin/$base_branch)"
         echo "check: PASS"
         exit 0
     fi
-    echo "check: nothing staged; scoping to the working tree's diff against the merge base with origin/litellm_internal_staging:"
+    echo "check: nothing staged; scoping to the working tree's diff against the merge base with origin/$base_branch:"
     printf '%s\n' "$scope" | sed 's/^/    /'
 fi
 

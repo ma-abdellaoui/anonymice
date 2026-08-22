@@ -513,7 +513,11 @@ These are defects in code already merged, not new features, so they go first.
 
 ### Cross-cutting
 
-- [ ] `make check` clean, budget files ratcheted with `make lint-budget-update`
+- [x] `make check` clean, budget files ratcheted with `make lint-budget-update`. It was passing vacuously:
+      the scope is computed from git's repo-relative paths while every pattern is engine-relative, so in this
+      fork nothing matched and nothing ran. `make lint-format-check-changed` had the same fault. Both now
+      rebase onto the engine root, which is what surfaced 36 unformatted files and 580 lines of stale
+      dashboard API types
 - [~] Live proof against real Presidio and real piiranha, through the guardrail, covering encode, tool-call
       arguments, decode, and mid-stream holdback. Not yet run against a real LLM provider
 

@@ -150,7 +150,7 @@ lint-install:
 # recursively, so 'litellm/*.py' covers nested modules and the top-level files that
 # CI's 'litellm/**/*.py' skips, which makes this target a superset of the CI step.
 lint-format-check-changed: $(LINT_DEP_INSTALL) $(LINT_DEP_BASE)
-	@files=$$(git diff --name-only --diff-filter=ACMR origin/main...HEAD -- 'litellm/*.py' | grep -v '^litellm/enterprise/' || true); \
+	@files=$$(git diff --name-only --relative --diff-filter=ACMR origin/main...HEAD -- 'litellm/*.py' | grep -v '^litellm/enterprise/' || true); \
 	if [ -z "$$files" ]; then \
 		echo "No changed litellm Python files to format-check."; \
 	else \
@@ -190,7 +190,7 @@ lint-ruff-dev: install-dev
 	rm -f "$$tmpfile"
 
 lint-ruff-FULL-dev: install-dev
-	@files=$$(git diff --name-only origin/main -- '*.py'); \
+	@files=$$(git diff --name-only --relative origin/main -- '*.py'); \
 	if [ -n "$$files" ]; then echo "$$files" | xargs $(UV_RUN) ruff check; \
 	else echo "No changed .py files to check."; fi
 
