@@ -14,7 +14,7 @@ export default function HashicorpVaultEmptyPlaceholder({ onAdd }: HashicorpVault
       </div>
       <h4 className="text-base font-semibold text-foreground">No Vault Configuration Found</h4>
       <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-        Configure Hashicorp Vault to securely manage provider API keys and secrets for your LiteLLM deployment.
+        Configure Hashicorp Vault to securely manage provider API keys and secrets for your Anonymice deployment.
       </p>
       <Button size="lg" onClick={onAdd} className="mt-4">
         Configure Vault

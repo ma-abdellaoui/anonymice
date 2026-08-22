@@ -126,7 +126,7 @@ const UIThemeSettings: React.FC<UIThemeSettingsProps> = ({ userID, userRole, acc
       <div className="mb-8">
         <h1 className="mb-2 text-2xl font-bold">UI Theme Customization</h1>
         <p className="text-sm text-muted-foreground">
-          Customize your LiteLLM admin dashboard with a custom logo and favicon.
+          Customize your Anonymice admin dashboard with a custom logo and favicon.
         </p>
       </div>
       <Card>

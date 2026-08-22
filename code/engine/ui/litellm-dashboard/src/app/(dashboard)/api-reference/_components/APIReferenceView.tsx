@@ -2,7 +2,6 @@
 import React from "react";
 import CodeBlock from "@/components/CodeBlock";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import DocLink from "./DocLink";
 
 interface ApiRefProps {
   proxySettings: {
@@ -23,15 +22,11 @@ const APIReferenceView: React.FC<ApiRefProps> = ({ proxySettings }) => {
   return (
     <div className="grid grid-cols-1 gap-2 p-8 h-[80vh] w-full mt-2">
       <div className="mb-5">
-        {/* Header row with Docs link on the right */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold text-foreground">OpenAI Compatible Proxy: API Reference</h1>
-          <DocLink className="ml-3 shrink-0" href="https://docs.litellm.ai/docs/proxy/user_keys" />
-        </div>
+        <h1 className="text-2xl font-semibold text-foreground">OpenAI Compatible Proxy: API Reference</h1>
 
         <p className="mt-2 mb-2 text-sm text-muted-foreground">
-          LiteLLM is OpenAI Compatible. This means your API Key works with the OpenAI SDK. Just replace the base_url to
-          point to your litellm proxy. Example Below{" "}
+          Anonymice is OpenAI compatible. This means your API Key works with the OpenAI SDK. Replace the base_url to
+          point to your Anonymice proxy. Example below.
         </p>
 
         <Tabs defaultValue="openai">

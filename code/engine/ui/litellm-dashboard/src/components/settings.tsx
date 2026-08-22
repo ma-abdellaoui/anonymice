@@ -615,16 +615,6 @@ const Settings: React.FC<SettingsPageProps> = ({ accessToken, userRole, userID, 
           <DialogHeader>
             <DialogTitle>Add Logging Callback</DialogTitle>
           </DialogHeader>
-          <a
-            href="https://docs.litellm.ai/docs/proxy/logging"
-            className="mb-8 mt-4"
-            target="_blank"
-            style={{ color: "blue" }}
-          >
-            {" "}
-            LiteLLM Docs: Logging
-          </a>
-
           <FormProvider {...addForm}>
             <form onSubmit={addForm.handleSubmit(addNewCallbackCall)}>
               <CallbackSelector

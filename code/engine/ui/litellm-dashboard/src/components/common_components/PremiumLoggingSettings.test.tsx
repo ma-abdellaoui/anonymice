@@ -25,7 +25,7 @@ describe("PremiumLoggingSettings", () => {
   it("shows the enterprise notice and withholds the editor from a free user", () => {
     renderWithProviders(<PremiumLoggingSettings value={[]} onChange={vi.fn()} />);
 
-    expect(screen.getByText(/LiteLLM Enterprise feature/)).toBeInTheDocument();
+    expect(screen.getByText(/Anonymice Enterprise feature/)).toBeInTheDocument();
     expect(screen.getByText("✨ langfuse-logging")).toBeInTheDocument();
     expect(screen.queryByText("Logging Integrations")).not.toBeInTheDocument();
   });
@@ -34,6 +34,6 @@ describe("PremiumLoggingSettings", () => {
     renderWithProviders(<PremiumLoggingSettings value={[]} onChange={vi.fn()} premiumUser />);
 
     expect(screen.getByText("Logging Integrations")).toBeInTheDocument();
-    expect(screen.queryByText(/LiteLLM Enterprise feature/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Anonymice Enterprise feature/)).not.toBeInTheDocument();
   });
 });

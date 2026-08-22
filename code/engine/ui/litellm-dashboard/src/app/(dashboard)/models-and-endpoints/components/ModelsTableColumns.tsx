@@ -128,7 +128,7 @@ function CredentialsHeader() {
                 Reusable
               </span>
               <span className="text-xs text-muted-foreground">
-                Credentials saved in LiteLLM that can be added to models repeatedly.
+                Credentials saved in Anonymice that can be added to models repeatedly.
               </span>
             </div>
             <div className="flex flex-col gap-1">

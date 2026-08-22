@@ -541,7 +541,7 @@ const PoliciesPanel: React.FC<PoliciesPanelProps> = ({ accessToken, userRole }) 
           </DismissibleAlert>
 
           <DismissibleAlert title="Enterprise Feature Notice" icon={<TriangleAlert />}>
-            Parts of policy attachments will be on LiteLLM Enterprise in subsequent releases.
+            Parts of policy attachments will be available in Anonymice Enterprise in subsequent releases.
           </DismissibleAlert>
 
           <div className="mb-4 flex items-center justify-between">

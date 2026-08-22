@@ -128,14 +128,14 @@ ${formattedBody}
     <div className="p-2">
       <h1 className="text-lg font-medium text-foreground">Playground</h1>
       <p className="text-sm text-muted-foreground">
-        See how LiteLLM transforms your request for the specified provider.
+        See how Anonymice transforms your request for the specified provider.
       </p>
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Original Request Panel */}
         <Card>
           <CardHeader>
             <CardTitle className="text-2xl font-bold">Original Request</CardTitle>
-            <CardDescription>The request you would send to LiteLLM /chat/completions endpoint.</CardDescription>
+            <CardDescription>The request you would send to the Anonymice /chat/completions endpoint.</CardDescription>
           </CardHeader>
 
           <CardContent>
@@ -160,7 +160,7 @@ ${formattedBody}
         <Card>
           <CardHeader>
             <CardTitle className="text-2xl font-bold">Transformed Request</CardTitle>
-            <CardDescription>How LiteLLM transforms your request for the specified provider.</CardDescription>
+            <CardDescription>How Anonymice transforms your request for the specified provider.</CardDescription>
             <p className="mt-2 text-xs text-muted-foreground">Note: Sensitive headers are not shown.</p>
           </CardHeader>
 
