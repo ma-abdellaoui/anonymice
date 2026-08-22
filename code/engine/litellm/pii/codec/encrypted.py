@@ -47,6 +47,6 @@ class EncryptedCodec:
         payload: Final = parsed.discriminator[len(ENCRYPTED_MARKER) :]
         try:
             sealed: Final = base64.urlsafe_b64decode(_restore_padding(payload)).decode("utf-8")
-        except Exception as exc:
+        except (ValueError, TypeError) as exc:
             return DecodeFailed(reason=f"malformed encrypted token ({type(exc).__name__})")
         return self.cipher.unseal(sealed)
