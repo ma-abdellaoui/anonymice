@@ -105,9 +105,36 @@ server.on('error', (err: NodeJS.ErrnoException) => {
   throw err;
 });
 
+/**
+ * The hostnames resolve to loopback, so a bare `http://native.anonymice.test/`
+ * goes to whatever owns port 80 — an already-installed Apache or nginx, not us.
+ * Say so at startup rather than letting someone discover it by reading a
+ * stranger's default page and wondering why nothing is highlighted.
+ */
+async function warnIfPortEightyAnswers(): Promise<void> {
+  for (const host of Object.values(HOSTS)) {
+    try {
+      const res = await fetch(`http://${host}/`, {
+        method: 'HEAD',
+        signal: AbortSignal.timeout(400),
+      });
+      console.warn(
+        `\n  ! port 80 on these hostnames is already served by ` +
+          `${res.headers.get('server') ?? 'something else'}.\n` +
+          `    A bare http://${host}/ will show that, not the fixtures.\n` +
+          `    Always include :${PORT} in the URL.`,
+      );
+      return;
+    } catch {
+      // Nothing listening, or it did not answer in time: no collision to warn about.
+    }
+  }
+}
+
 server.listen(PORT, () => {
   console.log(`fixtures on :${PORT}` + (HARNESS ? ' (HARNESS=1 — the dev harness, not the extension)' : ''));
   console.log(`  NATIVE   http://${HOSTS.native}:${PORT}/`);
   console.log(`  TRUSTED  http://${HOSTS.trusted}:${PORT}/`);
   console.log(`  setup    http://localhost:${PORT}/`);
+  void warnIfPortEightyAnswers();
 });

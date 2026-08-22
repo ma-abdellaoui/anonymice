@@ -17,6 +17,7 @@ import {
   type PolicySources,
 } from '../lib/policy.ts';
 import type { DetectChunkRequest, DetectResponse } from '../lib/protocol.ts';
+import { createSerializer } from '../lib/serialize.ts';
 
 const SCRIPT_ID = 'anonymice-content';
 const POLICY_ALARM = 'anonymice:policy-refresh';
@@ -105,8 +106,8 @@ async function registerContentScripts(): Promise<void> {
   health.registered = [];
   health.registrationError = null;
   if (matches.length === 0) return;
-  try {
-    await chrome.scripting.registerContentScripts([
+  const register = () =>
+    chrome.scripting.registerContentScripts([
       {
         id: SCRIPT_ID,
         js: ['content.js'],
@@ -115,6 +116,17 @@ async function registerContentScripts(): Promise<void> {
         allFrames: false,
       },
     ]);
+  try {
+    try {
+      await register();
+    } catch (err) {
+      // Something holds the id between our unregister and this call. Boots are
+      // serialised so it should not happen, but the recovery is cheap and the
+      // failure mode — no content script at all — is not.
+      if (!/duplicate script id/i.test(err instanceof Error ? err.message : String(err))) throw err;
+      await chrome.scripting.unregisterContentScripts({ ids: [SCRIPT_ID] }).catch(() => {});
+      await register();
+    }
     health.registered = matches;
   } catch (err) {
     // Almost always "cannot add script relating to a host it does not have
@@ -125,7 +137,24 @@ async function registerContentScripts(): Promise<void> {
   }
 }
 
-async function boot(mode: 'cached' | 'refresh' = 'refresh'): Promise<void> {
+type BootMode = 'cached' | 'refresh';
+
+/**
+ * Boot runs from five places, several of which fire together on install. Two
+ * concurrent boots both unregister and both register, and the loser throws
+ * `Duplicate script ID`; a burst of storage events would otherwise queue one
+ * re-registration per event. One at a time, newest intent wins.
+ */
+const boots = createSerializer<BootMode>(
+  (mode) => boot(mode),
+  (queued, incoming) => (queued === 'refresh' || incoming === 'refresh' ? 'refresh' : 'cached'),
+);
+
+function requestBoot(mode: BootMode = 'refresh'): Promise<void> {
+  return boots.run(mode);
+}
+
+async function boot(mode: BootMode = 'refresh'): Promise<void> {
   const { policy: resolved, result } = await loadPolicy(mode);
   policy = resolved;
   client = new DetectClient({ policy });
@@ -149,17 +178,17 @@ async function scheduleRefresh(): Promise<void> {
 }
 
 chrome.alarms?.onAlarm.addListener((alarm) => {
-  if (alarm.name === POLICY_ALARM) void boot('refresh');
+  if (alarm.name === POLICY_ALARM) void requestBoot('refresh');
 });
 
-chrome.runtime.onInstalled.addListener(() => void boot('refresh'));
-chrome.runtime.onStartup?.addListener(() => void boot('refresh'));
+chrome.runtime.onInstalled.addListener(() => void requestBoot('refresh'));
+chrome.runtime.onStartup?.addListener(() => void requestBoot('refresh'));
 chrome.storage.onChanged.addListener((changes, area) => {
   // Our own cache write lands here too; re-booting on it would pull, write,
   // and pull again forever.
   const keys = Object.keys(changes);
   if (area === 'local' && keys.every((k) => k === CACHE_KEY)) return;
-  void boot('cached');
+  void requestBoot('cached');
 });
 
 chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) => {
@@ -216,4 +245,4 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
   return false;
 });
 
-void boot('cached');
+void requestBoot('cached');

@@ -67,6 +67,11 @@ await build({
 const manifest = JSON.parse(readFileSync(`${root}platform/chrome/manifest.json`, 'utf8'));
 if (qa) {
   manifest.host_permissions = ['*://*/*'];
+  // Declaring the same pattern as optional too makes Chrome warn that the
+  // optional entry is redundant, and it is: nothing is left to request once the
+  // permission is required. The shipped manifest keeps it, because there it is
+  // the only way the user can grant access at all.
+  delete manifest.optional_host_permissions;
   manifest.name = 'anonymice (QA build)';
 }
 writeFileSync(`${out}/manifest.json`, JSON.stringify(manifest, null, 2));

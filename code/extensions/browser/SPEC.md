@@ -81,8 +81,17 @@ covers the mechanism; §8.8 is the honest cost list.
 content — with the one exception of a paste the user needs to read back (§8).
 
 The trust list is distributed via `chrome.storage.managed` and is not
-user-editable. **Gate before reading:** content scripts are registered
-dynamically (`chrome.scripting.registerContentScripts`) with `matches` built
+user-editable. The managed policy may carry the list outright, or carry an
+**enrollment** — a policy endpoint, a credential, and the detect origin — and
+let the extension pull the current lists from `GET /v1/policy`. The pull is a
+delegation of the administrator's list, never a replacement: managed values
+still outrank it, it cannot move the detector off the pinned origin, and every
+pattern is validated before it can become a match pattern. The contract, the
+precedence rules and the failure semantics are in
+[docs/extensions/browser/ENDPOINTS.md](../../../docs/extensions/browser/ENDPOINTS.md)
+§2.
+
+**Gate before reading:** content scripts are registered dynamically (`chrome.scripting.registerContentScripts`) with `matches` built
 from the class lists, rather than `<all_urls>` plus an early return. On a host
 in no list the extension never touches the page at all — a property that can be
 demonstrated, not just asserted.

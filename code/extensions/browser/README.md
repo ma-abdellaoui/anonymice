@@ -1,7 +1,9 @@
 # anonymice browser extension
 
 Implements [`SPEC.md`](./SPEC.md). This slice covers detection and highlighting
-on `NATIVE` hosts — SPEC §1–§5 — plus the eval that gates them.
+on `NATIVE` hosts — SPEC §1–§5 — plus the eval that gates them. What it needs
+from a server is
+[`docs/extensions/browser/ENDPOINTS.md`](../../../docs/extensions/browser/ENDPOINTS.md).
 
 ## Layout
 
@@ -10,7 +12,7 @@ on `NATIVE` hosts — SPEC §1–§5 — plus the eval that gates them.
 | `src/lib/` | pure core: normalisation, span algebra, projection, annotations, registry, policy, wire contract |
 | `src/content/` | scanner loop and painter (Custom Highlight API, overlay fallback) |
 | `src/background/` | service worker: policy-driven script registration, the only thing that talks to the backend |
-| `mock/` | dev stand-in for the detection service of SPEC §3.1 — real rule pass, gazetteer instead of an LLM |
+| `mock/` | dev stand-in for the backend of SPEC §3.1 — `/v1/health`, `/v1/policy`, `/v1/detect`; real rule pass, gazetteer instead of an LLM |
 | `eval/` | corpus, scorer, regression gate (SPEC §9) |
 | `test/` | unit tests |
 | `dev/` | build, fixture server, browser harness |
@@ -23,21 +25,23 @@ npm run eval        # scores eval/corpus, fails on regression against eval/gate.
 npm run build       # bundles dist/
 npm run build:qa    # QA build: host access pre-granted + dev policy baked in
 npm run policy      # emit the enterprise managed-policy file (see QA.md)
-npm run mock        # mock /v1/detect on :8788
+npm run mock        # mock backend on :8788 — health, policy, detect (see ENDPOINTS.md)
 npm run fixtures    # serves eval/corpus as a NATIVE host on :8787
 npm run check       # typecheck + tests + eval
 ```
 
-The corpus is six labelled pages in `eval/corpus/` — a `<name>.html` beside a
-`<name>.spans.json` of ground-truth `{cls, value}` spans. `npm run eval` scores
-every page twice, annotated and with `data-sensitive` stripped, and fails on a
-regression against `eval/gate.json`. An empty corpus is treated as a failure
-rather than a vacuous 100%.
+The corpus is two labelled pages in `eval/corpus/` — `native.html` and
+`trusted.html`, each beside a `<name>.spans.json` of ground-truth
+`{cls, value}` spans. `npm run eval` scores both twice, annotated and with
+`data-sensitive` stripped, and fails on a regression against `eval/gate.json`.
+An empty corpus is treated as a failure rather than a vacuous 100%.
 
-`npm run fixtures` serves the same corpus on :8787 as a browsable `NATIVE`
-host — clean pages, so the extension is what highlights them. For the manual
-pass, follow [`docs/extensions/browser/QA.md`](../../../docs/extensions/browser/QA.md),
-which lists the expected badge count for each page.
+The two exist as a pair because trust class is a property of the host: served
+under `native.anonymice.test` and `trusted.anonymice.test` (see `npm run
+hosts`), they are what makes the class gate testable by hand. `npm run fixtures`
+serves them clean, so the extension is what highlights them. Follow
+[`docs/extensions/browser/QA.md`](../../../docs/extensions/browser/QA.md) for
+the manual pass; it lists the expected badge count for each.
 
 ## What has actually been tested
 
