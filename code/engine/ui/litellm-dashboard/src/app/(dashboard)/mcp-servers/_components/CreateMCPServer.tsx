@@ -250,7 +250,7 @@ const CreateMCPServer: React.FC<CreateMCPServerProps> = ({
         // edit form's onTokenReceived early return.
         setAuthorizedIdentity(getOAuthAuthorizationIdentity(allFieldsValue(form)));
         toast.success(
-          "Token held for this browser session. Tools can now be previewed and configured; the token is not saved to LiteLLM.",
+          "Token held for this browser session. Tools can now be previewed and configured; the token is not saved to Anonymice.",
         );
         return;
       }
@@ -791,7 +791,7 @@ const CreateMCPServer: React.FC<CreateMCPServerProps> = ({
                     label={
                       <span className="text-sm font-medium text-foreground flex items-center">
                         Max Concurrent Requests (optional)
-                        <SimpleTooltip content="Maximum number of tool calls LiteLLM will run against this server at the same time. Additional calls wait for a free slot. Leave blank for no limit.">
+                        <SimpleTooltip content="Maximum number of tool calls Anonymice will run against this server at the same time. Additional calls wait for a free slot. Leave blank for no limit.">
                           <Info className="ml-2 size-4 text-info hover:text-info/80 cursor-help" />
                         </SimpleTooltip>
                       </span>

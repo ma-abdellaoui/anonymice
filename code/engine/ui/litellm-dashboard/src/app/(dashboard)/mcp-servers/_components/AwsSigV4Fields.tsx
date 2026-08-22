@@ -24,17 +24,7 @@ const SECRET_KEY_PATH = ["credentials", "aws_secret_access_key"] as const;
 
 const AwsSigV4Fields: React.FC = () => (
   <>
-    <p className="text-sm text-muted-foreground mb-2">
-      For MCP servers hosted on AWS Bedrock AgentCore.{" "}
-      <a
-        href="https://docs.litellm.ai/docs/mcp_aws_sigv4"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-info hover:text-info/80"
-      >
-        View docs &rarr;
-      </a>
-    </p>
+    <p className="text-sm text-muted-foreground mb-2">For MCP servers hosted on AWS Bedrock AgentCore.</p>
     <MountedFormField
       label={<FieldLabel label="AWS Region" tooltip="AWS region for SigV4 signing (e.g., us-east-1)" />}
       name={["credentials", "aws_region_name"]}
@@ -119,7 +109,7 @@ const AwsSigV4Fields: React.FC = () => (
       label={
         <FieldLabel
           label="AWS Role ARN"
-          tooltip="Optional. IAM role ARN to assume via STS before signing. If set, LiteLLM calls sts:AssumeRole to get temporary credentials. Uses ambient credentials (IAM role, env vars) as the source identity unless explicit keys are also provided."
+          tooltip="Optional. IAM role ARN to assume via STS before signing. If set, Anonymice calls sts:AssumeRole to get temporary credentials. Uses ambient credentials (IAM role, env vars) as the source identity unless explicit keys are also provided."
         />
       }
       name={["credentials", "aws_role_name"]}

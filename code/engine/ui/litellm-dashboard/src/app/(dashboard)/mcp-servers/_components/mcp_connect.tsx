@@ -201,10 +201,10 @@ const MCPConnect: React.FC<MCPConnectProps> = ({ currentServerAccessGroups = [] 
       <div className="bg-linear-to-r from-success/15 to-success/5 p-6 rounded-lg border border-success/15">
         <div className="flex items-center gap-3 mb-3">
           <Zap className="text-success" size={24} />
-          <h4 className="mb-0 text-xl font-semibold text-success">LiteLLM Proxy API Integration</h4>
+          <h4 className="mb-0 text-xl font-semibold text-success">Anonymice Proxy API Integration</h4>
         </div>
         <span className="text-success">
-          Connect to LiteLLM Proxy Responses API for seamless tool integration with multiple model providers
+          Connect to Anonymice Proxy Responses API for seamless tool integration with multiple model providers
         </span>
       </div>
 
@@ -212,11 +212,11 @@ const MCPConnect: React.FC<MCPConnectProps> = ({ currentServerAccessGroups = [] 
         <FeatureCard
           icon={<KeyIcon className="text-success" size={16} />}
           title="Virtual Key Setup"
-          description="Configure your LiteLLM Proxy Virtual Key for authentication"
+          description="Configure your Anonymice Proxy Virtual Key for authentication"
         >
           <div className="flex w-full flex-col gap-4">
             <div>
-              <span>Get your Virtual Key from your LiteLLM Proxy dashboard or contact your administrator</span>
+              <span>Get your Virtual Key from your Anonymice Proxy dashboard or contact your administrator</span>
             </div>
             <CodeBlock title="Environment Variable" code='export LITELLM_API_KEY="sk-..."' copyKey="litellm-env" />
           </div>
@@ -225,7 +225,7 @@ const MCPConnect: React.FC<MCPConnectProps> = ({ currentServerAccessGroups = [] 
         <FeatureCard
           icon={<ServerIcon className="text-success" size={16} />}
           title="MCP Server Information"
-          description="Connection details for your LiteLLM MCP server"
+          description="Connection details for your Anonymice MCP server"
         >
           <CodeBlock title="Server URL" code={`${proxyBaseUrl}/mcp`} copyKey="litellm-server-url" />
         </FeatureCard>
@@ -233,7 +233,7 @@ const MCPConnect: React.FC<MCPConnectProps> = ({ currentServerAccessGroups = [] 
         <FeatureCard
           icon={<Code className="text-success" size={16} />}
           title="Implementation Example"
-          description="Complete cURL example for using the LiteLLM Proxy Responses API"
+          description="Complete cURL example for using the Anonymice Proxy Responses API"
           serverName={currentServer}
           accessGroups={["dev-group"]}
         >
@@ -274,7 +274,7 @@ const MCPConnect: React.FC<MCPConnectProps> = ({ currentServerAccessGroups = [] 
           <h4 className="mb-0 text-xl font-semibold text-info">OpenAI Responses API Integration</h4>
         </div>
         <span className="text-info">
-          Connect OpenAI Responses API to your LiteLLM MCP server for seamless tool integration
+          Connect OpenAI Responses API to your Anonymice MCP server for seamless tool integration
         </span>
       </div>
 
@@ -305,7 +305,7 @@ const MCPConnect: React.FC<MCPConnectProps> = ({ currentServerAccessGroups = [] 
         <FeatureCard
           icon={<ServerIcon className="text-info" size={16} />}
           title="MCP Server Information"
-          description="Connection details for your LiteLLM MCP server"
+          description="Connection details for your Anonymice MCP server"
         >
           <CodeBlock title="Server URL" code={`${proxyBaseUrl}/mcp`} copyKey="openai-server-url" />
         </FeatureCard>
@@ -354,7 +354,7 @@ const MCPConnect: React.FC<MCPConnectProps> = ({ currentServerAccessGroups = [] 
           <h4 className="mb-0 text-xl font-semibold text-purple-900 dark:text-purple-100">Cursor IDE Integration</h4>
         </div>
         <span className="text-purple-700 dark:text-purple-300">
-          Use tools directly from Cursor IDE with LiteLLM MCP. Enable your AI assistant to perform real-world tasks
+          Use tools directly from Cursor IDE with Anonymice MCP. Enable your AI assistant to perform real-world tasks
           without leaving your coding environment.
         </span>
       </div>
@@ -418,7 +418,7 @@ const MCPConnect: React.FC<MCPConnectProps> = ({ currentServerAccessGroups = [] 
           <h4 className="mb-0 text-xl font-semibold text-success">Streamable HTTP Transport</h4>
         </div>
         <span className="text-success">
-          Connect to LiteLLM MCP using HTTP transport. Compatible with any MCP client that supports HTTP streaming.
+          Connect to Anonymice MCP using HTTP transport. Compatible with any MCP client that supports HTTP streaming.
         </span>
       </div>
 
@@ -474,7 +474,7 @@ const MCPConnect: React.FC<MCPConnectProps> = ({ currentServerAccessGroups = [] 
         <div>
           <h2 className="text-3xl font-bold text-foreground mb-3">Connect to your MCP client</h2>
           <p className="text-lg text-muted-foreground">
-            Use tools directly from any MCP client with LiteLLM MCP. Enable your AI assistant to perform real-world
+            Use tools directly from any MCP client with Anonymice MCP. Enable your AI assistant to perform real-world
             tasks through a simple, secure connection.
           </p>
         </div>
@@ -491,7 +491,7 @@ const MCPConnect: React.FC<MCPConnectProps> = ({ currentServerAccessGroups = [] 
               <TabsTrigger value="litellm" className="flex-none px-6 py-3">
                 <span className="flex items-center gap-2 font-medium">
                   <Zap size={18} />
-                  LiteLLM Proxy
+                  Anonymice Proxy
                 </span>
               </TabsTrigger>
               <TabsTrigger value="cursor" className="flex-none px-6 py-3">

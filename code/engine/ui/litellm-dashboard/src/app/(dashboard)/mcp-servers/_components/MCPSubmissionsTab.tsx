@@ -196,7 +196,7 @@ function SubmissionRulesPanel({ requiredFields, onChange, onSave, isSaving }: Su
       {expanded && (
         <div className="border-t border-border px-4 pt-4 pb-4">
           <p className="text-xs text-muted-foreground mb-4">
-            Select which fields must be filled in before a submission is considered compliant. LiteLLM will show ✓ / ✗
+            Select which fields must be filled in before a submission is considered compliant. Anonymice will show ✓ / ✗
             for each rule on every submission card below.
           </p>
           <div className="grid grid-cols-2 gap-x-8 gap-y-5">

@@ -199,7 +199,7 @@ const MCPPermissionManagement: React.FC<MCPPermissionManagementProps> = ({
           <div className="flex items-start justify-between gap-4">
             <div>
               <span className="text-sm font-medium text-foreground flex items-center">
-                Allow All LiteLLM Keys
+                Allow All Anonymice Keys
                 <SimpleTooltip content="When enabled, every API key can access this MCP server.">
                   <Info className="ml-2 size-4 text-info hover:text-info/80 cursor-help" />
                 </SimpleTooltip>
@@ -209,7 +209,7 @@ const MCPPermissionManagement: React.FC<MCPPermissionManagementProps> = ({
               </p>
             </div>
             <MountedFormField name="allow_all_keys" defaultValue={mcpServer?.allow_all_keys ?? false} className="mb-0">
-              {(control) => <Switch aria-label="Allow All LiteLLM Keys" {...switchControl(control)} />}
+              {(control) => <Switch aria-label="Allow All Anonymice Keys" {...switchControl(control)} />}
             </MountedFormField>
           </div>
 
@@ -235,12 +235,12 @@ const MCPPermissionManagement: React.FC<MCPPermissionManagementProps> = ({
               <div>
                 <span className="text-sm font-medium text-foreground flex items-center">
                   Delegate auth to upstream (PKCE passthrough)
-                  <SimpleTooltip content="When on, LiteLLM skips its own API key/SSO check for this server and lets the client complete PKCE directly with the upstream MCP server. Only honored when Auth Type is oauth2. No spend tracking or per-key rate limiting will run on this route.">
+                  <SimpleTooltip content="When on, Anonymice skips its own API key/SSO check for this server and lets the client complete PKCE directly with the upstream MCP server. Only honored when Auth Type is oauth2. No spend tracking or per-key rate limiting will run on this route.">
                     <Info className="ml-2 size-4 text-info hover:text-info/80 cursor-help" />
                   </SimpleTooltip>
                 </span>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Bypass LiteLLM auth so clients authenticate directly with the upstream OAuth MCP server.
+                  Bypass Anonymice auth so clients authenticate directly with the upstream OAuth MCP server.
                 </p>
               </div>
               <MountedFormField
@@ -285,7 +285,7 @@ const MCPPermissionManagement: React.FC<MCPPermissionManagementProps> = ({
               <AlertTitle>Internal server with upstream OAuth delegation</AlertTitle>
               <AlertDescription>
                 This MCP server is configured as internal-only but delegates auth to upstream. Anonymous users will be
-                able to reach the upstream OAuth2 /authorize flow without a LiteLLM session. Ensure your upstream
+                able to reach the upstream OAuth2 /authorize flow without an Anonymice session. Ensure your upstream
                 provider and network enforce access controls.
               </AlertDescription>
             </Alert>
