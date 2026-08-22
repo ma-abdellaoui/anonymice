@@ -1,0 +1,45 @@
+## Detection tiers for the PII anonymization layer.
+##
+##   docker compose -f litellm/pii/deploy/docker-compose.pii.yml up -d
+##
+## Stage 1 is Presidio restricted to its pattern and checksum recognizers.
+## Stage 2 is a piiranha token-classification server, reached over the standard
+## HuggingFace pipeline contract. Stage 2 is optional: without it the guardrail
+## runs rules-only, which still covers every deterministic entity type.
+
+services:
+  presidio-analyzer:
+    image: mcr.microsoft.com/presidio-analyzer:2.2.360
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  presidio-anonymizer:
+    image: mcr.microsoft.com/presidio-anonymizer:2.2.360
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  piiranha:
+    image: ghcr.io/huggingface/text-inference-toolkit:latest
+    restart: unless-stopped
+    environment:
+      HF_MODEL_ID: iiiorg/piiranha-v1-detect-personal-information
+      HF_TASK: token-classification
+    ports:
+      - "8080:8080"
+    volumes:
+      - piiranha-cache:/data
+
+volumes:
+  piiranha-cache:
