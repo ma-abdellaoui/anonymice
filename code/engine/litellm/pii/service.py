@@ -5,7 +5,7 @@ from types import MappingProxyType
 from typing import Final, TypeAlias
 
 from litellm._uuid import uuid
-from litellm.pii.codec.base import PiiCodec, find_tokens
+from litellm.pii.codec.base import PiiCodec
 from litellm.pii.codec.transform import BatchDraft, decode_text, encode_batch
 from litellm.pii.detection.cascade import CascadingDetector
 from litellm.pii.store.base import PiiTokenStore, TokenScope
@@ -130,7 +130,7 @@ class PiiService:
         is different and does surface, since silently returning tokenized text
         would look like success.
         """
-        candidates: Final = tuple(sorted(frozenset(found.token for text in texts for found in find_tokens(text))))
+        candidates: Final = tuple(sorted(self.codec.grammar.canonical_tokens(texts)))
         if not candidates:
             return tuple(texts)
 
@@ -141,7 +141,7 @@ class PiiService:
             return stored
 
         resolved: Final = MappingProxyType({**recovered, **stored})
-        return tuple(decode_text(text, resolved) for text in texts)
+        return tuple(decode_text(text, resolved, self.codec.grammar) for text in texts)
 
     async def decode_one(self, text: str, scope: TokenScope) -> str | DecodeFailure:
         decoded: Final = await self.decode(texts=(text,), scope=scope)

@@ -1,7 +1,8 @@
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import ClassVar, Final
 
+from litellm.pii.codec.grammar import AngleBracketGrammar, TokenGrammar, TokenKind
 from litellm.pii.types import CodecError
 
 HANDLE_BYTES: Final = 8
@@ -17,10 +18,11 @@ class HandleCodec:
     revocable: delete the entry and the token is permanently dead.
     """
 
+    grammar: TokenGrammar = field(default_factory=AngleBracketGrammar)
     codec_id: ClassVar[str] = "handle"
 
     def mint(self, entity_type: str, ordinal: int, value: str) -> str | CodecError:
-        return f"<{entity_type}:{secrets.token_hex(HANDLE_BYTES)}>"
+        return self.grammar.mint(entity_type, TokenKind.HANDLE, secrets.token_hex(HANDLE_BYTES))
 
     def recover(self, token: str) -> str | CodecError | None:
         return None

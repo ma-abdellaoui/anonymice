@@ -1,11 +1,11 @@
-import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import reduce
 from types import MappingProxyType
 from typing import Final
 
-from litellm.pii.codec.base import PiiCodec, find_tokens
+from litellm.pii.codec.base import PiiCodec
+from litellm.pii.codec.grammar import TokenGrammar
 from litellm.pii.types import CodecError, IssuedToken, PiiSpan, TokenSpaceExhausted
 
 MINT_ATTEMPT_LIMIT: Final = 64
@@ -129,7 +129,7 @@ def encode_batch(
     if not located:
         return BatchDraft(texts=tuple(texts), tokens=(), mapping=MappingProxyType({}))
 
-    avoid: Final = frozenset(found.token for text in texts for found in find_tokens(text))
+    avoid: Final = codec.grammar.canonical_tokens(texts)
     assigned: Final = reduce(
         lambda state, item: _assign(state, item, texts, codec, avoid),
         located,
@@ -159,15 +159,14 @@ def encode_text(text: str, spans: Sequence[PiiSpan], codec: PiiCodec) -> Encoded
     return EncodedDraft(text=batch.texts[0], tokens=batch.tokens, mapping=batch.mapping)
 
 
-def decode_text(text: str, resolved: Mapping[str, str]) -> str:
+def decode_text(text: str, resolved: Mapping[str, str], grammar: TokenGrammar) -> str:
     """Substitute every token whose original value was recovered, in one pass.
 
     Single-pass is correctness, not speed: folding ``str.replace`` over the
-    mapping lets a later token rewrite inside an already-restored value. Longest
-    token first, so no branch is shadowed by a shorter token that prefixes it.
-    Tokens absent from ``resolved`` are left verbatim rather than blanked.
+    mapping lets a later token rewrite inside an already-restored value. Tokens
+    absent from ``resolved`` are left verbatim rather than blanked, so a partial
+    store miss degrades to showing the token instead of losing content.
     """
     if not resolved:
         return text
-    pattern: Final = re.compile("|".join(re.escape(token) for token in sorted(resolved, key=len, reverse=True)))
-    return pattern.sub(lambda match: resolved[match.group(0)], text)
+    return grammar.substitute(text, lambda found: resolved.get(found.canonical, found.text))
