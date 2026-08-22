@@ -18,11 +18,14 @@ code/extensions/
   ├── browser/        Chrome-Extension (TypeScript, MV3)
   ├── vscode/         VS-Code-Extension (TypeScript)
   └── backend/        Detection-Service für die Extensions (Node, ohne Dependencies)
-docs/                 Specs, Endpoint-Verträge, QA-Walkthroughs
+docs/                 Specs, Endpoint-Verträge, QA-Walkthroughs, Messungen
 ```
 
-Teststand: 182 Python-Tests für die PII-Schicht, 68 Unit-Tests in der Browser-Extension
+Teststand: 560 Python-Tests für die PII-Schicht, 68 Unit-Tests in der Browser-Extension
 inklusive Eval-Gate, 50 Tests im Detection-Backend.
+
+Gemessene Erkennungsqualität am Swiss-Data-Airlock-Korpus, mit Methodenkritik und
+den offenen Lücken: [BENCHMARKS.md](BENCHMARKS.md).
 
 ## Ausgangslage
 
