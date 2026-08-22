@@ -3,14 +3,73 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Anonymice — reversible tokens for the data crossing your boundary</title>
-<meta name="description" content="Anonymice detects sensitive data — names, IBANs, emails, secrets — and replaces it with a reversible token before it crosses into an LLM provider or a third-party page's storage. An LLM proxy built on LiteLLM and a browser extension, sharing one detection and token engine.">
+<title>Anonymice: Reversible PII Tokenization for LLMs and Web</title>
+<meta name="description" content="Open-source PII tokenization for LLM prompts and web pages. Swap names, IBANs, AHV numbers and secrets for reversible tokens before they leave.">
 <link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="assets/favicon-16.png" sizes="16x16" type="image/png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="canonical" href="https://ma-abdellaoui.github.io/anonymice/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#0f8ba1">
+<meta name="author" content="Anonymice">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Anonymice">
+<meta property="og:url" content="https://ma-abdellaoui.github.io/anonymice/">
+<meta property="og:title" content="Anonymice: Reversible PII Tokenization for LLMs and Web">
+<meta property="og:description" content="Open-source PII tokenization for LLM prompts and web pages. Swap names, IBANs, AHV numbers and secrets for reversible tokens before they leave.">
+<meta property="og:image" content="https://ma-abdellaoui.github.io/anonymice/assets/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Anonymice: reversible tokens for the data crossing your boundary">
+<meta property="og:locale" content="en_US">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Anonymice: Reversible PII Tokenization for LLMs and Web">
+<meta name="twitter:description" content="Open-source PII tokenization for LLM prompts and web pages. Swap names, IBANs, AHV numbers and secrets for reversible tokens before they leave.">
+<meta name="twitter:image" content="https://ma-abdellaoui.github.io/anonymice/assets/og-image.png">
+<meta name="twitter:image:alt" content="Anonymice: reversible tokens for the data crossing your boundary">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "name": "Anonymice",
+      "url": "https://ma-abdellaoui.github.io/anonymice/",
+      "applicationCategory": "SecurityApplication",
+      "applicationSubCategory": "Data Loss Prevention",
+      "operatingSystem": "Linux, macOS, Windows",
+      "description": "Open-source PII tokenization for LLM prompts and web pages. Anonymice replaces names, IBANs, Swiss AHV numbers, cards and secrets with reversible tokens before they cross into a model provider or a third-party page.",
+      "license": "https://github.com/ma-abdellaoui/anonymice/blob/main/LICENSE",
+      "isAccessibleForFree": true,
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "featureList": [
+        "Reversible PII tokenization for LLM prompts",
+        "Browser extension with per-site trust levels",
+        "Detects names, IBANs, Swiss AHV numbers, cards, phone numbers, addresses and secrets",
+        "Self-hosted token vault"
+      ]
+    },
+    {
+      "@type": "SoftwareSourceCode",
+      "name": "Anonymice",
+      "codeRepository": "https://github.com/ma-abdellaoui/anonymice",
+      "programmingLanguage": ["Python", "TypeScript"],
+      "license": "https://spdx.org/licenses/MIT.html"
+    },
+    {
+      "@type": "WebSite",
+      "name": "Anonymice",
+      "url": "https://ma-abdellaoui.github.io/anonymice/"
+    }
+  ]
+}
+</script>
 <style>
   :root{
     --ink:#12181d;
@@ -380,10 +439,10 @@
         <div class="eyebrow">LLM Proxy + Browser Extension · MIT Licensed</div>
         <h1>Your data crosses a boundary it shouldn't reach.<br><span class="accent">Anonymice puts a token there first.</span></h1>
         <p class="lede">
-          Anonymice detects sensitive data — names, IBANs, emails, secrets, and more —
-          and replaces it with a reversible token before it crosses into an LLM provider,
-          or onto a third-party page's own storage. The mapping back to the real value
-          never leaves your infrastructure.
+          Anonymice detects sensitive data, including names, IBANs, Swiss AHV numbers,
+          cards, phone numbers and secrets, then replaces it with a reversible token
+          before it crosses into an LLM provider, or onto a third-party page's own
+          storage. The mapping back to the real value never leaves your infrastructure.
         </p>
         <div class="hero-ctas">
           <a class="btn btn-primary" href="https://github.com/ma-abdellaoui/anonymice" target="_blank" rel="noopener">
@@ -392,13 +451,13 @@
           <a class="btn btn-secondary" href="#swap">See the token swap</a>
         </div>
         <div class="hero-facts">
-          <div><strong>Two surfaces</strong> — API proxy and browser extension</div>
-          <div><strong>Three trust levels</strong> — per destination</div>
-          <div><strong>MIT</strong> — open source</div>
+          <div><strong>Two surfaces</strong>: API proxy and browser extension</div>
+          <div><strong>Three trust levels</strong>, per destination</div>
+          <div><strong>MIT</strong>, open source</div>
         </div>
       </div>
       <div class="hero-art">
-        <img src="assets/anonymice-logo.png" alt="Anonymice — a masked mouse mascot, logo mark" width="1254" height="1254">
+        <img src="assets/anonymice-logo.png" alt="Anonymice logo: a masked mouse mascot on a shield" width="1254" height="1254">
       </div>
     </div>
   </section>
@@ -418,7 +477,7 @@
       <div class="swap">
         <div class="swap-row" id="row-request">
           <div class="swap-panel">
-            <span class="tag">Your side — request</span>
+            <span class="tag">Your side, request</span>
             <div class="swap-text" data-role="left">
               Please email <span class="val">Anna Meier</span> about invoice <span class="val">CH93 0076 2011 6238 5295 7</span>
             </div>
@@ -458,7 +517,7 @@
             <span class="pellet tokenized" data-pellet="response"></span>
           </div>
           <div class="swap-panel">
-            <span class="tag">Your side — restored</span>
+            <span class="tag">Your side, restored</span>
             <div class="swap-text" data-role="right2">
               I've drafted a note to <span class="val">Anna Meier</span> regarding <span class="val">CH93 0076 2011 6238 5295 7</span>.
             </div>
@@ -467,8 +526,8 @@
 
         <div class="swap-controls">
           <div class="swap-legend">
-            <span><span class="dot real"></span> real value — never crosses</span>
-            <span><span class="dot tok"></span> token — the only thing that crosses</span>
+            <span><span class="dot real"></span> real value, never crosses</span>
+            <span><span class="dot tok"></span> token, the only thing that crosses</span>
           </div>
           <button class="replay-btn" id="replayBtn" type="button">
             ↻ Replay the crossing
@@ -488,7 +547,7 @@
         <p class="lede">
           Sensitive data leaves through two doors: the API calls your application makes,
           and the web pages people copy from. Anonymice closes both with one detection
-          and token engine — not two separate products with two separate ideas of what
+          and token engine, not two separate products with two separate ideas of what
           a token is.
         </p>
       </div>
@@ -498,7 +557,7 @@
           <div class="icon" aria-hidden="true">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="6" rx="1.5" stroke="currentColor" stroke-width="1.7"/><rect x="3" y="14" width="18" height="6" rx="1.5" stroke="currentColor" stroke-width="1.7"/><circle cx="7" cy="7" r="1" fill="currentColor"/><circle cx="7" cy="17" r="1" fill="currentColor"/></svg>
           </div>
-          <h3>LLM Proxy — built on LiteLLM</h3>
+          <h3>LLM Proxy, built on LiteLLM</h3>
           <p>
             A proxy that sits between your application and any model provider, with a
             reversible PII anonymization layer built in. Point your app at Anonymice
@@ -532,9 +591,9 @@
       </div>
 
       <div class="unified-note">
-        Both surfaces write to and read from the same token vault, so a value tokenized
-        by the extension and one tokenized by the proxy resolve through the same
-        infrastructure — on your side of the boundary, never the destination's.
+        Both surfaces speak the same token grammar, so <code>&lt;PERSON_1&gt;</code> means
+        the same thing wherever it turns up. Each keeps its own vault today, and each
+        vault sits on your side of the boundary, never the destination's.
       </div>
     </div>
   </section>
@@ -560,7 +619,7 @@
           </div>
           <h3>Your own trusted ground</h3>
           <p class="desc">Sensitive spans are detected and highlighted so you always know
-            they're there — but the value itself is left untouched. There's no boundary
+            they're there, but the value itself is left untouched. There's no boundary
             here to protect it from.</p>
           <div class="trust-vis">
             <div class="row"><span class="k">Page holds</span><span class="v-real">Anna Meier</span></div>
@@ -575,7 +634,7 @@
           </div>
           <h3>Reaches storage only as a token</h3>
           <p class="desc">The destination receives and stores the token, never the real
-            value. You still see the real value — rendered back to you through a surface
+            value. You still see the real value, rendered back to you through a surface
             the destination itself cannot read.</p>
           <div class="trust-vis">
             <div class="row"><span class="k">Page holds</span><span class="v-tok">&lt;PERSON_1&gt;</span></div>
@@ -590,7 +649,7 @@
           </div>
           <h3>The token is the only thing that exists there</h3>
           <p class="desc">Real data never enters at all. What you type, what gets pasted,
-            what the page ever holds — it's the token, literally, end to end.</p>
+            what the page ever holds: it's the token, literally, end to end.</p>
           <div class="trust-vis">
             <div class="row"><span class="k">Page holds</span><span class="v-tok">&lt;PERSON_1&gt;</span></div>
             <div class="row"><span class="k">You see</span><span class="v-tok">&lt;PERSON_1&gt;</span></div>
@@ -615,7 +674,7 @@
           <div class="num"><b>01</b> Detect</div>
           <h3>Find the sensitive spans</h3>
           <p>Names, IBANs, emails, secrets, and more are located in the text before
-            anything is sent — in the outgoing prompt, or on the page in front of you.</p>
+            anything is sent, either in the outgoing prompt or on the page in front of you.</p>
         </div>
         <div class="step">
           <div class="num"><b>02</b> Tokenize</div>
@@ -649,7 +708,7 @@
           Anonymice was built for the <strong style="color:#eef3f4">Swiss Data Airlock</strong>
           challenge at <strong style="color:#eef3f4">BärnHäckt 2026</strong>, sponsored by
           <strong style="color:#eef3f4">Natron Tech</strong>. It's an independent, open-source
-          submission — Anonymice isn't affiliated with Natron Tech beyond the challenge itself.
+          submission. Anonymice isn't affiliated with Natron Tech beyond the challenge itself.
         </p>
         <div class="badge-row">
           <span class="badge">BärnHäckt 2026</span>
@@ -737,7 +796,7 @@
   }
 
   function resetStatic(){
-    // static, accessible end-state — everything legible without motion
+    // static, accessible end-state: everything legible without motion
     [leftText, rightText, left2Text, right2Text].forEach(function(el){ el.style.opacity = '1'; });
     requestPellet.classList.add('tokenized');
     responsePellet.classList.add('tokenized');

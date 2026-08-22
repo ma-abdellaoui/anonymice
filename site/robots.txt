@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://ma-abdellaoui.github.io/anonymice/sitemap.xml
