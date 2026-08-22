@@ -8282,7 +8282,7 @@ export type PiiSurface = "guardrail" | "endpoint" | "extension";
 export type PiiDirection = "detect" | "encode" | "decode";
 
 export interface PiiActivityOutcome {
-  kind: "applied" | "blocked" | "failed";
+  kind: "applied" | "blocked" | "failed" | "unscanned";
   entity_type: string | null;
   reason: string | null;
 }

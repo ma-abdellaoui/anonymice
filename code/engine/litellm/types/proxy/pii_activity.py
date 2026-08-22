@@ -8,7 +8,7 @@ from litellm.pii.activity import PiiDirection, PiiSurface
 
 
 class PiiActivityOutcomeModel(BaseModel):
-    kind: Literal["applied", "blocked", "failed"]
+    kind: Literal["applied", "blocked", "failed", "unscanned"]
     entity_type: str | None = None
     reason: str | None = None
 

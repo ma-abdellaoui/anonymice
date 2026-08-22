@@ -22,6 +22,7 @@ from litellm.pii.activity import (
     PiiDirection,
     PiiOutcome,
     PiiSurface,
+    Unscanned,
     activity_log,
     capture_enabled,
     counts_of,
@@ -65,6 +66,8 @@ def _outcome_model(outcome: PiiOutcome) -> PiiActivityOutcomeModel:
             return PiiActivityOutcomeModel(kind="blocked", entity_type=entity_type)
         case Failed(reason=reason):
             return PiiActivityOutcomeModel(kind="failed", reason=reason)
+        case Unscanned(reason=reason):
+            return PiiActivityOutcomeModel(kind="unscanned", reason=reason)
 
 
 def _capture_model(event: PiiActivityEvent, with_capture: bool) -> PiiTextCaptureModel | None:

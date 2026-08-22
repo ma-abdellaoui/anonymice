@@ -74,6 +74,13 @@ describe("PiiActivityView", () => {
     expect(await screen.findByText(/CREDIT_CARD is configured to block/)).toBeInTheDocument();
   });
 
+  it("calls out text that reached the provider unscanned", async () => {
+    const unscanned = { kind: "unscanned" as const, entity_type: null, reason: "no PII detector is configured" };
+    respondWith([anEvent({ outcome: unscanned })]);
+    render();
+    expect(await screen.findByText(/reached the provider unscanned/)).toBeInTheDocument();
+  });
+
   it("reports how much a decode resolved", async () => {
     respondWith([anEvent({ direction: "decode", token_count: 3, resolved_count: 2 })]);
     render();

@@ -15,6 +15,7 @@ from litellm.pii.activity import (
     PiiOutcome,
     PiiSurface,
     TextCapture,
+    Unscanned,
     action_counts_of,
     activity_log,
     capture_enabled,
@@ -388,6 +389,8 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
         if not texts and not tool_calls:
             return inputs
 
+        started: Final = time.monotonic()
+        direction: Final = PiiDirection.DECODE if input_type == "response" else PiiDirection.ENCODE
         service: Final = self._service(request_data)
         if service is None:
             # Forwarding unscanned is the one outcome a PII guardrail must never
@@ -395,6 +398,7 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
             # it exists to withhold.
             reason: Final = self.unmet_requirement or "no PII detector is configured"
             if self.fail_closed:
+                self._record(request_data, direction, Failed(reason=reason), started)
                 raise GuardrailRaisedException(
                     guardrail_name=self.guardrail_name,
                     message=f"PII anonymization is not available: {reason}",
@@ -406,6 +410,7 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
                 self.guardrail_name,
                 reason,
             )
+            self._record(request_data, direction, Unscanned(reason=reason), started)
             return inputs
 
         scope: Final = self._scope(request_data)

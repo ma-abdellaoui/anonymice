@@ -655,3 +655,57 @@ class TestActivityRecording:
         await run(guardrail({"Ada": "PERSON"}), ["hello Ada"], data, "request")
         event = recorded.recent(limit=1)[0]
         assert (event.model, event.key_alias, event.user_id) == ("gpt-4o-mini", "demo-key", "u1")
+
+
+class TestRecordingWithoutADetector:
+    """The two branches where nothing is scanned are the two most worth logging."""
+
+    @pytest.mark.asyncio
+    async def test_a_refused_request_is_recorded_as_failed_with_the_missing_setting(self, recorded):
+        from litellm.pii.activity import Failed
+        from litellm.proxy.guardrails.guardrail_hooks.pii_anonymizer import PiiAnonymizerGuardrail
+
+        guard = PiiAnonymizerGuardrail(
+            guardrail_name="pii", detector=None, unmet_requirement="LITELLM_PII_NER_API_BASE is not set"
+        )
+        with pytest.raises(GuardrailRaisedException):
+            await guard.apply_guardrail(inputs={"texts": ["Ada"]}, request_data={}, input_type="request")
+        outcome = recorded.recent(limit=1)[0].outcome
+        assert isinstance(outcome, Failed) and "LITELLM_PII_NER_API_BASE" in outcome.reason
+
+    @pytest.mark.asyncio
+    async def test_text_forwarded_unscanned_is_recorded_as_such(self, recorded):
+        """A success that sent real data to the provider must not look like a quiet success."""
+        from litellm.pii.activity import Unscanned
+        from litellm.proxy.guardrails.guardrail_hooks.pii_anonymizer import PiiAnonymizerGuardrail
+
+        guard = PiiAnonymizerGuardrail(guardrail_name="pii", detector=None, fail_closed=False)
+        await guard.apply_guardrail(inputs={"texts": ["Ada"]}, request_data={}, input_type="request")
+        assert isinstance(recorded.recent(limit=1)[0].outcome, Unscanned)
+
+    @pytest.mark.asyncio
+    async def test_unscanned_is_not_reported_as_a_failure(self, recorded):
+        from litellm.pii.activity import Failed
+        from litellm.proxy.guardrails.guardrail_hooks.pii_anonymizer import PiiAnonymizerGuardrail
+
+        guard = PiiAnonymizerGuardrail(guardrail_name="pii", detector=None, fail_closed=False)
+        await guard.apply_guardrail(inputs={"texts": ["Ada"]}, request_data={}, input_type="request")
+        assert not isinstance(recorded.recent(limit=1)[0].outcome, Failed)
+
+    @pytest.mark.asyncio
+    async def test_a_refused_response_records_the_decode_direction(self, recorded):
+        from litellm.pii.activity import PiiDirection
+        from litellm.proxy.guardrails.guardrail_hooks.pii_anonymizer import PiiAnonymizerGuardrail
+
+        guard = PiiAnonymizerGuardrail(guardrail_name="pii", detector=None)
+        with pytest.raises(GuardrailRaisedException):
+            await guard.apply_guardrail(inputs={"texts": ["<PERSON_1>"]}, request_data={}, input_type="response")
+        assert recorded.recent(limit=1)[0].direction is PiiDirection.DECODE
+
+    @pytest.mark.asyncio
+    async def test_nothing_to_scan_records_nothing(self, recorded):
+        from litellm.proxy.guardrails.guardrail_hooks.pii_anonymizer import PiiAnonymizerGuardrail
+
+        guard = PiiAnonymizerGuardrail(guardrail_name="pii", detector=None)
+        await guard.apply_guardrail(inputs={"texts": []}, request_data={}, input_type="request")
+        assert recorded.recent(limit=10) == ()

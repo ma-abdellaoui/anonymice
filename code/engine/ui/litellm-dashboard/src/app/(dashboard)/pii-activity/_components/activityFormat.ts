@@ -22,6 +22,7 @@ export const OUTCOME_STYLES: Record<string, string> = {
   applied: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   blocked: "bg-rose-50 text-rose-700 ring-rose-200",
   failed: "bg-orange-50 text-orange-700 ring-orange-200",
+  unscanned: "bg-rose-100 text-rose-800 ring-rose-300",
 };
 
 export const duration = (ms: number): string => (ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${Math.round(ms)}ms`);
@@ -36,6 +37,9 @@ export const totalEntities = (event: PiiActivityEvent): number =>
 
 /** One line saying what became of this call, without needing the drawer open. */
 export const outcomeSummary = (event: PiiActivityEvent): string => {
+  if (event.outcome.kind === "unscanned") {
+    return `text reached the provider unscanned: ${event.outcome.reason ?? "no detector"}`;
+  }
   if (event.outcome.kind === "blocked") return `refused: ${event.outcome.entity_type} is configured to block`;
   if (event.outcome.kind === "failed") return event.outcome.reason ?? "failed";
   if (event.direction === "detect") return `${totalEntities(event)} found, text untouched`;

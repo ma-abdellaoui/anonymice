@@ -70,7 +70,20 @@ class Failed:
     kind: Literal["failed"] = "failed"
 
 
-PiiOutcome: TypeAlias = Applied | Blocked | Failed
+@dataclass(frozen=True, slots=True)
+class Unscanned:
+    """Text reached the provider without being scanned at all.
+
+    Distinct from a failure because the request succeeded. It is the one outcome
+    that looks like nothing happened and means real data left, so it gets its
+    own arm rather than being folded into ``Failed``.
+    """
+
+    reason: str
+    kind: Literal["unscanned"] = "unscanned"
+
+
+PiiOutcome: TypeAlias = Applied | Blocked | Failed | Unscanned
 
 
 @dataclass(frozen=True, slots=True)

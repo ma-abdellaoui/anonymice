@@ -242,3 +242,14 @@ class TestIngest:
     def test_rejects_an_overlong_host(self, client, as_key):
         as_key(PLAIN_KEY)
         assert client.post("/pii/activity", json=self.a_beacon(host="h" * 300)).status_code == 422
+
+
+class TestUnscannedOutcome:
+    def test_an_unscanned_request_is_reported_distinctly_from_a_failure(self, client, as_key, empty_log):
+        from litellm.pii.activity import Unscanned
+
+        as_key(ADMIN_KEY)
+        empty_log.record(an_event(outcome=Unscanned(reason="no PII detector is configured")))
+        outcome = client.get("/pii/activity").json()["events"][0]["outcome"]
+        assert outcome["kind"] == "unscanned"
+        assert outcome["reason"] == "no PII detector is configured"
