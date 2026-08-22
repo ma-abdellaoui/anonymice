@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Final, Protocol, runtime_checkable
@@ -17,7 +17,7 @@ class AsyncKeyValueCache(Protocol):
 
     async def async_set_cache(self, key: str, value: Any, **kwargs: Any) -> Any: ...  # kwargs-ok: mirrors DualCache
 
-    async def async_get_cache(self, key: str, **kwargs: Any) -> Any: ...  # kwargs-ok: mirrors DualCache
+    async def async_batch_get_cache(self, keys: Sequence[str]) -> Sequence[object] | None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,14 +52,27 @@ class DualCacheStore:
         return None
 
     async def get(self, scope: TokenScope, token: str) -> str | None | StoreError:
+        found: Final = await self.get_many(scope, (token,))
+        return found.get(token) if isinstance(found, Mapping) else found
+
+    async def get_many(self, scope: TokenScope, tokens: Sequence[str]) -> Mapping[str, str] | StoreError:
+        if not tokens:
+            return MappingProxyType({})
         try:
-            stored: Final = await self.cache.async_get_cache(scope.cache_key(token))
+            stored: Final = await self.cache.async_batch_get_cache(tuple(scope.cache_key(token) for token in tokens))
         except Exception as exc:
             return StoreUnavailable(reason=f"cache read failed ({type(exc).__name__})")
-        if stored is None:
-            return None
-        if not isinstance(stored, str):
-            return StoreUnavailable(reason=f"unexpected cached type {type(stored).__name__}")
+        if isinstance(stored, str) or not isinstance(stored, Sequence) or len(stored) != len(tokens):
+            return StoreUnavailable(reason="cache returned a result that does not line up with the keys requested")
 
-        opened: Final = self.cipher.unseal(stored)
-        return opened if isinstance(opened, str) else StoreUnavailable(reason=opened.reason)
+        mistyped: Final = next((value for value in stored if value is not None and not isinstance(value, str)), None)
+        if mistyped is not None:
+            return StoreUnavailable(reason=f"unexpected cached type {type(mistyped).__name__}")
+
+        opened: Final = tuple(
+            (token, self.cipher.unseal(value)) for token, value in zip(tokens, stored) if isinstance(value, str)
+        )
+        failure: Final = next((value for _, value in opened if not isinstance(value, str)), None)
+        if failure is not None:
+            return StoreUnavailable(reason=failure.reason)
+        return MappingProxyType({token: value for token, value in opened if isinstance(value, str)})

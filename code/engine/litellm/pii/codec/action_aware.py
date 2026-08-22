@@ -4,6 +4,7 @@ from enum import Enum
 from typing import Final
 
 from litellm.pii.codec.base import PiiCodec
+from litellm.pii.codec.grammar import TokenGrammar
 from litellm.pii.types import CodecError, PiiSpan
 
 
@@ -30,12 +31,16 @@ class ActionAwareCodec:
     def codec_id(self) -> str:
         return self.inner.codec_id
 
+    @property
+    def grammar(self) -> TokenGrammar:
+        return self.inner.grammar
+
     def action_for(self, entity_type: str) -> SpanAction:
         return self.actions.get(entity_type, self.default_action)
 
     def mint(self, entity_type: str, ordinal: int, value: str) -> str | CodecError:
         if self.action_for(entity_type) is SpanAction.MASK:
-            return f"<{entity_type}>"
+            return self.grammar.mint_masked(entity_type)
         return self.inner.mint(entity_type, ordinal, value)
 
     def recover(self, token: str) -> str | CodecError | None:

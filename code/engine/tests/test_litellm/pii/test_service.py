@@ -36,6 +36,11 @@ class FakeCache:
             raise RuntimeError("down")
         return self.entries.get(key)
 
+    async def async_batch_get_cache(self, keys, **kwargs):
+        if self.fail:
+            raise RuntimeError("down")
+        return [self.entries.get(key) for key in keys]
+
 
 class SpanDetector:
     """Returns spans located by substring, so tests state intent not offsets."""

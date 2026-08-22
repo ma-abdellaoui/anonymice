@@ -1,18 +1,20 @@
 import pytest
 
-from litellm.pii.codec.base import find_tokens
+from litellm.pii.codec.grammar import AngleBracketGrammar
 from litellm.pii.codec.encrypted import EncryptedCodec
 from litellm.pii.codec.handle import HandleCodec
 from litellm.pii.codec.placeholder import PlaceholderCodec
-from litellm.pii.codec.transform import decode_text, encode_text
+from litellm.pii.codec.transform import decode_text, encode_batch, encode_text
 from litellm.pii.store.cipher import AesGcmCipher, NullCipher
-from litellm.pii.types import DecodeFailed, KeyUnavailable, PiiSpan
+from litellm.pii.types import DecodeFailed, KeyUnavailable, PiiSpan, TokenSpaceExhausted
 from litellm.pii.types import DetectorKind
 
 
 def span(entity_type, start, end, detector=DetectorKind.RULES):
     return PiiSpan(entity_type=entity_type, start=start, end=end, score=0.9, detector=detector)
 
+
+GRAMMAR = AngleBracketGrammar()
 
 ALL_CODECS = [
     PlaceholderCodec(),
@@ -96,20 +98,20 @@ class TestRoundTrip:
         spans = [span("PERSON", 0, 12), span("EMAIL_ADDRESS", 21, 36), span("IP_ADDRESS", 42, 50)]
         draft = encode_text(text, spans, codec)
         assert draft.text != text
-        assert decode_text(draft.text, draft.mapping) == text
+        assert decode_text(draft.text, draft.mapping, GRAMMAR) == text
 
     @pytest.mark.parametrize("codec", ALL_CODECS, ids=lambda c: c.codec_id)
     def test_every_minted_token_is_matched_by_the_token_pattern(self, codec):
         text = "Ada Lovelace emailed ada@example.com"
         draft = encode_text(text, [span("PERSON", 0, 12), span("EMAIL_ADDRESS", 21, 36)], codec)
-        found = {t.token for t in find_tokens(draft.text)}
+        found = {t.canonical for t in AngleBracketGrammar().find(draft.text)}
         assert {t.token for t in draft.tokens} == found
 
     @pytest.mark.parametrize("codec", ALL_CODECS, ids=lambda c: c.codec_id)
     def test_multibyte_round_trip(self, codec):
         text = "café ☕ Ada Lovelace 🎉"
         draft = encode_text(text, [span("PERSON", 7, 19)], codec)
-        assert decode_text(draft.text, draft.mapping) == text
+        assert decode_text(draft.text, draft.mapping, GRAMMAR) == text
 
     def test_encoded_text_contains_no_original_pii(self):
         text = "Ada Lovelace emailed ada@example.com"
@@ -120,13 +122,93 @@ class TestRoundTrip:
 
 class TestDecodeText:
     def test_unknown_token_is_left_verbatim(self):
-        assert decode_text("hello <PERSON_9> bye", {"<PERSON_1>": "Ada"}) == "hello <PERSON_9> bye"
+        assert decode_text("hello <PERSON_9> bye", {"<PERSON_1>": "Ada"}, GRAMMAR) == "hello <PERSON_9> bye"
 
     def test_empty_mapping_is_a_no_op(self):
-        assert decode_text("hello <PERSON_1>", {}) == "hello <PERSON_1>"
+        assert decode_text("hello <PERSON_1>", {}, GRAMMAR) == "hello <PERSON_1>"
 
     def test_repeated_token_occurrences_are_all_replaced(self):
-        assert decode_text("<PERSON_1> and <PERSON_1>", {"<PERSON_1>": "Ada"}) == "Ada and Ada"
+        assert decode_text("<PERSON_1> and <PERSON_1>", {"<PERSON_1>": "Ada"}, GRAMMAR) == "Ada and Ada"
+
+
+class TestDecodeIsSinglePass:
+    """A restored value must never be rescanned by a later token."""
+
+    def test_restored_value_containing_another_token_is_not_rewritten(self):
+        resolved = {"<PERSON_1>": "Ada <EMAIL_ADDRESS_1> Lovelace", "<EMAIL_ADDRESS_1>": "a@b.co"}
+        assert decode_text("hi <PERSON_1>", resolved, GRAMMAR) == "hi Ada <EMAIL_ADDRESS_1> Lovelace"
+
+    def test_result_is_independent_of_mapping_order(self):
+        pairs = (("<PERSON_1>", "Ada <EMAIL_ADDRESS_1> Lovelace"), ("<EMAIL_ADDRESS_1>", "a@b.co"))
+        forward = decode_text("hi <PERSON_1> and <EMAIL_ADDRESS_1>", dict(pairs), GRAMMAR)
+        backward = decode_text("hi <PERSON_1> and <EMAIL_ADDRESS_1>", dict(reversed(pairs)), GRAMMAR)
+        assert forward == backward == "hi Ada <EMAIL_ADDRESS_1> Lovelace and a@b.co"
+
+    def test_a_value_that_is_itself_a_token_is_not_rescanned(self):
+        resolved = {"<PERSON_1>": "<PERSON_2>", "<PERSON_2>": "Grace"}
+        assert decode_text("<PERSON_1>", resolved, GRAMMAR) == "<PERSON_2>"
+
+    def test_a_longer_token_is_not_shadowed_by_its_own_prefix(self):
+        resolved = {"<PERSON_1>": "Ada", "<PERSON_11>": "Grace"}
+        assert decode_text("<PERSON_11> met <PERSON_1>", resolved, GRAMMAR) == "Grace met Ada"
+
+
+class TestCollisionAvoidance:
+    """A token the caller's own text already contains must never be minted."""
+
+    def test_a_literal_token_in_the_input_is_not_minted(self):
+        text = "<PERSON_1> asked Ada about it"
+        draft = encode_text(text, [span("PERSON", 17, 20)], PlaceholderCodec())
+        assert "<PERSON_1>" not in {t.token for t in draft.tokens}
+        assert decode_text(draft.text, draft.mapping, GRAMMAR) == text
+
+    def test_the_caller_s_literal_token_survives_the_round_trip(self):
+        text = "<PERSON_1> asked Ada about it"
+        draft = encode_text(text, [span("PERSON", 17, 20)], PlaceholderCodec())
+        assert draft.text.startswith("<PERSON_1> asked <PERSON_2>")
+
+    def test_consecutive_literals_are_all_skipped(self):
+        text = "<PERSON_1> <PERSON_2> and Ada"
+        draft = encode_text(text, [span("PERSON", 26, 29)], PlaceholderCodec())
+        assert {t.token for t in draft.tokens} == {"<PERSON_3>"}
+
+    def test_a_literal_of_another_entity_type_does_not_shift_this_one(self):
+        text = "<EMAIL_ADDRESS_1> from Ada"
+        draft = encode_text(text, [span("PERSON", 23, 26)], PlaceholderCodec())
+        assert {t.token for t in draft.tokens} == {"<PERSON_1>"}
+
+    def test_the_avoid_set_spans_the_whole_batch(self):
+        texts = ("earlier we wrote <PERSON_1>", "Ada replied")
+        batch = encode_batch(texts, ((), (span("PERSON", 0, 3),)), PlaceholderCodec())
+        assert batch.texts[1] == "<PERSON_2> replied"
+
+    def test_a_masked_placeholder_does_not_block_an_ordinal(self):
+        text = "<PERSON> saw Ada"
+        draft = encode_text(text, [span("PERSON", 13, 16)], PlaceholderCodec())
+        assert {t.token for t in draft.tokens} == {"<PERSON_1>"}
+
+    def test_minting_gives_up_rather_than_looping_forever(self):
+        class StuckCodec:
+            codec_id = "stuck"
+            grammar = GRAMMAR
+
+            def mint(self, entity_type, ordinal, value):
+                return "<PERSON_1>"
+
+            def recover(self, token):
+                return None
+
+        result = encode_text("<PERSON_1> and Ada", [span("PERSON", 15, 18)], StuckCodec())
+        assert isinstance(result, TokenSpaceExhausted)
+
+
+class TestCollisionRoundTrip:
+    @pytest.mark.parametrize("codec", ALL_CODECS, ids=lambda c: c.codec_id)
+    def test_value_holding_another_entity_s_token_text_round_trips(self, codec):
+        text = "Ada <EMAIL_ADDRESS_1> Lovelace mailed a@b.co"
+        spans = [span("PERSON", 0, 30), span("EMAIL_ADDRESS", 38, 44)]
+        draft = encode_text(text, spans, codec)
+        assert decode_text(draft.text, draft.mapping, GRAMMAR) == text
 
 
 class TestTokenRandomness:
@@ -166,3 +248,34 @@ class TestCodecRecover:
     def test_encrypted_codec_ignores_a_non_encrypted_token(self):
         codec = EncryptedCodec(cipher=NullCipher())
         assert codec.recover("<PERSON_1>") is None
+
+
+class TestTolerantDecode:
+    """Decode absorbs the distortions a model introduces; see the grammar tests for the full table."""
+
+    def test_a_case_distorted_token_still_resolves(self):
+        assert decode_text("hello <person_1>", {"<PERSON_1>": "Ada"}, GRAMMAR) == "hello Ada"
+
+    def test_a_markdown_escaped_token_still_resolves(self):
+        assert decode_text(r"hello \<PERSON_1\>", {"<PERSON_1>": "Ada"}, GRAMMAR) == "hello Ada"
+
+    def test_an_emphasised_token_resolves_and_keeps_its_emphasis(self):
+        assert decode_text("say **<PERSON_1>**", {"<PERSON_1>": "Ada"}, GRAMMAR) == "say **Ada**"
+
+    def test_a_possessive_suffix_survives(self):
+        assert decode_text("<PERSON_1>'s work", {"<PERSON_1>": "Ada"}, GRAMMAR) == "Ada's work"
+
+    def test_a_truncated_token_is_left_verbatim_and_never_guessed(self):
+        assert decode_text("ends with <PERSON_", {"<PERSON_1>": "Ada"}, GRAMMAR) == "ends with <PERSON_"
+
+    def test_a_never_issued_token_is_left_verbatim(self):
+        assert decode_text("<PERSON_9> spoke", {"<PERSON_1>": "Ada"}, GRAMMAR) == "<PERSON_9> spoke"
+
+    def test_a_translated_label_is_left_verbatim(self):
+        assert decode_text("<PERSONNE_1> spoke", {"<PERSON_1>": "Ada"}, GRAMMAR) == "<PERSONNE_1> spoke"
+
+    def test_a_distorted_literal_in_the_input_is_also_avoided_at_mint_time(self):
+        text = "earlier: < person_1 >, and Ada"
+        draft = encode_text(text, [span("PERSON", 27, 30)], PlaceholderCodec())
+        assert {t.token for t in draft.tokens} == {"<PERSON_2>"}
+        assert decode_text(draft.text, draft.mapping, GRAMMAR) == text

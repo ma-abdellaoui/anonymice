@@ -5,7 +5,10 @@ from types import MappingProxyType
 from typing import Final
 
 from litellm.pii.codec.base import PiiCodec
-from litellm.pii.types import CodecError, IssuedToken, PiiSpan
+from litellm.pii.codec.grammar import TokenGrammar
+from litellm.pii.types import CodecError, IssuedToken, PiiSpan, TokenSpaceExhausted
+
+MINT_ATTEMPT_LIMIT: Final = 64
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +33,12 @@ class _Placement:
 
 
 @dataclass(frozen=True, slots=True)
+class _Minted:
+    token: str
+    ordinal: int
+
+
+@dataclass(frozen=True, slots=True)
 class _Assignment:
     by_value: Mapping[tuple[str, str], str]
     ordinals: Mapping[str, int]
@@ -37,11 +46,33 @@ class _Assignment:
     error: CodecError | None
 
 
+def _mint_unused(
+    codec: PiiCodec,
+    entity_type: str,
+    ordinal: int,
+    value: str,
+    avoid: frozenset[str],
+) -> _Minted | CodecError:
+    """Mint at the first ordinal whose token is absent from the source.
+
+    Minting one the caller's text already contains makes decode substitute their
+    literal occurrence too, corrupting prose never detected as PII.
+    """
+    for attempt in range(MINT_ATTEMPT_LIMIT):
+        candidate = codec.mint(entity_type, ordinal + attempt, value)
+        if not isinstance(candidate, str):
+            return candidate
+        if candidate not in avoid:
+            return _Minted(token=candidate, ordinal=ordinal + attempt)
+    return TokenSpaceExhausted(entity_type=entity_type)
+
+
 def _assign(
     state: _Assignment,
     located: tuple[int, PiiSpan],
     texts: Sequence[str],
     codec: PiiCodec,
+    avoid: frozenset[str],
 ) -> _Assignment:
     if state.error is not None:
         return state
@@ -54,14 +85,14 @@ def _assign(
         return replace(state, placements=(*state.placements, _Placement(text_index, span, existing)))
 
     ordinal: Final = state.ordinals.get(span.entity_type, 0) + 1
-    minted: Final = codec.mint(span.entity_type, ordinal, value)
-    if not isinstance(minted, str):
+    minted: Final = _mint_unused(codec, span.entity_type, ordinal, value, avoid)
+    if not isinstance(minted, _Minted):
         return replace(state, error=minted)
 
     return _Assignment(
-        by_value=MappingProxyType({**state.by_value, identity: minted}),
-        ordinals=MappingProxyType({**state.ordinals, span.entity_type: ordinal}),
-        placements=(*state.placements, _Placement(text_index, span, minted)),
+        by_value=MappingProxyType({**state.by_value, identity: minted.token}),
+        ordinals=MappingProxyType({**state.ordinals, span.entity_type: minted.ordinal}),
+        placements=(*state.placements, _Placement(text_index, span, minted.token)),
         error=None,
     )
 
@@ -98,8 +129,9 @@ def encode_batch(
     if not located:
         return BatchDraft(texts=tuple(texts), tokens=(), mapping=MappingProxyType({}))
 
+    avoid: Final = codec.grammar.canonical_tokens(texts)
     assigned: Final = reduce(
-        lambda state, item: _assign(state, item, texts, codec),
+        lambda state, item: _assign(state, item, texts, codec, avoid),
         located,
         _Assignment(by_value=MappingProxyType({}), ordinals=MappingProxyType({}), placements=(), error=None),
     )
@@ -127,12 +159,14 @@ def encode_text(text: str, spans: Sequence[PiiSpan], codec: PiiCodec) -> Encoded
     return EncodedDraft(text=batch.texts[0], tokens=batch.tokens, mapping=batch.mapping)
 
 
-def decode_text(text: str, resolved: Mapping[str, str]) -> str:
-    """Substitute every token whose original value was recovered.
+def decode_text(text: str, resolved: Mapping[str, str], grammar: TokenGrammar) -> str:
+    """Substitute every token whose original value was recovered, in one pass.
 
-    Tokens absent from ``resolved`` are left verbatim rather than blanked, so a
-    partial store miss degrades to showing the token instead of losing content.
+    Single-pass is correctness, not speed: folding ``str.replace`` over the
+    mapping lets a later token rewrite inside an already-restored value. Tokens
+    absent from ``resolved`` are left verbatim rather than blanked, so a partial
+    store miss degrades to showing the token instead of losing content.
     """
     if not resolved:
         return text
-    return reduce(lambda acc, item: acc.replace(item[0], item[1]), resolved.items(), text)
+    return grammar.substitute(text, lambda found: resolved.get(found.canonical, found.text))

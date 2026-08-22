@@ -990,6 +990,30 @@ model LiteLLM_ManagedFileTable {
   @@index([team_id, created_at(sort: Desc)])
 }
 
+model LiteLLM_PiiTokenTable {
+  token_id        String   @id                 // the handle carried inside <PERSON:{handle}>
+  entity_type     String                       // the only column search filters on; never a value-derived column
+  ciphertext      String                       // AEAD blob bound to token_id|scope_type|scope_id|key_version
+  key_version     Int      @default(1)
+  algorithm       String   @default("aes-256-gcm")
+
+  scope_type      String                       // key | user | team | organization
+  scope_id        String                       // hashed key token, user_id, team_id, or organization_id
+  session_id      String?                      // groups the tokens minted by one /pii/encode call
+  subject_id      String?                      // opaque end-user id, for subject-scoped erasure and export
+
+  created_at       DateTime  @default(now())
+  created_by       String?
+  expires_at       DateTime?
+  last_accessed_at DateTime?
+
+  @@index([scope_type, scope_id])
+  @@index([session_id])
+  @@index([expires_at])
+  @@index([scope_type, scope_id, entity_type])
+  @@index([subject_id])
+}
+
 model LiteLLM_ManagedObjectTable { // for batches or finetuning jobs which use the
   id String @id @default(uuid())
   unified_object_id String @unique // The base64 encoded unified file ID

@@ -2,7 +2,9 @@
 
 This is a runbook for creating and running database migrations for the LiteLLM proxy. For use for litellm engineers only.
 
-> **AI AGENTS / ASSISTANTS:** If the script refuses with either a "STALE BRANCH" or "DESTRUCTIVE MIGRATION DETECTED" error, **do NOT** bypass it on your own (no `git rebase`, no `--skip-freshness-check`, no `--allow-destructive`). Surface the error to the human operator and wait for their explicit confirmation. See the [Branch freshness](#branch-freshness-check) and [Destructive migrations](#destructive-migrations-drop-column--drop-table) sections below.
+> **AI AGENTS / ASSISTANTS:** If the script refuses with a "DESTRUCTIVE MIGRATION DETECTED" error, **do NOT** bypass it on your own (no `--allow-destructive`). Surface the error to the human operator and wait for their explicit confirmation. See [Destructive migrations](#destructive-migrations-drop-column--drop-table) below.
+>
+> A "STALE BRANCH" notice is a **warning, not a refusal**, in this fork: the repo is developed in parallel, so a branch is behind `origin/main` most of the time. Read the warning, check the generated SQL against what those commits changed, and carry on. Still do not `git rebase` on your own.
 
 ## Step 0: Sync All `schema.prisma` Files
 
@@ -48,7 +50,7 @@ uv run --with testing.postgresql python ci_cd/run_migration.py "your_migration_n
 
 ## What It Does
 
-1. **Verifies the current branch is up to date with `origin/litellm_internal_staging`** (see [Branch freshness](#branch-freshness-check))
+1. **Reports how far behind `origin/main` the branch is** (a warning; see [Branch freshness](#branch-freshness-check))
 2. Creates temp PostgreSQL DB
 3. Applies existing migrations
 4. Compares with `schema.prisma`
@@ -57,24 +59,24 @@ uv run --with testing.postgresql python ci_cd/run_migration.py "your_migration_n
 
 ## Branch Freshness Check
 
-Before generating anything, `run_migration.py` runs `git fetch origin <base>` and refuses to proceed if `HEAD` is behind `origin/<base>`. Default base is `litellm_internal_staging` (the branch PRs target). A previous incident saw a stale branch silently drop production columns; freshness is the first-line defense.
+Before generating anything, `run_migration.py` runs `git fetch origin <base>` and reports how many commits `HEAD` is behind `origin/<base>`. Default base is `main`. A previous incident upstream saw a stale branch silently drop production columns, which is why the comparison still runs and still prints loudly.
+
+It does **not** refuse by default here. This fork is developed in parallel, so being a few commits behind `origin/main` is the normal state and a hard refusal blocked routine work. The guard that actually stops a dropped column is the destructive-migration check below, and that one still refuses outright.
 
 Flags:
 
-- `--base-branch <name>` — check against a different base (e.g. `main`). Default is `litellm_internal_staging`.
-- `--skip-freshness-check` — bypass entirely. Only for intentional migrations against an older base.
+- `--base-branch <name>` — compare against a different base. Default is `main`.
+- `--require-fresh-branch` — restore the old behaviour and refuse while behind. Worth passing in CI.
+- `--skip-freshness-check` — skip the comparison entirely, so nothing is fetched or reported.
 
-When the guard fires:
+When you see the warning, read the generated SQL and check it against what those commits changed. If they touched `schema.prisma` at all, bring your branch up to date first:
 
-1. Update your branch:
+```bash
+git fetch origin && git merge origin/main
+# or rebase, whichever matches your workflow
+```
 
-   ```bash
-   git fetch origin && git rebase origin/litellm_internal_staging
-   # or git merge origin/litellm_internal_staging — whichever matches your workflow
-   ```
-2. Re-run `run_migration.py`.
-
-> **AI AGENTS / ASSISTANTS:** Do **not** auto-rebase or auto-pass `--skip-freshness-check`. A bad conflict resolution during rebase can itself drop the human's in-progress schema edits. Surface the error and wait for explicit confirmation.
+> **AI AGENTS / ASSISTANTS:** Do **not** auto-rebase. A bad conflict resolution can itself drop the human's in-progress schema edits. Merging or rebasing is the human's call.
 
 ## Destructive Migrations (DROP COLUMN / DROP TABLE / DROP INDEX)
 

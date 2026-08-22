@@ -29,6 +29,7 @@ def initialize_guardrail(litellm_params: "LitellmParams", guardrail: "Guardrail"
         detector=detector,
         codec_id=getattr(litellm_params, "pii_codec", None) or "placeholder",
         pii_entities_config=litellm_params.pii_entities_config,
+        pii_mapping_scope=getattr(litellm_params, "pii_mapping_scope", None),
         event_hook=litellm_params.mode,
         default_on=litellm_params.default_on,
     )

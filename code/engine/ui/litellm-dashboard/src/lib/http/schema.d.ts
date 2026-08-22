@@ -9842,6 +9842,142 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pii/decode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decode Pii
+         * @description Restore original values for tokens this caller's scope owns.
+         */
+        post: operations["decode_pii_pii_decode_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pii/detect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Detect Pii
+         * @description Report what PII is present without altering the text.
+         */
+        post: operations["detect_pii_pii_detect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pii/encode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Encode Pii
+         * @description Replace detected PII with tokens and persist the mapping for later decode.
+         */
+        post: operations["encode_pii_pii_encode_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pii/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search Pii
+         * @description Find which tokens decode to a value.
+         *
+         *     A strictly more powerful capability than resolving one known token, so it
+         *     carries its own ``allow_pii_search`` permission rather than riding on
+         *     ``allow_pii_decode``, is confined to the caller's scope, and is audited.
+         */
+        post: operations["search_pii_pii_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pii/session/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Pii Session
+         * @description What a session holds, without opening any of it.
+         *
+         *     Metadata only, so this needs scope membership rather than the decode grant:
+         *     seeing that a token exists and when it expires is a different question from
+         *     seeing what it says.
+         */
+        get: operations["read_pii_session_pii_session__session_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Pii Session
+         * @description Erase every token one encode call minted. Membership in the scope is enough; reading it is not.
+         */
+        delete: operations["revoke_pii_session_pii_session__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pii/subject/{subject_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Pii Subject
+         * @description Every value held for one subject. A bulk decode, so it needs the decode grant and is audited.
+         */
+        get: operations["export_pii_subject_pii_subject__subject_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Pii Subject
+         * @description Erasure for one subject. Only finds what was tagged with a ``subject_id`` at encode time.
+         */
+        delete: operations["revoke_pii_subject_pii_subject__subject_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/plugin-proxy/{plugin_name}/{path}": {
         parameters: {
             query?: never;
@@ -29284,6 +29420,11 @@ export interface components {
             /** Mcp Server Ids */
             mcp_server_ids: string[];
         };
+        /**
+         * MatchMode
+         * @enum {string}
+         */
+        MatchMode: "exact" | "normalized" | "substring";
         /** Member */
         Member: {
             /**
@@ -30968,11 +31109,180 @@ export interface components {
          * @enum {string}
          */
         PiiAction: "BLOCK" | "MASK";
+        /** PiiDecodeRequest */
+        PiiDecodeRequest: {
+            /**
+             * Scope Id
+             * @description Read another scope's tokens. Requires allow_pii_decode_any, and every use is audited.
+             */
+            scope_id?: string | null;
+            scope_type?: components["schemas"]["VaultScopeType"] | null;
+            /** Session Id */
+            session_id: string;
+            /** Texts */
+            texts: string[];
+        };
+        /** PiiDecodeResponse */
+        PiiDecodeResponse: {
+            /** Texts */
+            texts: string[];
+        };
+        /** PiiDetectRequest */
+        PiiDetectRequest: {
+            /** Entities */
+            entities?: string[] | null;
+            /**
+             * Language
+             * @default en
+             */
+            language: string;
+            /** Texts */
+            texts: string[];
+        };
+        /** PiiDetectResponse */
+        PiiDetectResponse: {
+            /** Results */
+            results: components["schemas"]["PiiDetectResult"][];
+        };
+        /** PiiDetectResult */
+        PiiDetectResult: {
+            /** Ner Stage Ran */
+            ner_stage_ran: boolean;
+            /** Spans */
+            spans: components["schemas"]["PiiSpanModel"][];
+        };
+        /** PiiEncodeRequest */
+        PiiEncodeRequest: {
+            /** Entities */
+            entities?: string[] | null;
+            /**
+             * Language
+             * @default en
+             */
+            language: string;
+            scope_type?: components["schemas"]["VaultScopeType"] | null;
+            /** Session Id */
+            session_id?: string | null;
+            /**
+             * Subject Id
+             * @description Opaque subject reference for erasure and export. Never an email address or a name.
+             */
+            subject_id?: string | null;
+            /** Texts */
+            texts: string[];
+        };
+        /** PiiEncodeResponse */
+        PiiEncodeResponse: {
+            /** Session Id */
+            session_id: string;
+            /** Texts */
+            texts: string[];
+            /** Tokens */
+            tokens: components["schemas"]["PiiIssuedTokenModel"][];
+        };
         /**
          * PiiEntityType
          * @enum {string}
          */
         PiiEntityType: "CREDIT_CARD" | "CRYPTO" | "DATE_TIME" | "EMAIL_ADDRESS" | "IBAN_CODE" | "IP_ADDRESS" | "NRP" | "LOCATION" | "PERSON" | "PHONE_NUMBER" | "MEDICAL_LICENSE" | "URL" | "US_BANK_NUMBER" | "US_DRIVER_LICENSE" | "US_ITIN" | "US_PASSPORT" | "US_SSN" | "UK_NHS" | "UK_NINO" | "ES_NIF" | "ES_NIE" | "IT_FISCAL_CODE" | "IT_DRIVER_LICENSE" | "IT_VAT_CODE" | "IT_PASSPORT" | "IT_IDENTITY_CARD" | "PL_PESEL" | "SG_NRIC_FIN" | "SG_UEN" | "AU_ABN" | "AU_ACN" | "AU_TFN" | "AU_MEDICARE" | "IN_PAN" | "IN_AADHAAR" | "IN_VEHICLE_REGISTRATION" | "IN_VOTER" | "IN_PASSPORT" | "FI_PERSONAL_IDENTITY_CODE";
+        /** PiiExportResponse */
+        PiiExportResponse: {
+            scope_type: components["schemas"]["VaultScopeType"];
+            /** Subject Id */
+            subject_id: string;
+            /** Values */
+            values: components["schemas"]["PiiExportedValueModel"][];
+        };
+        /** PiiExportedValueModel */
+        PiiExportedValueModel: {
+            /** Token */
+            token: string;
+            /** Value */
+            value: string;
+        };
+        /** PiiIssuedTokenModel */
+        PiiIssuedTokenModel: {
+            /** Codec Id */
+            codec_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Token */
+            token: string;
+        };
+        /** PiiRevokeResponse */
+        PiiRevokeResponse: {
+            /** Revoked */
+            revoked: boolean;
+            scope_type: components["schemas"]["VaultScopeType"];
+        };
+        /** PiiSearchHitModel */
+        PiiSearchHitModel: {
+            /** Entity Type */
+            entity_type: string;
+            /** Session Id */
+            session_id: string | null;
+            /** Subject Id */
+            subject_id: string | null;
+            /** Token */
+            token: string;
+        };
+        /** PiiSearchRequest */
+        PiiSearchRequest: {
+            /** Entity Type */
+            entity_type?: string | null;
+            /** @default normalized */
+            mode: components["schemas"]["MatchMode"];
+            /** Query */
+            query: string;
+            scope_type?: components["schemas"]["VaultScopeType"] | null;
+            /** Subject Id */
+            subject_id?: string | null;
+        };
+        /** PiiSearchResponse */
+        PiiSearchResponse: {
+            /** Hits */
+            hits: components["schemas"]["PiiSearchHitModel"][];
+            /** Scanned */
+            scanned: number;
+            scope_type: components["schemas"]["VaultScopeType"];
+        };
+        /** PiiSessionResponse */
+        PiiSessionResponse: {
+            scope_type: components["schemas"]["VaultScopeType"];
+            /** Session Id */
+            session_id: string;
+            /** Tokens */
+            tokens: components["schemas"]["PiiTokenMetadataModel"][];
+        };
+        /** PiiSpanModel */
+        PiiSpanModel: {
+            /** Detector */
+            detector: string;
+            /** End */
+            end: number;
+            /** Entity Type */
+            entity_type: string;
+            /** Score */
+            score: number;
+            /** Start */
+            start: number;
+        };
+        /**
+         * PiiTokenMetadataModel
+         * @description Everything but the value. No ciphertext, no plaintext, ever.
+         */
+        PiiTokenMetadataModel: {
+            /** Created At */
+            created_at: string | null;
+            /** Entity Type */
+            entity_type: string;
+            /** Expires At */
+            expires_at: string | null;
+            /** Subject Id */
+            subject_id: string | null;
+            /** Token */
+            token: string;
+        };
         /**
          * PipelineTestRequest
          * @description Request body for testing a guardrail pipeline with sample messages.
@@ -36414,6 +36724,12 @@ export interface components {
              */
             status?: string | null;
         };
+        /**
+         * VaultScopeType
+         * @description Who may resolve a stored token, most restrictive first.
+         * @enum {string}
+         */
+        VaultScopeType: "key" | "user" | "team" | "organization";
         /** VectorStoreDeleteRequest */
         VectorStoreDeleteRequest: {
             /** Vector Store Id */
@@ -49683,6 +49999,270 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    decode_pii_pii_decode_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PiiDecodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiDecodeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    detect_pii_pii_detect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PiiDetectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiDetectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    encode_pii_pii_encode_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PiiEncodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiEncodeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_pii_pii_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PiiSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_pii_session_pii_session__session_id__get: {
+        parameters: {
+            query?: {
+                scope_type?: components["schemas"]["VaultScopeType"] | null;
+            };
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiSessionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_pii_session_pii_session__session_id__delete: {
+        parameters: {
+            query?: {
+                scope_type?: components["schemas"]["VaultScopeType"] | null;
+            };
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiRevokeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_pii_subject_pii_subject__subject_id__get: {
+        parameters: {
+            query?: {
+                scope_type?: components["schemas"]["VaultScopeType"] | null;
+            };
+            header?: never;
+            path: {
+                subject_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiExportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_pii_subject_pii_subject__subject_id__delete: {
+        parameters: {
+            query?: {
+                scope_type?: components["schemas"]["VaultScopeType"] | null;
+            };
+            header?: never;
+            path: {
+                subject_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiRevokeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

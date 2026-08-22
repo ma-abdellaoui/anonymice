@@ -20,11 +20,12 @@ from collections import Counter
 from pathlib import Path
 from typing import Final, NamedTuple
 
+from engine_layout import DEFAULT_BASE, base_engine_root
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STRICT_CONFIG = REPO_ROOT / "ruff-strict.toml"
 BUDGET_PATH = REPO_ROOT / "ruff-strict-budget.json"
 TARGET = "litellm"
-DEFAULT_BASE = "origin/litellm_internal_staging"
 
 _HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
@@ -100,8 +101,9 @@ def base_counts(ref: str) -> dict:
     worktree = parent / "wt"
     try:
         _run(["git", "worktree", "add", "--detach", str(worktree), ref])
-        shutil.copy(STRICT_CONFIG, worktree / "ruff-strict.toml")
-        items = _ruff_json(worktree, worktree / "ruff-strict.toml")
+        engine = base_engine_root(worktree, REPO_ROOT)
+        shutil.copy(STRICT_CONFIG, engine / "ruff-strict.toml")
+        items = _ruff_json(engine, engine / "ruff-strict.toml")
         return dict(Counter(item["code"] for item in items))
     finally:
         _run(["git", "worktree", "remove", "--force", str(worktree)])

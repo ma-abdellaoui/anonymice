@@ -15,6 +15,7 @@ class FakeCache:
         self.entries = {}
         self.ttls = {}
         self.fail = False
+        self.batch_calls = 0
 
     async def async_set_cache(self, key, value, **kwargs):
         if self.fail:
@@ -26,6 +27,12 @@ class FakeCache:
         if self.fail:
             raise RuntimeError("redis down")
         return self.entries.get(key)
+
+    async def async_batch_get_cache(self, keys, **kwargs):
+        if self.fail:
+            raise RuntimeError("redis down")
+        self.batch_calls += 1
+        return [self.entries.get(key) for key in keys]
 
 
 class TestTokenScope:
@@ -72,6 +79,23 @@ class TestRequestScopedStore:
         backing = {"<PERSON_1>": "Ada"}
         await RequestScopedStore(backing).put_many(SCOPE, {"<EMAIL_ADDRESS_1>": "a@b.co"})
         assert backing == {"<PERSON_1>": "Ada", "<EMAIL_ADDRESS_1>": "a@b.co"}
+
+    @pytest.mark.asyncio
+    async def test_get_many_returns_every_known_token(self):
+        store = RequestScopedStore({"<PERSON_1>": "Ada", "<EMAIL_ADDRESS_1>": "a@b.co"})
+        assert await store.get_many(SCOPE, ["<PERSON_1>", "<EMAIL_ADDRESS_1>"]) == {
+            "<PERSON_1>": "Ada",
+            "<EMAIL_ADDRESS_1>": "a@b.co",
+        }
+
+    @pytest.mark.asyncio
+    async def test_get_many_omits_unknown_tokens_rather_than_mapping_them_to_none(self):
+        store = RequestScopedStore({"<PERSON_1>": "Ada"})
+        assert await store.get_many(SCOPE, ["<PERSON_1>", "<PERSON_9>"]) == {"<PERSON_1>": "Ada"}
+
+    @pytest.mark.asyncio
+    async def test_get_many_of_nothing_is_empty(self):
+        assert await RequestScopedStore({"<PERSON_1>": "Ada"}).get_many(SCOPE, []) == {}
 
 
 class TestDualCacheStore:
@@ -140,6 +164,86 @@ class TestDualCacheStore:
         cache.fail = True
         result = await DualCacheStore(cache=cache).get(SCOPE, "<PERSON_1>")
         assert isinstance(result, StoreUnavailable)
+
+    @pytest.mark.asyncio
+    async def test_get_many_returns_every_known_token(self):
+        store = DualCacheStore(cache=FakeCache())
+        await store.put_many(SCOPE, {"<PERSON_1>": "Ada", "<EMAIL_ADDRESS_1>": "a@b.co"})
+        assert await store.get_many(SCOPE, ["<PERSON_1>", "<EMAIL_ADDRESS_1>"]) == {
+            "<PERSON_1>": "Ada",
+            "<EMAIL_ADDRESS_1>": "a@b.co",
+        }
+
+    @pytest.mark.asyncio
+    async def test_get_many_costs_one_round_trip_regardless_of_token_count(self):
+        cache = FakeCache()
+        store = DualCacheStore(cache=cache)
+        await store.put_many(SCOPE, {f"<PERSON_{i}>": f"p{i}" for i in range(20)})
+        await store.get_many(SCOPE, [f"<PERSON_{i}>" for i in range(20)])
+        assert cache.batch_calls == 1
+
+    @pytest.mark.asyncio
+    async def test_get_many_omits_unknown_tokens(self):
+        store = DualCacheStore(cache=FakeCache())
+        await store.put_many(SCOPE, {"<PERSON_1>": "Ada"})
+        assert await store.get_many(SCOPE, ["<PERSON_1>", "<PERSON_9>"]) == {"<PERSON_1>": "Ada"}
+
+    @pytest.mark.asyncio
+    async def test_get_many_is_scoped_like_get(self):
+        cache = FakeCache()
+        store = DualCacheStore(cache=cache)
+        await store.put_many(SCOPE, {"<PERSON_1>": "Ada"})
+        assert await store.get_many(OTHER_SCOPE, ["<PERSON_1>"]) == {}
+
+    @pytest.mark.asyncio
+    async def test_get_many_decrypts_what_put_many_sealed(self):
+        store = DualCacheStore(cache=FakeCache(), cipher=AesGcmCipher.from_secret("secret"))
+        await store.put_many(SCOPE, {"<PERSON_1>": "Ada Lovelace"})
+        assert await store.get_many(SCOPE, ["<PERSON_1>"]) == {"<PERSON_1>": "Ada Lovelace"}
+
+    @pytest.mark.asyncio
+    async def test_get_many_read_failure_is_reported_not_swallowed(self):
+        cache = FakeCache()
+        cache.fail = True
+        assert isinstance(await DualCacheStore(cache=cache).get_many(SCOPE, ["<PERSON_1>"]), StoreUnavailable)
+
+    @pytest.mark.asyncio
+    async def test_get_many_with_the_wrong_key_fails_rather_than_returning_garbage(self):
+        cache = FakeCache()
+        await DualCacheStore(cache=cache, cipher=AesGcmCipher.from_secret("key-a")).put_many(
+            SCOPE, {"<PERSON_1>": "Ada"}
+        )
+        result = await DualCacheStore(cache=cache, cipher=AesGcmCipher.from_secret("key-b")).get_many(
+            SCOPE, ["<PERSON_1>"]
+        )
+        assert isinstance(result, StoreUnavailable)
+
+    @pytest.mark.asyncio
+    async def test_get_many_rejects_a_result_that_does_not_line_up_with_the_keys(self):
+        class MisalignedCache(FakeCache):
+            async def async_batch_get_cache(self, keys, **kwargs):
+                return [None]
+
+        store = DualCacheStore(cache=MisalignedCache())
+        assert isinstance(await store.get_many(SCOPE, ["<PERSON_1>", "<PERSON_2>"]), StoreUnavailable)
+
+    @pytest.mark.asyncio
+    async def test_get_many_rejects_a_bare_string_rather_than_zipping_its_characters(self):
+        class StringReturningCache(FakeCache):
+            async def async_batch_get_cache(self, keys, **kwargs):
+                return "x"
+
+        store = DualCacheStore(cache=StringReturningCache())
+        assert isinstance(await store.get_many(SCOPE, ["<PERSON_1>"]), StoreUnavailable)
+
+    @pytest.mark.asyncio
+    async def test_get_many_treats_a_swallowed_batch_failure_as_an_outage(self):
+        class SwallowingCache(FakeCache):
+            async def async_batch_get_cache(self, keys, **kwargs):
+                return None
+
+        store = DualCacheStore(cache=SwallowingCache())
+        assert isinstance(await store.get_many(SCOPE, ["<PERSON_1>"]), StoreUnavailable)
 
     @pytest.mark.asyncio
     async def test_seal_failure_aborts_the_write(self):

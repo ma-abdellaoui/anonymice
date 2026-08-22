@@ -9,14 +9,17 @@ import {
   piiEncodeCall,
   type PiiDetectResult,
   type PiiEncodeResponse,
+  type PiiScopeType,
 } from "@/components/networking";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { UiLoadingSpinner } from "@/components/ui/ui-loading-spinner";
 import { toast } from "@/lib/toast";
 
 const SAMPLE_TEXT = "Ada Lovelace emailed ada@example.com from 10.0.0.1 about card 4111 1111 1111 1111.";
+const SCOPES: PiiScopeType[] = ["key", "user", "team", "organization"];
 
 interface AnonymizationPlaygroundProps {
   accessToken: string | null;
@@ -30,6 +33,8 @@ const AnonymizationPlayground: React.FC<AnonymizationPlaygroundProps> = ({ acces
   const [encoded, setEncoded] = useState<PiiEncodeResponse | null>(null);
   const [decoded, setDecoded] = useState<string | null>(null);
   const [busy, setBusy] = useState<"detect" | "encode" | "decode" | null>(null);
+  const [scope, setScope] = useState<PiiScopeType>("key");
+  const [subjectId, setSubjectId] = useState("");
 
   const run = async (stage: "detect" | "encode" | "decode", action: () => Promise<void>) => {
     if (!accessToken) return;
@@ -51,7 +56,11 @@ const AnonymizationPlayground: React.FC<AnonymizationPlaygroundProps> = ({ acces
 
   const onEncode = () =>
     run("encode", async () => {
-      const response = await piiEncodeCall(accessToken!, [text], encoded?.session_id);
+      const response = await piiEncodeCall(accessToken!, [text], {
+        sessionId: encoded?.session_id,
+        scopeType: scope,
+        subjectId: subjectId.trim() || undefined,
+      });
       setEncoded(response);
       setDecoded(null);
     });
@@ -59,7 +68,7 @@ const AnonymizationPlayground: React.FC<AnonymizationPlaygroundProps> = ({ acces
   const onDecode = () =>
     run("decode", async () => {
       if (!encoded) return;
-      const response = await piiDecodeCall(accessToken!, encoded.texts, encoded.session_id);
+      const response = await piiDecodeCall(accessToken!, encoded.texts, encoded.session_id, scope);
       setDecoded(response.texts[0] ?? "");
     });
 
@@ -77,9 +86,41 @@ const AnonymizationPlayground: React.FC<AnonymizationPlaygroundProps> = ({ acces
             className="font-mono text-sm"
             placeholder="Paste text containing PII to see how it is detected and encoded"
           />
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-sm text-gray-500" htmlFor="playground-scope">
+              Scope
+            </label>
+            <select
+              id="playground-scope"
+              aria-label="Scope"
+              className="rounded border border-gray-200 px-2 py-1.5 text-sm text-gray-700"
+              value={scope}
+              onChange={(event) => setScope(event.target.value as PiiScopeType)}
+            >
+              {SCOPES.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <Input
+              value={subjectId}
+              onChange={(event) => setSubjectId(event.target.value)}
+              placeholder="subject_id (optional)"
+              className="max-w-xs font-mono text-sm"
+            />
+          </div>
+          <p className="text-xs text-gray-400">
+            Scope decides who can later resolve these tokens, and is only honoured when the vault is enabled. A
+            subject_id makes the values reachable by export and erasure; it defaults to the request&apos;s end user.
+          </p>
           <div className="flex flex-wrap gap-2">
             <Button onClick={onDetect} disabled={!accessToken || busy !== null || text.trim() === ""}>
-              {busy === "detect" ? <UiLoadingSpinner className="mr-2 h-4 w-4" /> : <ScanSearch className="mr-2 h-4 w-4" />}
+              {busy === "detect" ? (
+                <UiLoadingSpinner className="mr-2 h-4 w-4" />
+              ) : (
+                <ScanSearch className="mr-2 h-4 w-4" />
+              )}
               Detect
             </Button>
             <Button onClick={onEncode} disabled={!accessToken || busy !== null || text.trim() === ""}>
@@ -87,7 +128,11 @@ const AnonymizationPlayground: React.FC<AnonymizationPlaygroundProps> = ({ acces
               Encode
             </Button>
             <Button variant="secondary" onClick={onDecode} disabled={!accessToken || busy !== null || !encoded}>
-              {busy === "decode" ? <UiLoadingSpinner className="mr-2 h-4 w-4" /> : <LockOpen className="mr-2 h-4 w-4" />}
+              {busy === "decode" ? (
+                <UiLoadingSpinner className="mr-2 h-4 w-4" />
+              ) : (
+                <LockOpen className="mr-2 h-4 w-4" />
+              )}
               Decode
             </Button>
           </div>
@@ -135,7 +180,10 @@ const AnonymizationPlayground: React.FC<AnonymizationPlaygroundProps> = ({ acces
             {encoded.tokens.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {encoded.tokens.map((token) => (
-                  <span key={token.token} className="rounded-full bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-700">
+                  <span
+                    key={token.token}
+                    className="rounded-full bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-700"
+                  >
                     {token.token}
                   </span>
                 ))}

@@ -1,23 +1,7 @@
-import re
-from dataclasses import dataclass
-from typing import Final, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
+from litellm.pii.codec.grammar import TokenGrammar
 from litellm.pii.types import CodecError
-
-TOKEN_PATTERN: Final = re.compile(r"<[A-Z][A-Z0-9_]*(?:_\d+|:[A-Za-z0-9._\-]+)>")
-
-
-@dataclass(frozen=True, slots=True)
-class FoundToken:
-    token: str
-    start: int
-    end: int
-
-
-def find_tokens(text: str) -> tuple[FoundToken, ...]:
-    return tuple(
-        FoundToken(token=match.group(0), start=match.start(), end=match.end()) for match in TOKEN_PATTERN.finditer(text)
-    )
 
 
 @runtime_checkable
@@ -30,6 +14,7 @@ class PiiCodec(Protocol):
     """
 
     codec_id: str
+    grammar: TokenGrammar
 
     def mint(self, entity_type: str, ordinal: int, value: str) -> str | CodecError: ...
 

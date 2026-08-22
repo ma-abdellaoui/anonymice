@@ -8112,23 +8112,148 @@ export const piiDetectCall = async (
     body: { texts, language },
   });
 
+export interface PiiEncodeOptions {
+  sessionId?: string;
+  language?: string;
+  scopeType?: PiiScopeType;
+  subjectId?: string;
+}
+
 export const piiEncodeCall = async (
   accessToken: string,
   texts: string[],
-  sessionId?: string,
-  language = "en",
+  options: PiiEncodeOptions = {},
 ): Promise<PiiEncodeResponse> =>
   apiClient.post<PiiEncodeResponse>("/pii/encode", {
     accessToken,
-    body: { texts, language, ...(sessionId ? { session_id: sessionId } : {}) },
+    body: {
+      texts,
+      language: options.language ?? "en",
+      ...(options.sessionId ? { session_id: options.sessionId } : {}),
+      ...(options.scopeType ? { scope_type: options.scopeType } : {}),
+      ...(options.subjectId ? { subject_id: options.subjectId } : {}),
+    },
   });
 
 export const piiDecodeCall = async (
   accessToken: string,
   texts: string[],
   sessionId: string,
+  scopeType?: PiiScopeType,
 ): Promise<PiiDecodeResponse> =>
   apiClient.post<PiiDecodeResponse>("/pii/decode", {
     accessToken,
-    body: { texts, session_id: sessionId },
+    body: { texts, session_id: sessionId, ...(scopeType ? { scope_type: scopeType } : {}) },
+  });
+
+// ---------------------------------------------------------------------------
+// PII token vault (/pii/session, /pii/subject, /pii/search)
+// ---------------------------------------------------------------------------
+
+export type PiiScopeType = "key" | "user" | "team" | "organization";
+export type PiiMatchMode = "exact" | "normalized" | "substring";
+
+export interface PiiTokenMetadata {
+  token: string;
+  entity_type: string;
+  subject_id: string | null;
+  created_at: string | null;
+  expires_at: string | null;
+}
+
+export interface PiiSessionResponse {
+  session_id: string;
+  scope_type: PiiScopeType;
+  tokens: PiiTokenMetadata[];
+}
+
+export interface PiiRevokeResponse {
+  revoked: boolean;
+  scope_type: PiiScopeType;
+}
+
+export interface PiiExportedValue {
+  token: string;
+  value: string;
+}
+
+export interface PiiExportResponse {
+  subject_id: string;
+  scope_type: PiiScopeType;
+  values: PiiExportedValue[];
+}
+
+export interface PiiSearchHit {
+  token: string;
+  entity_type: string;
+  session_id: string | null;
+  subject_id: string | null;
+}
+
+export interface PiiSearchResponse {
+  hits: PiiSearchHit[];
+  scanned: number;
+  scope_type: PiiScopeType;
+}
+
+const scopeQuery = (scopeType?: PiiScopeType) => (scopeType ? { scope_type: scopeType } : undefined);
+
+export const piiSessionCall = async (
+  accessToken: string,
+  sessionId: string,
+  scopeType?: PiiScopeType,
+): Promise<PiiSessionResponse> =>
+  apiClient.get<PiiSessionResponse>(`/pii/session/${encodeURIComponent(sessionId)}`, {
+    accessToken,
+    query: scopeQuery(scopeType),
+  });
+
+export const piiRevokeSessionCall = async (
+  accessToken: string,
+  sessionId: string,
+  scopeType?: PiiScopeType,
+): Promise<PiiRevokeResponse> =>
+  apiClient.delete<PiiRevokeResponse>(`/pii/session/${encodeURIComponent(sessionId)}`, {
+    accessToken,
+    query: scopeQuery(scopeType),
+  });
+
+export const piiRevokeSubjectCall = async (
+  accessToken: string,
+  subjectId: string,
+  scopeType?: PiiScopeType,
+): Promise<PiiRevokeResponse> =>
+  apiClient.delete<PiiRevokeResponse>(`/pii/subject/${encodeURIComponent(subjectId)}`, {
+    accessToken,
+    query: scopeQuery(scopeType),
+  });
+
+export const piiExportSubjectCall = async (
+  accessToken: string,
+  subjectId: string,
+  scopeType?: PiiScopeType,
+): Promise<PiiExportResponse> =>
+  apiClient.get<PiiExportResponse>(`/pii/subject/${encodeURIComponent(subjectId)}`, {
+    accessToken,
+    query: scopeQuery(scopeType),
+  });
+
+export interface PiiSearchArgs {
+  query: string;
+  mode?: PiiMatchMode;
+  entityType?: string;
+  subjectId?: string;
+  scopeType?: PiiScopeType;
+}
+
+export const piiSearchCall = async (accessToken: string, args: PiiSearchArgs): Promise<PiiSearchResponse> =>
+  apiClient.post<PiiSearchResponse>("/pii/search", {
+    accessToken,
+    body: {
+      query: args.query,
+      ...(args.mode ? { mode: args.mode } : {}),
+      ...(args.entityType ? { entity_type: args.entityType } : {}),
+      ...(args.subjectId ? { subject_id: args.subjectId } : {}),
+      ...(args.scopeType ? { scope_type: args.scopeType } : {}),
+    },
   });

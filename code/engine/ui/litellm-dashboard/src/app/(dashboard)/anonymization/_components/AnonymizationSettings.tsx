@@ -59,6 +59,65 @@ const CODEC_SETTINGS: SettingRow[] = [
   },
 ];
 
+const VAULT_SETTINGS: SettingRow[] = [
+  {
+    name: "LITELLM_PII_VAULT_ENABLED",
+    description:
+      "Persist token mappings in the database instead of the cache, so they survive a restart and can be revoked, exported and searched. Off by default.",
+    fallback: "defaults to false",
+  },
+  {
+    name: "LITELLM_PII_RETENTION_DAYS",
+    description:
+      "How long a stored mapping stays resolvable. Enforced twice: filtered in the read query so an expired row can never resolve even if cleanup is behind, and swept by a background job.",
+    fallback: "defaults to 30 days",
+  },
+  {
+    name: "LITELLM_PII_VAULT_SCOPE",
+    description:
+      "Default scope for newly minted tokens: key, user, team or organization. key is the most restrictive, so widening is always a deliberate choice. A caller can only mint at a scope it belongs to.",
+    fallback: "defaults to key",
+  },
+  {
+    name: "LITELLM_PII_KEY_VERSION",
+    description:
+      "Version new writes are encrypted at. Rotation is lazy: raising this changes new writes only, and each read uses whatever version its row names, so there is no migration window.",
+    fallback: "defaults to 1",
+  },
+  {
+    name: "LITELLM_PII_SEARCH_CANDIDATE_CAP",
+    description:
+      "Largest number of rows /pii/search will scan before refusing. A query over the cap is refused rather than run slowly or truncated silently.",
+    fallback: "defaults to 100000",
+  },
+  {
+    name: "LITELLM_SALT_KEY",
+    description:
+      "Root secret the per-scope vault keys are derived from with HKDF-SHA256, falling back to the master key. Compromising one scope's key yields nothing about another's.",
+    fallback: "falls back to master_key",
+  },
+];
+
+const PERMISSIONS: SettingRow[] = [
+  {
+    name: "allow_pii_decode",
+    description: "Resolve tokens this key's scope owns. Decode hands back real PII, so it is opt-in per key.",
+    fallback: "key permission",
+  },
+  {
+    name: "allow_pii_decode_any",
+    description:
+      "Break glass: read a scope the key does not belong to. Off by default, and every use is recorded as such in the audit log.",
+    fallback: "key permission",
+  },
+  {
+    name: "allow_pii_search",
+    description:
+      "Search the vault for a value. Separate from decode because finding which tokens hold a value is strictly more powerful than resolving one you already have.",
+    fallback: "key permission",
+  },
+];
+
 const SettingsTable: React.FC<{ rows: SettingRow[] }> = ({ rows }) => (
   <div className="divide-y divide-gray-100">
     {rows.map((row) => (
@@ -131,6 +190,28 @@ const AnonymizationSettings: React.FC<AnonymizationSettingsProps> = ({ userRole 
 
     <Card>
       <CardHeader>
+        <CardTitle>Token vault and retention</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-sm text-gray-600">
+          With the vault on, mappings are stored encrypted per scope with AES-256-GCM, bound to the row they belong to
+          so a ciphertext moved to another scope fails to decrypt rather than silently resolving.
+        </p>
+        <SettingsTable rows={VAULT_SETTINGS} />
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <CardTitle>Key permissions</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <SettingsTable rows={PERMISSIONS} />
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
         <CardTitle>Standalone endpoints</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 text-sm text-gray-600">
@@ -140,7 +221,11 @@ const AnonymizationSettings: React.FC<AnonymizationSettingsProps> = ({ userRole 
         </p>
         <SettingsTable
           rows={[
-            { name: "POST /pii/detect", description: "Report what PII is present without altering the text.", fallback: "" },
+            {
+              name: "POST /pii/detect",
+              description: "Report what PII is present without altering the text.",
+              fallback: "",
+            },
             {
               name: "POST /pii/encode",
               description: "Replace PII with tokens and persist the mapping. Returns a session_id.",
@@ -151,6 +236,33 @@ const AnonymizationSettings: React.FC<AnonymizationSettingsProps> = ({ userRole 
               description:
                 "Restore original values for tokens issued to this key. Requires permissions.allow_pii_decode on the key.",
               fallback: "",
+            },
+            {
+              name: "GET /pii/session/{session_id}",
+              description: "Token metadata for one session. Never returns a value or a ciphertext.",
+              fallback: "vault only",
+            },
+            {
+              name: "DELETE /pii/session/{session_id}",
+              description: "Revoke everything one encode call minted, in one statement.",
+              fallback: "vault only",
+            },
+            {
+              name: "GET /pii/subject/{subject_id}",
+              description:
+                "Every value held for one subject. A bulk decode, so it needs allow_pii_decode and is audited.",
+              fallback: "vault only",
+            },
+            {
+              name: "DELETE /pii/subject/{subject_id}",
+              description: "Erasure for one subject. Only finds what was tagged with a subject_id at encode time.",
+              fallback: "vault only",
+            },
+            {
+              name: "POST /pii/search",
+              description:
+                "Find which tokens decode to a value, by scanning the scope and comparing in memory. Requires allow_pii_search.",
+              fallback: "vault only",
             },
           ]}
         />

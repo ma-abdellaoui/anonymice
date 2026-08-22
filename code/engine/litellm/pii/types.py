@@ -86,7 +86,15 @@ class DecodeFailed:
     kind: Literal["decode_failed"] = "decode_failed"
 
 
-CodecError: TypeAlias = UnknownToken | KeyUnavailable | DecodeFailed
+@dataclass(frozen=True, slots=True)
+class TokenSpaceExhausted:
+    """No ordinal was free: every candidate already appeared literally in the source."""
+
+    entity_type: str
+    kind: Literal["token_space_exhausted"] = "token_space_exhausted"
+
+
+CodecError: TypeAlias = UnknownToken | KeyUnavailable | DecodeFailed | TokenSpaceExhausted
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,5 +104,26 @@ class StoreUnavailable:
 
 
 StoreError: TypeAlias = StoreUnavailable
+
+
+@dataclass(frozen=True, slots=True)
+class VaultForbidden:
+    reason: str
+    kind: Literal["vault_forbidden"] = "vault_forbidden"
+
+
+AuthorizationError: TypeAlias = VaultForbidden
+
+
+@dataclass(frozen=True, slots=True)
+class SearchRefused:
+    """A scan wider than the configured cap is refused rather than run slowly."""
+
+    scanned: int
+    limit: int
+    kind: Literal["search_refused"] = "search_refused"
+
+
+SearchError: TypeAlias = SearchRefused
 
 DEFAULT_NER_SCORE_THRESHOLD: Final = 0.5

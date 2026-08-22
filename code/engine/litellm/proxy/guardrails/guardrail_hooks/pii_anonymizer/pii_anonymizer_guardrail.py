@@ -3,14 +3,18 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal, Optional, assert_never
 
 from litellm._logging import verbose_proxy_logger
+from litellm.caching.dual_cache import DualCache
 from litellm.exceptions import BlockedPiiEntityError, GuardrailRaisedException
 from litellm.integrations.custom_guardrail import CustomGuardrail, log_guardrail_information
 from litellm.pii.codec.action_aware import ActionAwareCodec, SpanAction, blocked_entities
 from litellm.pii.config import CodecId, PiiSettings, build_codec, build_detector
 from litellm.pii.detection.cascade import CascadingDetector, NerStagePolicy
 from litellm.pii.service import EncodedBatch, PiiService
-from litellm.pii.store.base import TokenScope
+from litellm.pii.store.base import PiiTokenStore, TokenScope
+from litellm.pii.store.cipher import cipher_from_env
+from litellm.pii.store.dual_cache import DualCacheStore
 from litellm.pii.store.request_scoped import RequestScopedStore
+from litellm.pii.store.scope import MappingScope, ScopeResolver
 from litellm.pii.types import (
     CodecError,
     DecodeFailed,
@@ -20,6 +24,7 @@ from litellm.pii.types import (
     KeyUnavailable,
     StoreError,
     StoreUnavailable,
+    TokenSpaceExhausted,
     UnknownToken,
 )
 from litellm.types.guardrails import GuardrailEventHooks, PiiAction
@@ -32,12 +37,49 @@ if TYPE_CHECKING:
     from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
 
 TOKEN_BUCKET_KEY: Final = "pii_tokens"
-REQUEST_SESSION_ID: Final = "request"
+SESSION_ID_KEY: Final = "litellm_session_id"
+API_KEY_METADATA_KEY: Final = "user_api_key"
 SUPPORTED_EVENT_HOOKS: Final = (
     GuardrailEventHooks.pre_call,
     GuardrailEventHooks.during_call,
     GuardrailEventHooks.post_call,
 )
+
+
+def _to_mapping_scope(scope: str | None) -> MappingScope:
+    return MappingScope(scope) if scope in MappingScope.__members__.values() else MappingScope.REQUEST
+
+
+def _shared_cache() -> DualCache | None:
+    """The proxy's cross-worker cache, or None when only a per-worker one exists.
+
+    Imported here rather than at module load, which would be a cycle.
+    """
+    from litellm.proxy.proxy_server import proxy_logging_obj
+
+    cache: Final = getattr(getattr(proxy_logging_obj, "internal_usage_cache", None), "dual_cache", None)
+    if not isinstance(cache, DualCache) or cache.redis_cache is None:
+        return None
+    return cache
+
+
+def _arguments_of(tool_call: object) -> str:
+    """The JSON argument string of a tool call, or empty when it has none."""
+    if not isinstance(tool_call, Mapping):
+        return ""
+    function: Final = tool_call.get("function")
+    arguments: Final = function.get("arguments") if isinstance(function, Mapping) else None
+    return arguments if isinstance(arguments, str) else ""
+
+
+def _with_arguments(tool_call: object, arguments: str) -> object:
+    if not isinstance(tool_call, Mapping):
+        return tool_call
+    function: Final = tool_call.get("function")
+    if not isinstance(function, Mapping) or not isinstance(function.get("arguments"), str):
+        return tool_call
+    rewritten: Final = {**function, "arguments": arguments}  # mutable-ok: plain tool-call dict
+    return {**tool_call, "function": rewritten}  # mutable-ok: plain tool-call dict
 
 
 def _to_span_action(action: PiiAction | str) -> SpanAction:
@@ -60,6 +102,8 @@ def _public_message(error: DetectionError | CodecError | StoreError) -> str:
             return f"PII token could not be decoded: {reason}"
         case UnknownToken(token=token):
             return f"Unknown PII token: {token}"
+        case TokenSpaceExhausted(entity_type=entity_type):
+            return f"No free PII token remained for {entity_type}"
         case _:
             assert_never(error)
 
@@ -76,8 +120,8 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
     """
 
     @classmethod
-    def get_supported_event_hooks(cls) -> list[GuardrailEventHooks]:  # mutable-ok: base class declares a list
-        return list(SUPPORTED_EVENT_HOOKS)  # mutable-ok: base class declares a list
+    def get_supported_event_hooks(cls) -> list[GuardrailEventHooks]:  # mutable-ok: base class wants a list
+        return list(SUPPORTED_EVENT_HOOKS)  # mutable-ok: base class wants a list
 
     @staticmethod
     def get_config_model() -> type[PiiAnonymizerConfigModel]:
@@ -89,33 +133,60 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
         codec_id: CodecId = "placeholder",
         pii_entities_config: Mapping[str, PiiAction | str] | None = None,
         default_action: PiiAction | str = PiiAction.ENCODE,
+        pii_mapping_scope: str | None = None,
+        session_cache: DualCache | None = None,
         **kwargs,  # kwargs-ok: forwarded verbatim to CustomGuardrail, which owns the shared guardrail options
     ):
         kwargs.setdefault("supported_event_hooks", list(SUPPORTED_EVENT_HOOKS))  # mutable-ok: base class wants a list
         super().__init__(**kwargs)
         self.guardrail_provider = "pii_anonymizer"
+        # The framework drops text rewrites on the streaming path under the default
+        # "block_only", so a streamed response would reach the caller still tokenized.
+        self.streaming_transform_mode = "incremental_diff"
+        self.mask_response_content = True
         self.detector: Final = detector
-        self.actions: Final[Mapping[str, SpanAction]] = MappingProxyType(
-            {entity: _to_span_action(action) for entity, action in (pii_entities_config or {}).items()}  # mutable-ok: frozen by the MappingProxyType wrapping it
-        )
+        configured: Final = pii_entities_config.items() if pii_entities_config else ()
+        actions: Final = {e: _to_span_action(a) for e, a in configured}  # mutable-ok: frozen just below
+        self.actions: Final[Mapping[str, SpanAction]] = MappingProxyType(actions)
         self.codec: Final = ActionAwareCodec(
             inner=build_codec(codec_id),
             actions=self.actions,
             default_action=_to_span_action(default_action),
         )
+        self.scope_resolver: Final = ScopeResolver(mapping_scope=_to_mapping_scope(pii_mapping_scope))
+        self.session_cache: Final = (
+            (session_cache or _shared_cache()) if self.scope_resolver.needs_shared_cache() else None
+        )
+        if self.scope_resolver.needs_shared_cache() and self.session_cache is None:
+            raise ValueError(
+                f"PII guardrail {self.guardrail_name}: pii_mapping_scope='conversation' needs a shared cache, "
+                "since a conversation outlives one request and workers would otherwise each hold their own "
+                "mapping and fail to decode each other's tokens. Configure Redis, or use the default "
+                "pii_mapping_scope='request'."
+            )
 
-    def _token_bucket(self, request_data: dict) -> dict:  # mutable-ok: the live per-request token map is written through
-        metadata: Final[dict] = request_data.setdefault("metadata", {})  # mutable-ok: request metadata is a live dict
-        return metadata.setdefault(TOKEN_BUCKET_KEY, {})  # mutable-ok: the token bucket is written through by the store
+    def _token_bucket(self, request_data: dict) -> dict:  # mutable-ok: live per-request map
+        metadata: Final[dict] = request_data.setdefault("metadata", {})  # mutable-ok: live dict
+        return metadata.setdefault(TOKEN_BUCKET_KEY, {})  # mutable-ok: written through by the store
 
-    def _service(self, request_data: dict) -> PiiService | None:  # mutable-ok: CustomGuardrail.apply_guardrail declares request_data as a plain dict
+    def _store(self, request_data: dict) -> PiiTokenStore:  # mutable-ok: framework passes a dict
+        if self.session_cache is None:
+            return RequestScopedStore(self._token_bucket(request_data))
+        return DualCacheStore(cache=self.session_cache, cipher=cipher_from_env())
+
+    def _scope(self, request_data: dict) -> TokenScope:  # mutable-ok: framework passes a dict
+        metadata: Final = request_data.get("metadata")
+        api_key: Final = metadata.get(API_KEY_METADATA_KEY) if isinstance(metadata, dict) else None
+        session_id: Final = request_data.get(SESSION_ID_KEY)
+        return self.scope_resolver.resolve(
+            api_key=api_key if isinstance(api_key, str) else None,
+            session_id=session_id if isinstance(session_id, str) else None,
+        )
+
+    def _service(self, request_data: dict) -> PiiService | None:  # mutable-ok: framework passes a dict
         if self.detector is None:
             return None
-        return PiiService(
-            detector=self.detector,
-            codec=self.codec,
-            store=RequestScopedStore(self._token_bucket(request_data)),
-        )
+        return PiiService(detector=self.detector, codec=self.codec, store=self._store(request_data))
 
     def _raise_public(self, error: DetectionError | CodecError | StoreError) -> None:
         raise GuardrailRaisedException(
@@ -124,27 +195,62 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
             should_wrap_with_default_message=False,
         )
 
+    def _rebuild(
+        self,
+        inputs: GenericGuardrailAPIInputs,
+        tool_calls: Sequence[object],
+        processed: Sequence[str],
+        text_count: int,
+        with_holdback: bool,
+    ) -> GenericGuardrailAPIInputs:
+        """Split the shared result back into texts and tool-call arguments.
+
+        Holdback is per text choice only, in the order the texts arrived, which
+        is what lets a token split across chunk boundaries be decoded rather
+        than emitted in pieces.
+        """
+        texts_out: Final = list(processed[:text_count])  # mutable-ok: typed as list[str]
+        args_out: Final = processed[text_count:]
+        calls_out: Final = [_with_arguments(c, a) for c, a in zip(tool_calls, args_out)]  # mutable-ok: list
+        holds: Final = [self.codec.grammar.holdback_chars(t) for t in texts_out]  # mutable-ok: list
+        optional: Final = (
+            *((("tool_calls", calls_out),) if tool_calls else ()),
+            *((("stream_holdback_chars", holds),) if with_holdback else ()),
+        )
+        updated: Final[GenericGuardrailAPIInputs] = {  # mutable-ok: TypedDict literal
+            **inputs,
+            "texts": texts_out,
+            **dict(optional),  # mutable-ok: spread into the literal above
+        }
+        return updated
+
     async def _decode(
         self,
         service: PiiService,
         inputs: GenericGuardrailAPIInputs,
         texts: Sequence[str],
+        tool_calls: Sequence[object],
         scope: TokenScope,
     ) -> GenericGuardrailAPIInputs:
-        decoded: Final = await service.decode(texts=texts, scope=scope)
+        combined: Final = (*texts, *(_arguments_of(call) for call in tool_calls))
+        decoded: Final = await service.decode(texts=combined, scope=scope)
         if not isinstance(decoded, tuple):
             self._raise_public(decoded)
-        updated: Final[GenericGuardrailAPIInputs] = {**inputs, "texts": list(decoded)}  # mutable-ok: GenericGuardrailAPIInputs types texts as list[str]
-        return updated
+        return self._rebuild(inputs, tool_calls, decoded, len(texts), with_holdback=True)
 
     async def _encode(
         self,
         service: PiiService,
         inputs: GenericGuardrailAPIInputs,
         texts: Sequence[str],
+        tool_calls: Sequence[object],
         scope: TokenScope,
     ) -> GenericGuardrailAPIInputs:
-        encoded: Final = await service.encode(texts=texts, scope=scope, is_reversible=self.codec.is_reversible)
+        # One shared token space across messages and tool-call arguments, so the same
+        # person named in both gets one token. `<` and `>` need no JSON escaping, so
+        # encoding inside an arguments string leaves it valid JSON.
+        combined: Final = (*texts, *(_arguments_of(call) for call in tool_calls))
+        encoded: Final = await service.encode(texts=combined, scope=scope, is_reversible=self.codec.is_reversible)
         if not isinstance(encoded, EncodedBatch):
             self._raise_public(encoded)
 
@@ -155,8 +261,7 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
         if blocked:
             raise BlockedPiiEntityError(entity_type=blocked[0], guardrail_name=self.guardrail_name)
 
-        updated: Final[GenericGuardrailAPIInputs] = {**inputs, "texts": list(encoded.texts)}  # mutable-ok: GenericGuardrailAPIInputs types texts as list[str]
-        return updated
+        return self._rebuild(inputs, tool_calls, encoded.texts, len(texts), with_holdback=False)
 
     @log_guardrail_information
     async def apply_guardrail(
@@ -167,7 +272,8 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
         logging_obj: Optional["LiteLLMLoggingObj"] = None,
     ) -> GenericGuardrailAPIInputs:
         texts: Final[Sequence[str]] = inputs.get("texts") or ()
-        if not texts:
+        tool_calls: Final[Sequence[object]] = inputs.get("tool_calls") or ()
+        if not texts and not tool_calls:
             return inputs
 
         service: Final = self._service(request_data)
@@ -178,10 +284,10 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
             )
             return inputs
 
-        scope: Final = TokenScope(namespace=REQUEST_SESSION_ID, session_id=REQUEST_SESSION_ID)
+        scope: Final = self._scope(request_data)
         if input_type == "response":
-            return await self._decode(service, inputs, texts, scope)
-        return await self._encode(service, inputs, texts, scope)
+            return await self._decode(service, inputs, texts, tool_calls, scope)
+        return await self._encode(service, inputs, texts, tool_calls, scope)
 
 
 def build_guardrail_detector(

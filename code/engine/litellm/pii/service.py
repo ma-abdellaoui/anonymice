@@ -1,11 +1,11 @@
 import asyncio
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Final, TypeAlias
 
 from litellm._uuid import uuid
-from litellm.pii.codec.base import PiiCodec, find_tokens
+from litellm.pii.codec.base import PiiCodec
 from litellm.pii.codec.transform import BatchDraft, decode_text, encode_batch
 from litellm.pii.detection.cascade import CascadingDetector
 from litellm.pii.store.base import PiiTokenStore, TokenScope
@@ -28,6 +28,18 @@ class EncodedBatch:
     texts: tuple[str, ...]
     tokens: tuple[IssuedToken, ...]
     session_id: str
+    spans_by_text: tuple[tuple[PiiSpan, ...], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DraftedBatch:
+    """Tokenized text that has not been persisted yet.
+
+    The split exists so the ephemeral and the vault paths share one detection
+    and one token space while writing to stores whose signatures differ.
+    """
+
+    draft: BatchDraft
     spans_by_text: tuple[tuple[PiiSpan, ...], ...]
 
 
@@ -70,6 +82,26 @@ class PiiService:
             return failure
         return tuple(r for r in results if isinstance(r, DetectionResult))
 
+    async def draft(
+        self,
+        texts: Sequence[str],
+        language: str = "en",
+        entities: Sequence[str] | None = None,
+        is_reversible: Callable[[PiiSpan], bool] | None = None,
+    ) -> DraftedBatch | DetectionError | CodecError:
+        """Detect and tokenize without storing, so either store can take the result."""
+        detected: Final = await self.detect_many(texts=texts, language=language, entities=entities)
+        if not isinstance(detected, tuple):
+            return detected
+
+        spans_by_text: Final = tuple(result.spans for result in detected)
+        drafted: Final = encode_batch(
+            texts=texts, spans_by_text=spans_by_text, codec=self.codec, is_reversible=is_reversible
+        )
+        if not isinstance(drafted, BatchDraft):
+            return drafted
+        return DraftedBatch(draft=drafted, spans_by_text=spans_by_text)
+
     async def encode(
         self,
         texts: Sequence[str],
@@ -78,27 +110,20 @@ class PiiService:
         entities: Sequence[str] | None = None,
         is_reversible: Callable[[PiiSpan], bool] | None = None,
     ) -> EncodedBatch | EncodeFailure:
-        detected: Final = await self.detect_many(texts=texts, language=language, entities=entities)
-        if not isinstance(detected, tuple):
-            return detected
+        drafted: Final = await self.draft(texts, language, entities, is_reversible)
+        if not isinstance(drafted, DraftedBatch):
+            return drafted
 
-        spans_by_text: Final = tuple(result.spans for result in detected)
-        draft: Final = encode_batch(
-            texts=texts, spans_by_text=spans_by_text, codec=self.codec, is_reversible=is_reversible
-        )
-        if not isinstance(draft, BatchDraft):
-            return draft
-
-        if draft.mapping:
-            stored: Final = await self.store.put_many(scope, draft.mapping)
+        if drafted.draft.mapping:
+            stored: Final = await self.store.put_many(scope, drafted.draft.mapping)
             if stored is not None:
                 return stored
 
         return EncodedBatch(
-            texts=draft.texts,
-            tokens=draft.tokens,
+            texts=drafted.draft.texts,
+            tokens=drafted.draft.tokens,
             session_id=scope.session_id,
-            spans_by_text=spans_by_text,
+            spans_by_text=drafted.spans_by_text,
         )
 
     async def encode_one(
@@ -113,19 +138,13 @@ class PiiService:
             return batch
         return EncodedText(text=batch.texts[0], tokens=batch.tokens, session_id=batch.session_id)
 
-    async def _resolve(self, token: str, scope: TokenScope) -> tuple[str, str] | StoreError | None:
-        recovered: Final = self.codec.recover(token)
-        if isinstance(recovered, str):
-            return (token, recovered)
-        if recovered is not None:
-            return None
+    def self_contained(self, tokens: Sequence[str]) -> Mapping[str, str]:
+        """Values the codec recovers from the token alone, needing no store.
 
-        stored: Final = await self.store.get(scope, token)
-        if stored is None:
-            return None
-        if isinstance(stored, str):
-            return (token, stored)
-        return stored
+        A codec error is not propagated: an unopenable token is left verbatim.
+        """
+        recovered: Final = tuple((token, self.codec.recover(token)) for token in tokens)
+        return MappingProxyType({token: value for token, value in recovered if isinstance(value, str)})
 
     async def decode(self, texts: Sequence[str], scope: TokenScope) -> tuple[str, ...] | DecodeFailure:
         """Restore original values for every token this scope can resolve.
@@ -136,19 +155,18 @@ class PiiService:
         is different and does surface, since silently returning tokenized text
         would look like success.
         """
-        candidates: Final = frozenset(found.token for text in texts for found in find_tokens(text))
+        candidates: Final = tuple(sorted(self.codec.grammar.canonical_tokens(texts)))
         if not candidates:
             return tuple(texts)
 
-        resolutions: Final = await asyncio.gather(*(self._resolve(token, scope) for token in sorted(candidates)))
-        outage: Final = next((r for r in resolutions if not isinstance(r, (tuple, type(None)))), None)
-        if outage is not None:
-            return outage
+        recovered: Final = self.self_contained(candidates)
+        deferred: Final = tuple(token for token in candidates if token not in recovered)
+        stored: Final = await self.store.get_many(scope, deferred)
+        if not isinstance(stored, Mapping):
+            return stored
 
-        resolved: Final = MappingProxyType(
-            {token: value for token, value in (r for r in resolutions if isinstance(r, tuple))}
-        )
-        return tuple(decode_text(text, resolved) for text in texts)
+        resolved: Final = MappingProxyType({**recovered, **stored})
+        return tuple(decode_text(text, resolved, self.codec.grammar) for text in texts)
 
     async def decode_one(self, text: str, scope: TokenScope) -> str | DecodeFailure:
         decoded: Final = await self.decode(texts=(text,), scope=scope)
