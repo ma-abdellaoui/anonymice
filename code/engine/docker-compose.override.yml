@@ -1,0 +1,15 @@
+# Local development overlay. Compose merges this into docker-compose.yml
+# automatically, so it carries only what is specific to a developer machine.
+# The Presidio service itself lives in the base file: it is a dependency of the
+# product, not a local preference.
+services:
+  litellm:
+    volumes:
+      - ./litellm/proxy/dev_config.yaml:/app/config.yaml:ro
+      # ChatGPT subscription tokens live in the host home directory; the device
+      # code login writes them there and the container refreshes them in place.
+      - ${HOME}/.config/litellm/chatgpt:/root/.config/litellm/chatgpt
+    command:
+      - "--config=/app/config.yaml"
+      - "--port"
+      - "4000"

@@ -2,10 +2,10 @@ import pytest
 
 from litellm.integrations.custom_guardrail import CustomGuardrail
 from litellm.proxy.guardrails.guardrail_registry import (
-    get_guardrail_initializer_from_hooks,
     InMemoryGuardrailHandler,
+    get_guardrail_initializer_from_hooks,
 )
-from litellm.types.guardrails import GuardrailEventHooks, Guardrail, LitellmParams
+from litellm.types.guardrails import Guardrail, GuardrailEventHooks, LitellmParams
 
 
 def test_get_guardrail_initializer_from_hooks():
@@ -120,9 +120,7 @@ def test_explicit_config_guardrail_id_wins_over_derived_id():
     registry_module = _register_noop_initializer("explicit_id_test")
     try:
         result = InMemoryGuardrailHandler().initialize_guardrail(
-            guardrail=_config_guardrail(
-                "tooling", "explicit_id_test", guardrail_id="my-explicit-id"
-            )
+            guardrail=_config_guardrail("tooling", "explicit_id_test", guardrail_id="my-explicit-id")
         )
 
         assert result["guardrail_id"] == "my-explicit-id"
@@ -138,20 +136,12 @@ def test_duplicate_config_guardrail_names_get_distinct_stable_ids():
     registry_module = _register_noop_initializer("dup_name_test")
     try:
         handler = InMemoryGuardrailHandler()
-        first = handler.initialize_guardrail(
-            guardrail=_config_guardrail("dup", "dup_name_test")
-        )
-        second = handler.initialize_guardrail(
-            guardrail=_config_guardrail("dup", "dup_name_test")
-        )
+        first = handler.initialize_guardrail(guardrail=_config_guardrail("dup", "dup_name_test"))
+        second = handler.initialize_guardrail(guardrail=_config_guardrail("dup", "dup_name_test"))
 
         rebooted_handler = InMemoryGuardrailHandler()
-        rebooted_first = rebooted_handler.initialize_guardrail(
-            guardrail=_config_guardrail("dup", "dup_name_test")
-        )
-        rebooted_second = rebooted_handler.initialize_guardrail(
-            guardrail=_config_guardrail("dup", "dup_name_test")
-        )
+        rebooted_first = rebooted_handler.initialize_guardrail(guardrail=_config_guardrail("dup", "dup_name_test"))
+        rebooted_second = rebooted_handler.initialize_guardrail(guardrail=_config_guardrail("dup", "dup_name_test"))
 
         assert first["guardrail_id"] != second["guardrail_id"]
         assert first["guardrail_id"] == rebooted_first["guardrail_id"]
@@ -657,3 +647,37 @@ class TestScanOnlyToolResultsInitRefusal:
                     "scan_only_tool_results": True,
                 },
             )
+
+
+class TestHookDiscoveryAcceptsReadOnlyRegistries:
+    """A guardrail package exposing a MappingProxyType must still be discovered.
+
+    The discovery annotated these values as Mapping and then narrowed with
+    isinstance(..., dict). A read-only mapping, which the codebase's immutability
+    rules ask for, was silently skipped, and the elif fallback could not run
+    because hasattr had already matched. pii_anonymizer was therefore impossible
+    to load from config: the proxy refused to start with
+    "Unsupported guardrail: pii_anonymizer".
+    """
+
+    def test_pii_anonymizer_is_discovered(self):
+        from litellm.proxy.guardrails.guardrail_registry import guardrail_initializer_registry
+
+        assert "pii_anonymizer" in guardrail_initializer_registry
+
+    def test_its_class_is_discovered_too(self):
+        from litellm.proxy.guardrails.guardrail_registry import guardrail_class_registry
+
+        assert "pii_anonymizer" in guardrail_class_registry
+
+    def test_a_read_only_registry_is_collected(self, monkeypatch):
+        from types import MappingProxyType, ModuleType
+
+        import litellm.proxy.guardrails.guardrail_registry as registry_module
+
+        module = ModuleType("fake_guardrail_pkg")
+        module.guardrail_initializer_registry = MappingProxyType({"fake_guardrail": lambda **_: None})  # type: ignore[attr-defined]
+
+        monkeypatch.setattr(registry_module.importlib, "import_module", lambda _path: module)
+        discovered = registry_module.get_guardrail_initializer_from_hooks()
+        assert "fake_guardrail" in discovered

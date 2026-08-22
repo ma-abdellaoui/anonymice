@@ -33,6 +33,14 @@ model_list:
       model: anthropic/claude-sonnet-5
       api_key: os.environ/ANTHROPIC_API_KEY
 
+  # ---------- ChatGPT subscription (device-code OAuth, no API key) ----------
+  - model_name: chatgpt-5-4
+    litellm_params:
+      model: chatgpt/gpt-5.4
+  - model_name: chatgpt-5-3-codex
+    litellm_params:
+      model: chatgpt/gpt-5.3-codex
+
   # ---------- Embeddings (for complexity router semantic keyword matching) ----------
   - model_name: voyage-4-large
     litellm_params:
@@ -196,6 +204,22 @@ model_list:
     litellm_params:
       model: openai/gpt-4o-mini
       api_key: os.environ/OPENAI_API_KEY
+
+guardrails:
+  - guardrail_name: pii-anonymizer
+    litellm_params:
+      guardrail: pii_anonymizer
+      mode: [pre_call, post_call]
+      presidio_analyzer_api_base: os.environ/PRESIDIO_ANALYZER_API_BASE
+      pii_codec: placeholder
+      pii_fail_closed: true
+      default_on: true
+      pii_entities_config:
+        CREDIT_CARD: BLOCK
+        US_SSN: MASK
+        PERSON: ENCODE
+        EMAIL_ADDRESS: ENCODE
+        PHONE_NUMBER: ENCODE
 
 general_settings:
   master_key: sk-1234
