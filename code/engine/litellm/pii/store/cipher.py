@@ -9,6 +9,7 @@ from litellm.pii.types import CodecError, DecodeFailed, KeyUnavailable
 PII_ENCRYPTION_KEY_ENV: Final = "LITELLM_PII_ENCRYPTION_KEY"
 AES_GCM_PREFIX: Final = "v1:gcm:"
 NONCE_BYTES: Final = 12
+KEY_BYTES: Final = 32
 
 
 @runtime_checkable
@@ -53,14 +54,14 @@ class AesGcmCipher:
     def seal(self, plaintext: str) -> str | KeyUnavailable:
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-        try:
-            nonce: Final = os.urandom(NONCE_BYTES)
-            blob: Final = AESGCM(self.key).encrypt(nonce, plaintext.encode("utf-8"), None)
-        except Exception as exc:
-            return KeyUnavailable(reason=f"seal failed ({type(exc).__name__})")
+        if len(self.key) != KEY_BYTES:
+            return KeyUnavailable(reason=f"key is {len(self.key)} bytes, expected {KEY_BYTES}")
+        nonce: Final = os.urandom(NONCE_BYTES)
+        blob: Final = AESGCM(self.key).encrypt(nonce, plaintext.encode("utf-8"), None)
         return AES_GCM_PREFIX + base64.urlsafe_b64encode(nonce + blob).decode("utf-8")
 
     def unseal(self, sealed: str) -> str | CodecError:
+        from cryptography.exceptions import InvalidTag
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
         if not sealed.startswith(AES_GCM_PREFIX):
@@ -68,7 +69,7 @@ class AesGcmCipher:
         try:
             raw: Final = base64.urlsafe_b64decode(sealed[len(AES_GCM_PREFIX) :])
             return AESGCM(self.key).decrypt(raw[:NONCE_BYTES], raw[NONCE_BYTES:], None).decode("utf-8")
-        except Exception as exc:
+        except (InvalidTag, ValueError, TypeError) as exc:
             return DecodeFailed(reason=f"unseal failed ({type(exc).__name__})")
 
 

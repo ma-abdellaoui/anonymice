@@ -105,4 +105,13 @@ class StoreUnavailable:
 
 StoreError: TypeAlias = StoreUnavailable
 
+
+@dataclass(frozen=True, slots=True)
+class VaultForbidden:
+    reason: str
+    kind: Literal["vault_forbidden"] = "vault_forbidden"
+
+
+AuthorizationError: TypeAlias = VaultForbidden
+
 DEFAULT_NER_SCORE_THRESHOLD: Final = 0.5
