@@ -241,7 +241,7 @@ class TestFailureModes:
         """This used to forward the text unscanned, which sent the provider the
         very PII the guardrail exists to withhold while reporting success."""
         guard = PiiAnonymizerGuardrail(guardrail_name="g", detector=None)
-        with pytest.raises(Exception):
+        with pytest.raises(GuardrailRaisedException):
             await run(guard, ["hello Ada"], {}, "request")
 
     @pytest.mark.asyncio
@@ -516,9 +516,8 @@ class TestUnconfiguredGuardrailFailsClosed:
         guardrail = PiiAnonymizerGuardrail(
             guardrail_name="pii", detector=None, unmet_requirement="LITELLM_PII_NER_API_BASE is not set"
         )
-        with pytest.raises(Exception) as raised:
+        with pytest.raises(GuardrailRaisedException, match="not available"):
             await guardrail.apply_guardrail(inputs={"texts": ["Ada Lovelace"]}, request_data={}, input_type="request")
-        assert "not available" in str(raised.value)
 
     @pytest.mark.asyncio
     async def test_the_refusal_names_the_missing_setting(self):
@@ -527,9 +526,8 @@ class TestUnconfiguredGuardrailFailsClosed:
         guardrail = PiiAnonymizerGuardrail(
             guardrail_name="pii", detector=None, unmet_requirement="LITELLM_PII_NER_API_BASE is not set"
         )
-        with pytest.raises(Exception) as raised:
+        with pytest.raises(GuardrailRaisedException, match="LITELLM_PII_NER_API_BASE"):
             await guardrail.apply_guardrail(inputs={"texts": ["Ada Lovelace"]}, request_data={}, input_type="request")
-        assert "LITELLM_PII_NER_API_BASE" in str(raised.value)
 
     @pytest.mark.asyncio
     async def test_failing_closed_is_the_default(self):
@@ -552,7 +550,7 @@ class TestUnconfiguredGuardrailFailsClosed:
         from litellm.proxy.guardrails.guardrail_hooks.pii_anonymizer import PiiAnonymizerGuardrail
 
         guardrail = PiiAnonymizerGuardrail(guardrail_name="pii", detector=None)
-        with pytest.raises(Exception):
+        with pytest.raises(GuardrailRaisedException):
             await guardrail.apply_guardrail(inputs={"texts": ["<PERSON_1>"]}, request_data={}, input_type="response")
 
     @pytest.mark.asyncio

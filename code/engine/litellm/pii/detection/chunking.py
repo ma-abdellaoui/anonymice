@@ -35,7 +35,7 @@ class Window:
 def _cut_at(text: str, floor: int, ceiling: int) -> int:
     """The latest natural boundary in ``[floor, ceiling)``, or ``ceiling`` if there is none."""
     for boundary in BOUNDARIES:
-        found: Final = text.rfind(boundary, floor, ceiling)
+        found = text.rfind(boundary, floor, ceiling)
         if found > floor:
             return found + len(boundary)
     return ceiling
@@ -55,8 +55,8 @@ def plan_windows(text: str, max_chars: int, overlap_chars: int) -> tuple[Window,
     windows: list[Window] = []  # mutable-ok: accumulator, frozen into a tuple on return
     start = 0
     while start < len(text):
-        ceiling: Final = min(start + max_chars, len(text))
-        end: Final = ceiling if ceiling == len(text) else _cut_at(text, start + stride // 2, ceiling)
+        ceiling = min(start + max_chars, len(text))
+        end = ceiling if ceiling == len(text) else _cut_at(text, start + stride // 2, ceiling)
         windows.append(Window(start=start, end=end))
         if end >= len(text):
             break
