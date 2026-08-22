@@ -28,6 +28,7 @@ export const MIGRATED_PAGES: Record<string, string> = {
   memory: "memory",
   policies: "policies",
   guardrails: "guardrails",
+  anonymization: "anonymization",
   prompts: "prompts",
   "tool-policies": "tool-policies",
   skills: "skills",
