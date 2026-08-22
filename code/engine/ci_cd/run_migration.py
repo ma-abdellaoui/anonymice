@@ -2,6 +2,7 @@ import argparse
 import os
 import re
 import shutil
+import tempfile
 import subprocess
 import sys
 from datetime import datetime
@@ -243,19 +244,23 @@ def create_migration(
         with testing.postgresql.Postgresql() as postgresql:
             db_url = postgresql.url()
 
-            # Create temporary migrations directory next to schema.prisma
-            temp_migrations_dir = schema_path.parent / "migrations"
+            # Prisma resolves migrations as <schema>/../migrations, so the schema is
+            # copied into a scratch directory and the migrations placed beside it.
+            # Working next to the real schema.prisma put that directory at
+            # code/engine/migrations, which is tracked and holds the Docker
+            # migration runner, and the teardown deleted it.
+            with tempfile.TemporaryDirectory(prefix="prisma_migrate_") as scratch:
+                scratch_dir = Path(scratch)
+                temp_schema_path = scratch_dir / "schema.prisma"
+                temp_migrations_dir = scratch_dir / "migrations"
 
-            try:
-                # Copy existing migrations to temp directory
-                if temp_migrations_dir.exists():
-                    shutil.rmtree(temp_migrations_dir)
+                shutil.copy(schema_path, temp_schema_path)
                 shutil.copytree(migrations_dir, temp_migrations_dir)
 
                 # Apply existing migrations to temp database
                 os.environ["DATABASE_URL"] = db_url
                 subprocess.run(
-                    ["prisma", "migrate", "deploy", "--schema", str(schema_path)],
+                    ["prisma", "migrate", "deploy", "--schema", str(temp_schema_path)],
                     check=True,
                 )
 
@@ -268,7 +273,7 @@ def create_migration(
                         "--from-url",
                         db_url,
                         "--to-schema-datamodel",
-                        str(schema_path),
+                        str(temp_schema_path),
                         "--script",
                     ],
                     capture_output=True,
@@ -312,11 +317,6 @@ def create_migration(
                 else:
                     print("No schema changes detected. Migration not needed.")
                     return False
-
-            finally:
-                # Clean up: remove temporary migrations directory
-                if temp_migrations_dir.exists():
-                    shutil.rmtree(temp_migrations_dir)
 
     except subprocess.CalledProcessError as e:
         print(f"Error generating migration: {e.stderr}")
