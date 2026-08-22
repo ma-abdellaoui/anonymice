@@ -75,6 +75,10 @@ def test_fallback_login_returns_html_form(client, monkeypatch):
         "content_type_html": True,
         "has_form": True,
     }
+    assert "Anonymice Login" in response.text
+    assert "/ui/assets/brand/anonymice-full-logo.png" in response.text
+    assert "#1389A0" in response.text
+    assert "LiteLLM" not in response.text
 
 
 def test_fallback_login_returns_html_form_with_ui_username_set(client, monkeypatch):
