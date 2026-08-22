@@ -70,7 +70,7 @@ const PublicModelHub: React.FC<PublicModelHubProps> = ({ accessToken, isEmbedded
   const [modelHubData, setModelHubData] = useState<ModelGroupInfo[] | null>(null);
   const [agentHubData, setAgentHubData] = useState<AgentCard[] | null>(null);
   const [mcpHubData, setMcpHubData] = useState<MCPServerData[] | null>(null);
-  const [pageTitle, setPageTitle] = useState<string>("LiteLLM Gateway");
+  const [pageTitle, setPageTitle] = useState<string>("Anonymice Gateway");
   const [customDocsDescription, setCustomDocsDescription] = useState<string | null>(null);
   const [litellmVersion, setLitellmVersion] = useState<string>("");
   const [usefulLinks, setUsefulLinks] = useState<Record<string, string | { url: string; index: number }>>({});
@@ -145,7 +145,9 @@ const PublicModelHub: React.FC<PublicModelHubProps> = ({ accessToken, isEmbedded
 
       const fetchPublicModelHubInfo = async () => {
         const publicModelHubInfo = await getPublicModelHubInfo();
-        setPageTitle(publicModelHubInfo.docs_title);
+        setPageTitle(
+          publicModelHubInfo.docs_title === "LiteLLM Gateway" ? "Anonymice Gateway" : publicModelHubInfo.docs_title,
+        );
         setCustomDocsDescription(publicModelHubInfo.custom_docs_description);
         setLitellmVersion(publicModelHubInfo.litellm_version);
         setUsefulLinks(publicModelHubInfo.useful_links || {});
@@ -532,7 +534,7 @@ const PublicModelHub: React.FC<PublicModelHubProps> = ({ accessToken, isEmbedded
                 <div className="flex items-center space-x-3 text-sm text-muted-foreground">
                   <span className="flex items-center">
                     <span className="w-4 h-4 mr-2">🔧</span>
-                    Built with litellm: v{litellmVersion}
+                    Anonymice version: v{litellmVersion}
                   </span>
                 </div>
               </Card>

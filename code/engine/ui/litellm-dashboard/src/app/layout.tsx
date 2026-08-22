@@ -8,13 +8,14 @@ import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ReactQueryProvider from "@/contexts/ReactQueryProvider";
 import { Toaster } from "@/components/ui/sonner";
+import { PRODUCT_FAVICON_SRC } from "@/lib/brand";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "LiteLLM Dashboard",
-  description: "LiteLLM Proxy Admin UI",
-  icons: { icon: "/get_favicon" },
+  title: "Anonymice Dashboard",
+  description: "Anonymice Proxy Admin UI",
+  icons: { icon: PRODUCT_FAVICON_SRC },
 };
 
 export default function RootLayout({

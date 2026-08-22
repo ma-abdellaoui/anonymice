@@ -3,7 +3,6 @@ import useAuthorized from "@/app/(dashboard)/hooks/useAuthorized";
 import useIsOrgAdmin from "@/app/(dashboard)/hooks/useIsOrgAdmin";
 import { useHealthReadinessDetails } from "@/app/(dashboard)/hooks/healthReadiness/useHealthReadinessDetails";
 import { useLogout } from "@/app/(dashboard)/hooks/useLogout";
-import { getProxyBaseUrl } from "@/components/networking";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,7 +26,6 @@ import {
   Bell,
   Blocks,
   Bot,
-  BookOpen,
   Building2,
   Boxes,
   ChevronRight,
@@ -79,6 +77,7 @@ import NewBadge from "./common_components/NewBadge";
 import SidebarAccountMenu from "./SidebarAccountMenu/SidebarAccountMenu";
 import SidebarUsageCard from "./SidebarUsageCard";
 import { MIGRATED_PAGES, migratedHref, legacyPageHref } from "@/utils/migratedPages";
+import { PRODUCT_WORDMARK_SRC } from "@/lib/brand";
 
 const ICON = { strokeWidth: 1.75 } as const;
 
@@ -270,13 +269,6 @@ const menuGroups: MenuGroup[] = [
       { key: "api_ref", page: "api_ref", label: "API Reference", icon: <Code2 {...ICON} /> },
       { key: "model-hub-table", page: "model-hub-table", label: "AI Hub", icon: <LayoutGrid {...ICON} /> },
       {
-        key: "learning-resources",
-        page: "learning-resources",
-        label: "Learning Resources",
-        icon: <BookOpen {...ICON} />,
-        external_url: "https://models.litellm.ai/cookbook",
-      },
-      {
         key: "caching",
         page: "caching",
         label: "Response Cache",
@@ -448,7 +440,6 @@ const Sidebar_: React.FC<SidebarProps> = ({
   const { data: healthData } = useHealthReadinessDetails(accessToken);
   const logout = useLogout(accessToken);
 
-  const baseUrl = getProxyBaseUrl();
   const version = healthData?.litellm_version;
   const selectedKey = findMenuItemKey(defaultSelectedKey);
 
@@ -613,29 +604,29 @@ const Sidebar_: React.FC<SidebarProps> = ({
     );
   };
 
-  const logoSrc = logoUrl || `${baseUrl}/get_image`;
+  const logoSrc = logoUrl || PRODUCT_WORDMARK_SRC;
   const reachableDarkLogo = logoUrlDark === erroredDarkLogo ? null : logoUrlDark;
-  const darkLogoSrc = reachableDarkLogo || logoUrl || `${baseUrl}/get_image?theme=dark`;
+  const darkLogoSrc = reachableDarkLogo || logoUrl || PRODUCT_WORDMARK_SRC;
+  const usesDefaultDarkLogo = !reachableDarkLogo && !logoUrl;
 
   return (
     <Sidebar collapsed={collapsed}>
       <SidebarHeader className="h-14 border-b border-border group-data-[collapsed=true]/sidebar:h-auto">
         <div className="flex items-center justify-between gap-2 group-data-[collapsed=true]/sidebar:flex-col">
           <div className="flex min-w-0 items-center gap-2">
-            <Link href={migratedHref("")} className="flex min-w-0 items-center" aria-label="LiteLLM home">
-              <img src={logoSrc} alt="LiteLLM" className={cn(LOGO_CLASS_NAME, "dark:hidden")} />
+            <Link href={migratedHref("")} className="flex min-w-0 items-center" aria-label="Anonymice home">
+              <img src={logoSrc} alt="Anonymice" className={cn(LOGO_CLASS_NAME, "dark:hidden")} />
               <img
                 src={darkLogoSrc}
                 alt=""
                 aria-hidden
                 onError={() => setErroredDarkLogo(logoUrlDark)}
-                className={cn(LOGO_CLASS_NAME, "hidden dark:block")}
+                className={cn(LOGO_CLASS_NAME, "hidden dark:block", usesDefaultDarkLogo && "brightness-0 invert")}
               />
             </Link>
             {version && (
               <Badge
                 variant="outline"
-                render={<a href="https://docs.litellm.ai/release_notes" target="_blank" rel="noopener noreferrer" />}
                 className="px-1.5 py-0 font-mono text-[10px] font-medium text-muted-foreground group-data-[collapsed=true]/sidebar:hidden"
               >
                 v{version}

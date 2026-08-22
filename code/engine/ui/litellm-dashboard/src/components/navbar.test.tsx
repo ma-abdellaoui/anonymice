@@ -14,10 +14,6 @@ vi.mock("@/app/(dashboard)/hooks/useDisableBouncingIcon", () => ({
   useDisableBouncingIcon: () => false,
 }));
 
-vi.mock("./Navbar/BlogDropdown/BlogDropdown", () => ({
-  BlogDropdown: () => <div data-testid="blog-dropdown">Blog</div>,
-}));
-
 const mockUserDropdownData = vi.hoisted(() => ({
   current: () => ({
     userId: "test-user",
@@ -81,11 +77,8 @@ vi.mock("@/utils/proxyUtils", () => ({
 vi.mock("./Navbar/CommunityEngagementButtons/CommunityEngagementButtons", () => ({
   CommunityEngagementButtons: () => (
     <div data-testid="community-engagement-buttons">
-      <a href="https://www.litellm.ai/support" target="_blank" rel="noopener noreferrer">
-        Join Slack
-      </a>
-      <a href="https://github.com/BerriAI/litellm" target="_blank" rel="noopener noreferrer">
-        Star us on GitHub
+      <a href="https://github.com/ma-abdellaoui/anonymice" target="_blank" rel="noopener noreferrer">
+        Anonymice on GitHub
       </a>
     </div>
   ),
@@ -147,25 +140,25 @@ describe("Navbar", () => {
     renderWithProviders(<Navbar {...defaultProps} />);
 
     expect(screen.getByRole("button", { name: /^notifications$/i })).toBeInTheDocument();
-    expect(screen.getByText("Docs")).toBeInTheDocument();
+    expect(screen.getByText("Anonymice on GitHub")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /open account menu/i })).toBeInTheDocument();
   });
 
   it("should link the logo to the UI home route rather than the proxy origin", () => {
     renderWithProviders(<Navbar {...defaultProps} />);
 
-    expect(screen.getByRole("link", { name: /litellm brand/i })).toHaveAttribute("href", "/ui");
+    expect(screen.getByRole("link", { name: /anonymice brand/i })).toHaveAttribute("href", "/ui");
   });
 
   it("pairs the logo with a dark-mode variant that swaps on the dark class", () => {
     renderWithProviders(<Navbar {...defaultProps} />);
 
-    const [light, dark] = Array.from(screen.getByRole("link", { name: /litellm brand/i }).querySelectorAll("img"));
+    const [light, dark] = Array.from(screen.getByRole("link", { name: /anonymice brand/i }).querySelectorAll("img"));
     const classesOf = (el: Element) => new Set(el.className.split(/\s+/));
 
     const lightSrc = light.getAttribute("src") ?? "";
-    expect(light).toHaveAttribute("src", expect.stringMatching(/\/get_image$/));
-    expect(dark).toHaveAttribute("src", `${lightSrc}?theme=dark`);
+    expect(light).toHaveAttribute("src", expect.stringMatching(/anonymice-wordmark/));
+    expect(dark).toHaveAttribute("src", lightSrc);
     expect(classesOf(light).has("dark:hidden")).toBe(true);
     expect(classesOf(light).has("hidden")).toBe(false);
     expect(classesOf(dark).has("hidden")).toBe(true);
@@ -257,7 +250,7 @@ describe("Navbar", () => {
 
     renderWithProviders(<Navbar {...defaultProps} />);
 
-    const logoImg = screen.getByAltText("LiteLLM Brand");
+    const logoImg = screen.getByAltText("Anonymice brand");
     expect(logoImg).toHaveAttribute("src", "https://example.com/custom-logo.png");
 
     // Reset mock

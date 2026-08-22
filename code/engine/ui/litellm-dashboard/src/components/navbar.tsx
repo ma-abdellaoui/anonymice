@@ -2,25 +2,23 @@ import { useHealthReadinessDetails } from "@/app/(dashboard)/hooks/healthReadine
 import { useDisableBouncingIcon } from "@/app/(dashboard)/hooks/useDisableBouncingIcon";
 import { useDisableShowPrompts } from "@/app/(dashboard)/hooks/useDisableShowPrompts";
 import { useWorker } from "@/hooks/useWorker";
-import { getProxyBaseUrl } from "@/components/networking";
 import { migratedHref } from "@/utils/migratedPages";
 import { useTheme } from "@/contexts/ThemeContext";
 import { clearTokenCookies } from "@/utils/cookieUtils";
 import { clearStoredReturnUrl, getLoginUrl } from "@/utils/returnUrlUtils";
 import useProxySettings from "@/app/(dashboard)/hooks/proxySettings/useProxySettings";
 import { Badge } from "@/components/ui/badge";
-import { ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import Link from "next/link";
 import React from "react";
-import { BlogDropdown } from "./Navbar/BlogDropdown/BlogDropdown";
 import { CommunityEngagementButtons } from "./Navbar/CommunityEngagementButtons/CommunityEngagementButtons";
-import { NAV_PRODUCT_LINK_CLASS } from "./Navbar/navProductLinkClass";
 import { cn } from "@/lib/cva.config";
 import { NotificationsBell } from "./Navbar/NotificationsBell/NotificationsBell";
 import UserDropdown from "./Navbar/UserDropdown/UserDropdown";
 import ThemeToggle from "./ThemeToggle/ThemeToggle";
 import ViewSwitcher from "./Navbar/ViewSwitcher";
 import WorkerDropdown from "./Navbar/WorkerDropdown/WorkerDropdown";
+import { PRODUCT_WORDMARK_SRC } from "@/lib/brand";
 
 interface NavbarProps {
   accessToken: string | null;
@@ -37,7 +35,6 @@ const Navbar: React.FC<NavbarProps> = ({
   sidebarCollapsed = false,
   onToggleSidebar,
 }) => {
-  const baseUrl = getProxyBaseUrl();
   const proxySettings = useProxySettings(accessToken);
   const { logoUrl } = useTheme();
   const { data: healthData } = useHealthReadinessDetails(accessToken);
@@ -47,8 +44,9 @@ const Navbar: React.FC<NavbarProps> = ({
   const { isControlPlane, selectedWorker } = useWorker();
   const showWorkerSwitch = isControlPlane && selectedWorker !== null;
 
-  const imageUrl = logoUrl || `${baseUrl}/get_image`;
-  const darkImageUrl = logoUrl || `${baseUrl}/get_image?theme=dark`;
+  const imageUrl = logoUrl || PRODUCT_WORDMARK_SRC;
+  const darkImageUrl = logoUrl || PRODUCT_WORDMARK_SRC;
+  const usesDefaultLogo = !logoUrl;
 
   const handleLogout = () => {
     clearTokenCookies();
@@ -90,12 +88,12 @@ const Navbar: React.FC<NavbarProps> = ({
               <Link href={migratedHref("")} className="flex items-center">
                 <div className="relative">
                   <div className="flex h-10 max-w-48 items-center justify-center overflow-hidden">
-                    <img src={imageUrl} alt="LiteLLM Brand" className={cn(NAV_LOGO_CLASS_NAME, "dark:hidden")} />
+                    <img src={imageUrl} alt="Anonymice brand" className={cn(NAV_LOGO_CLASS_NAME, "dark:hidden")} />
                     <img
                       src={darkImageUrl}
                       alt=""
                       aria-hidden
-                      className={cn(NAV_LOGO_CLASS_NAME, "hidden dark:block")}
+                      className={cn(NAV_LOGO_CLASS_NAME, "hidden dark:block", usesDefaultLogo && "brightness-0 invert")}
                     />
                   </div>
                 </div>
@@ -106,20 +104,13 @@ const Navbar: React.FC<NavbarProps> = ({
                     <span
                       className="absolute -left-2 -top-1 animate-bounce text-lg"
                       style={{ animationDuration: "2s" }}
-                      title="Thanks for using LiteLLM!"
+                      title="Thanks for using Anonymice!"
                     >
                       🌑
                     </span>
                   )}
                   <Badge variant="outline" className="relative z-10 cursor-pointer text-xs font-medium">
-                    <a
-                      href="https://docs.litellm.ai/release_notes"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="shrink-0"
-                    >
-                      v{version}
-                    </a>
+                    <span className="shrink-0">v{version}</span>
                   </Badge>
                 </div>
               )}
@@ -139,25 +130,8 @@ const Navbar: React.FC<NavbarProps> = ({
               </div>
             )}
 
-            <nav
-              aria-label="Product documentation"
-              className={`flex min-w-0 items-center gap-2 ${showWorkerSwitch ? "border-l border-border pl-4" : ""}`}
-            >
-              <a
-                href="https://docs.litellm.ai/docs/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className={NAV_PRODUCT_LINK_CLASS}
-              >
-                Docs
-                {/* Layout parity with Blog chevron — intentional single-level link */}
-                <ChevronDown className="pointer-events-none size-2.5 opacity-0" aria-hidden />
-              </a>
-              <BlogDropdown />
-            </nav>
-
             {!hideCommunityLinks && (
-              <div className="flex shrink-0 items-center border-l border-border pl-4">
+              <div className={`flex shrink-0 items-center ${showWorkerSwitch ? "border-l border-border pl-4" : ""}`}>
                 <CommunityEngagementButtons />
               </div>
             )}

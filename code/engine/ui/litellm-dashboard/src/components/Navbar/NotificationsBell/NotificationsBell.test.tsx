@@ -1,5 +1,5 @@
 import { renderWithProviders, screen } from "../../../../tests/test-utils";
-import { NotificationsBell, AUTO_ROUTER_DOCS_URL } from "./NotificationsBell";
+import { NotificationsBell } from "./NotificationsBell";
 import React from "react";
 import userEvent from "@testing-library/user-event";
 
@@ -8,15 +8,12 @@ describe("NotificationsBell", () => {
     localStorage.clear();
   });
 
-  it("should open notifications with Auto Router details and docs link", async () => {
+  it("should open notifications with Anonymice Auto Router details", async () => {
     const user = userEvent.setup();
     renderWithProviders(<NotificationsBell />);
     await user.click(screen.getByRole("button", { name: /^notifications$/i }));
-    expect(screen.getByText(/^LiteLLM Auto Router$/i)).toBeInTheDocument();
-    const docsBtn = screen.getByRole("link", { name: /^read the docs$/i });
-    expect(docsBtn).toHaveAttribute("href", AUTO_ROUTER_DOCS_URL);
-    expect(docsBtn).toHaveAttribute("target", "_blank");
-    expect(docsBtn).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.getByText(/^Anonymice Auto Router$/i)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^read the docs$/i })).not.toBeInTheDocument();
   });
 
   it("should offer mark as read when announcement is unread", async () => {

@@ -1,16 +1,17 @@
 import React from "react";
+import Image from "next/image";
 import { CircleAlert, Info } from "lucide-react";
 import { z } from "zod/v4";
 import { Alert, AlertDescription, AlertTitle } from "@/components/shared/Alert";
 import { PasswordInput } from "@/components/shared/PasswordInput";
 import { Field, FieldLabel, FieldGroup } from "@/components/shared/form/field";
 import { FormField } from "@/components/shared/form/FormField";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { UiLoadingSpinner } from "@/components/ui/ui-loading-spinner";
-import { cn } from "@/lib/cva.config";
 import { useZodForm } from "@/lib/forms/useZodForm";
+import { PRODUCT_WORDMARK_SRC } from "@/lib/brand";
 
 type OnboardingFormBodyProps = {
   variant: "signup" | "reset_password";
@@ -38,7 +39,13 @@ export function OnboardingFormBody({ variant, userEmail, isPending, claimError, 
     <div className="mx-auto w-full max-w-md mt-10">
       <Card>
         <CardContent>
-          <h5 className="text-center mb-5 text-base font-semibold text-foreground">🚅 LiteLLM</h5>
+          <Image
+            src={PRODUCT_WORDMARK_SRC}
+            alt="Anonymice"
+            width={1080}
+            height={210}
+            className="mx-auto mb-5 h-8 w-auto object-contain dark:brightness-0 dark:invert"
+          />
           <h3 className="text-2xl font-semibold text-foreground">{actionLabel}</h3>
           <p className="text-sm text-foreground">
             {isResetPassword
@@ -51,17 +58,7 @@ export function OnboardingFormBody({ variant, userEmail, isPending, claimError, 
               <Info />
               <AlertTitle>SSO</AlertTitle>
               <AlertDescription>
-                <div className="flex justify-between items-center">
-                  <span>SSO is under the Enterprise Tier.</span>
-                  <a
-                    className={cn(buttonVariants({ size: "sm" }))}
-                    href="https://forms.gle/W3U4PZpJGFHWtHyA9"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Get Free Trial
-                  </a>
-                </div>
+                <span>SSO is under the Enterprise Tier. Contact your administrator for access.</span>
               </AlertDescription>
             </Alert>
           )}
