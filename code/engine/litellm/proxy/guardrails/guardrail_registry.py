@@ -150,7 +150,7 @@ def get_guardrail_initializer_from_hooks():
                     registry: Mapping[str, Callable[..., CustomGuardrail]] | None = getattr(
                         module, "guardrail_initializer_registry", None
                     )
-                    if isinstance(registry, dict):
+                    if isinstance(registry, Mapping):
                         discovered_initializers.update(registry)
                         verbose_proxy_logger.debug(
                             "Found guardrail_initializer_registry in %s: %s", module_path, list(registry.keys())
@@ -233,7 +233,7 @@ def get_guardrail_class_from_hooks():
                     registry: Mapping[str, type[CustomGuardrail]] | None = getattr(
                         module, "guardrail_class_registry", None
                     )
-                    if isinstance(registry, dict):
+                    if isinstance(registry, Mapping):
                         discovered_classes.update(registry)
 
             except ImportError as e:
