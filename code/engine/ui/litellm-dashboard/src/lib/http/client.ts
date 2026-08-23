@@ -106,8 +106,15 @@ export interface ApiClientConfig {
   fetchImpl?: typeof fetch;
 }
 
+export interface WithHeaders<T> {
+  data: T;
+  headers: Headers;
+}
+
 export interface ApiClient {
   request<T = any>(method: HttpMethod, path: string, options?: RequestOptions): Promise<T>;
+  /** Like `request`, for the few endpoints whose answer is partly in a response header. */
+  requestWithHeaders<T = any>(method: HttpMethod, path: string, options?: RequestOptions): Promise<WithHeaders<T>>;
   get<T = any>(path: string, options?: RequestOptions): Promise<T>;
   post<T = any>(path: string, options?: RequestOptions): Promise<T>;
   put<T = any>(path: string, options?: RequestOptions): Promise<T>;
@@ -135,7 +142,7 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
   const { getBaseUrl, getAuthHeaderName, onError, fetchImpl } = config;
   const doFetch: typeof fetch = (input, init) => (fetchImpl ?? fetch)(input, init);
 
-  async function request<T = any>(method: HttpMethod, path: string, options: RequestOptions = {}): Promise<T> {
+  async function send(method: HttpMethod, path: string, options: RequestOptions): Promise<Response> {
     const { accessToken, body, rawBody, query, headers: extraHeaders, signal } = options;
 
     const url = appendQuery(`${getBaseUrl()}${path}`, query);
@@ -175,12 +182,30 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
       throw new ApiError(message, response.status, errorBody);
     }
 
+    return response;
+  }
+
+  const parse = async <T>(response: Response): Promise<T> => {
     const text = await response.text();
     return (text ? JSON.parse(text) : undefined) as T;
+  };
+
+  async function request<T = any>(method: HttpMethod, path: string, options: RequestOptions = {}): Promise<T> {
+    return parse<T>(await send(method, path, options));
+  }
+
+  async function requestWithHeaders<T = any>(
+    method: HttpMethod,
+    path: string,
+    options: RequestOptions = {},
+  ): Promise<WithHeaders<T>> {
+    const response = await send(method, path, options);
+    return { data: await parse<T>(response), headers: response.headers };
   }
 
   return {
     request,
+    requestWithHeaders,
     get: (path, options) => request("GET", path, options),
     post: (path, options) => request("POST", path, options),
     put: (path, options) => request("PUT", path, options),

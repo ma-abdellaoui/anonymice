@@ -70,6 +70,7 @@ export const runFlow = async (request: FlowRequest): Promise<FlowRun> => {
   const decodeMs = performance.now() - startedDecode;
 
   return {
+    mode: "endpoint",
     prompt: request.prompt,
     promptSegments: segmentPrompt(request.prompt, encoded.placements ?? []),
     encodedPrompt,

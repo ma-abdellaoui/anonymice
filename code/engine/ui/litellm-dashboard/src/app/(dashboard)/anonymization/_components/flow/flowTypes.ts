@@ -23,7 +23,11 @@ export interface FlowTimings {
   decode: number;
 }
 
+/** Which of the two token lifetimes a run exercised. */
+export type FlowMode = "in-band" | "endpoint";
+
 export interface FlowRun {
+  mode: FlowMode;
   prompt: string;
   promptSegments: FlowSegment[];
   encodedPrompt: string;
@@ -55,7 +59,7 @@ export const BEAT_CAPTIONS: Record<Beat, string> = {
   encode: "Each value becomes a typed token. The value itself stays here, on this side of the boundary",
   cross: "Only the tokenized prompt leaves. The provider never receives a real value",
   reply: "The provider answers in the same tokens it was given, because the token reads as a noun it can reason about",
-  decode: "The tokens resolve back out of the vault, and you get your own data returned to you",
+  decode: "The tokens resolve back against the values held on this side, and you get your own data returned to you",
 };
 
 /** Which side of the trust boundary a beat is happening on. */

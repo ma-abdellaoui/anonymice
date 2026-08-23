@@ -4,7 +4,8 @@ import { ChevronLeft, ChevronRight, Pause, Play, RotateCcw, Send } from "lucide-
 
 import FlowStage from "./FlowStage";
 import FlowStepper from "./FlowStepper";
-import type { FlowRun } from "./flowTypes";
+import type { FlowMode, FlowRun } from "./flowTypes";
+import { runInBandFlow } from "./runInBandFlow";
 import { runFlow, STAGE_LABELS, type FlowStage as RunStage } from "./runFlow";
 import { useFlowPlayback } from "./useFlowPlayback";
 import { useModelChoices } from "./useModelChoices";
@@ -20,6 +21,20 @@ const SAMPLE_PROMPT =
 
 const SPEEDS = [0.5, 1, 1.5, 2];
 
+const MODE_LABELS: Record<FlowMode, string> = {
+  "in-band": "Through the proxy",
+  endpoint: "Through the vault API",
+};
+
+const MODE_NOTES: Record<FlowMode, string> = {
+  "in-band":
+    "The prompt goes to /v1/chat/completions untouched and the guardrail does the work, which is what any " +
+    "client pointed at the proxy gets. Tokens are ordinal, and the mapping lives only for this request.",
+  endpoint:
+    "The console drives /pii/encode and /pii/decode itself. Tokens are random handles kept in the vault, so " +
+    "they stay resolvable long after the call, at the cost of a shape models more often distort.",
+};
+
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 interface AnonymizationFlowProps {
@@ -31,16 +46,17 @@ interface AnonymizationFlowProps {
 /**
  * The round trip, end to end, as something you can watch.
  *
- * Every panel is filled from a real call: /pii/encode mints the tokens,
- * /v1/chat/completions sends the tokenized prompt to the configured provider,
- * and /pii/decode resolves the answer. Nothing here is staged, which is the
- * only reason it is worth showing.
+ * Every panel is filled from a real call, either the guardrail doing the work
+ * in-band on an ordinary completion or the console driving /pii/encode and
+ * /pii/decode itself. Nothing here is staged, which is the only reason it is
+ * worth showing.
  */
 const AnonymizationFlow: React.FC<AnonymizationFlowProps> = ({ accessToken, userId, userRole }) => {
   const [prompt, setPrompt] = useState(SAMPLE_PROMPT);
   const [model, setModel] = useState("");
   const [run, setRun] = useState<FlowRun | null>(null);
   const [stage, setStage] = useState<RunStage | null>(null);
+  const [mode, setMode] = useState<FlowMode>("in-band");
 
   const models = useModelChoices(accessToken, userId, userRole);
   const playback = useFlowPlayback(run !== null);
@@ -53,7 +69,7 @@ const AnonymizationFlow: React.FC<AnonymizationFlowProps> = ({ accessToken, user
     setRun(null);
     try {
       const request = { accessToken, prompt, model: chosenModel, onStage: setStage };
-      const result = await runFlow(request);
+      const result = mode === "in-band" ? await runInBandFlow(request) : await runFlow(request);
       setRun(result);
       playback.restart();
     } catch (error) {
@@ -92,6 +108,22 @@ const AnonymizationFlow: React.FC<AnonymizationFlowProps> = ({ accessToken, user
             </select>
           </label>
 
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            Path
+            <select
+              aria-label="Path"
+              className="rounded border border-border px-2 py-1.5 text-sm text-foreground"
+              value={mode}
+              onChange={(event) => setMode(event.target.value as FlowMode)}
+            >
+              {(Object.keys(MODE_LABELS) as FlowMode[]).map((value) => (
+                <option key={value} value={value}>
+                  {MODE_LABELS[value]}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <Button
             onClick={onSend}
             disabled={!ready || busy}
@@ -105,6 +137,7 @@ const AnonymizationFlow: React.FC<AnonymizationFlowProps> = ({ accessToken, user
             {stage !== null ? STAGE_LABELS[stage] : "Send it through"}
           </Button>
         </div>
+        <p className="mt-2 text-xs text-muted-foreground">{MODE_NOTES[mode]}</p>
       </div>
 
       {run === null ? (
@@ -157,7 +190,7 @@ const AnonymizationFlow: React.FC<AnonymizationFlowProps> = ({ accessToken, user
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Session {run.sessionId}
+            {run.mode === "in-band" ? "Request" : "Session"} {run.sessionId}
             {run.nerStageRan ? " · the model stage ran" : " · rules stage only, so names need the NER stage enabled"}
           </p>
         </>

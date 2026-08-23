@@ -8343,6 +8343,8 @@ export interface PiiActivityFilters {
   limit?: number;
   surface?: PiiSurface;
   direction?: PiiDirection;
+  /** Narrow to the events one completion produced, by its x-litellm-call-id. */
+  requestId?: string;
 }
 
 export const piiActivityCall = async (
@@ -8355,8 +8357,35 @@ export const piiActivityCall = async (
       ...(filters.limit ? { limit: filters.limit } : {}),
       ...(filters.surface ? { surface: filters.surface } : {}),
       ...(filters.direction ? { direction: filters.direction } : {}),
+      ...(filters.requestId ? { request_id: filters.requestId } : {}),
     },
   });
+
+export interface ChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+export interface ChatCompletionRun {
+  content: string;
+  /** The proxy's id for this call, which the activity log records alongside it. */
+  callId: string | null;
+}
+
+/** A completion, plus the id tying it to what the guardrail did to it. */
+export const chatCompletionWithCallId = async (
+  accessToken: string,
+  model: string,
+  messages: ChatMessage[],
+): Promise<ChatCompletionRun> => {
+  const { data, headers } = await apiClient.requestWithHeaders<{
+    choices?: { message?: { content?: string | null } }[];
+  }>("POST", "/v1/chat/completions", { accessToken, body: { model, messages } });
+  return {
+    content: data.choices?.[0]?.message?.content ?? "",
+    callId: headers.get("x-litellm-call-id"),
+  };
+};
 
 /**
  * Live tail over SSE, read through fetch rather than EventSource.

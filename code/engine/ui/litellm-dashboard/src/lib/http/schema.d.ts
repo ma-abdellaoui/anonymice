@@ -1608,6 +1608,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chatgpt/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Chatgpt Login
+         * @description Whether a session exists. Never returns the token itself.
+         */
+        get: operations["read_chatgpt_login_chatgpt_login_get"];
+        put?: never;
+        post?: never;
+        /**
+         * End Chatgpt Login
+         * @description Forget the session on this proxy.
+         */
+        delete: operations["end_chatgpt_login_chatgpt_login_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chatgpt/login/poll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Poll Chatgpt Login
+         * @description Check once whether the code has been approved, and finish if it has.
+         */
+        post: operations["poll_chatgpt_login_chatgpt_login_poll_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chatgpt/login/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Chatgpt Login
+         * @description Request a device code and hand back what to show the person.
+         */
+        post: operations["start_chatgpt_login_chatgpt_login_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/claude-code/marketplace.json": {
         parameters: {
             query?: never;
@@ -9842,6 +9906,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pii/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Pii Activity
+         * @description The most recent events this worker recorded, newest first.
+         *
+         *     ``request_id`` narrows to one completion, which is how a caller holding the
+         *     ``x-litellm-call-id`` of a request it just made reads back what the
+         *     guardrail did to that request and nothing else.
+         */
+        get: operations["read_pii_activity_pii_activity_get"];
+        put?: never;
+        /**
+         * Ingest Pii Activity
+         * @description Report what a client-side surface did.
+         *
+         *     The browser extension is the caller. It sends entity classes and counts and
+         *     never the page text, which is the same rule its own logger enforces, so the
+         *     two halves of the product show up in one place without either of them
+         *     turning into a transcript of what someone was reading.
+         */
+        post: operations["ingest_pii_activity_pii_activity_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pii/activity/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream Pii Activity
+         * @description Live tail, so the log can be watched next to whatever is producing it.
+         */
+        get: operations["stream_pii_activity_pii_activity_stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/pii/decode": {
         parameters: {
             query?: never;
@@ -9896,6 +10013,30 @@ export interface paths {
          * @description Replace detected PII with tokens and persist the mapping for later decode.
          */
         post: operations["encode_pii_pii_encode_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pii/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Pii Permissions
+         * @description What this key may do, so a caller can say so before it is refused.
+         *
+         *     Decode is deliberately not implied by being able to call the proxy, which
+         *     means a surface that offers it has to be able to ask first rather than
+         *     finding out from a 403.
+         */
+        get: operations["read_pii_permissions_pii_permissions_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -23770,6 +23911,49 @@ export interface components {
              */
             role: "user" | "assistant";
         };
+        /** ChatgptLoginPollRequest */
+        ChatgptLoginPollRequest: {
+            /** Device Auth Id */
+            device_auth_id: string;
+            /** User Code */
+            user_code: string;
+        };
+        /**
+         * ChatgptLoginPollResponse
+         * @description ``pending`` until the browser tab is approved, then ``complete``.
+         */
+        ChatgptLoginPollResponse: {
+            /** Account Id */
+            account_id?: string | null;
+            /** Status */
+            status: string;
+        };
+        /**
+         * ChatgptLoginStart
+         * @description What the person has to do, and what to poll with.
+         */
+        ChatgptLoginStart: {
+            /** Device Auth Id */
+            device_auth_id: string;
+            /** Interval Seconds */
+            interval_seconds: number;
+            /** User Code */
+            user_code: string;
+            /** Verification Url */
+            verification_url: string;
+        };
+        /**
+         * ChatgptLoginStatus
+         * @description Whether this proxy holds a ChatGPT subscription session, and whose.
+         */
+        ChatgptLoginStatus: {
+            /** Account Id */
+            account_id?: string | null;
+            /** Expires At */
+            expires_at?: number | null;
+            /** Signed In */
+            signed_in: boolean;
+        };
         /** ChoiceLogprobs */
         ChoiceLogprobs: {
             /** Content */
@@ -31109,6 +31293,121 @@ export interface components {
          * @enum {string}
          */
         PiiAction: "BLOCK" | "MASK";
+        /** PiiActivityEventModel */
+        PiiActivityEventModel: {
+            /** Action Counts */
+            action_counts: {
+                [key: string]: number;
+            };
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            browser: components["schemas"]["PiiBrowserContextModel"] | null;
+            capture: components["schemas"]["PiiTextCaptureModel"] | null;
+            /** Capture Withheld */
+            capture_withheld: boolean;
+            direction: components["schemas"]["PiiDirection"];
+            /** Duration Ms */
+            duration_ms: number;
+            /** Entity Counts */
+            entity_counts: {
+                [key: string]: number;
+            };
+            /** Guardrail Name */
+            guardrail_name: string | null;
+            /** Id */
+            id: string;
+            /** Key Alias */
+            key_alias: string | null;
+            /** Model */
+            model: string | null;
+            /** Ner Stage Ran */
+            ner_stage_ran: boolean;
+            outcome: components["schemas"]["PiiActivityOutcomeModel"];
+            /** Request Id */
+            request_id: string | null;
+            /** Resolved Count */
+            resolved_count: number;
+            /** Session Id */
+            session_id: string | null;
+            surface: components["schemas"]["PiiSurface"];
+            /** Token Count */
+            token_count: number;
+            /** User Id */
+            user_id: string | null;
+        };
+        /**
+         * PiiActivityIngestRequest
+         * @description What a client-side surface reports. Entity classes and counts, never text.
+         */
+        PiiActivityIngestRequest: {
+            /** Action */
+            action: string;
+            /** Blocked Entity Type */
+            blocked_entity_type?: string | null;
+            direction: components["schemas"]["PiiDirection"];
+            /**
+             * Duration Ms
+             * @default 0
+             */
+            duration_ms: number;
+            /**
+             * Entity Types
+             * @default []
+             */
+            entity_types: string[];
+            /** Failed Reason */
+            failed_reason?: string | null;
+            /** Host */
+            host: string;
+            /**
+             * Resolved Count
+             * @default 0
+             */
+            resolved_count: number;
+            /**
+             * Token Count
+             * @default 0
+             */
+            token_count: number;
+            /** Trust Class */
+            trust_class: string;
+        };
+        /** PiiActivityIngestResponse */
+        PiiActivityIngestResponse: {
+            /** Recorded */
+            recorded: boolean;
+        };
+        /** PiiActivityOutcomeModel */
+        PiiActivityOutcomeModel: {
+            /** Entity Type */
+            entity_type?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "applied" | "blocked" | "failed" | "unscanned";
+            /** Reason */
+            reason?: string | null;
+        };
+        /** PiiActivityResponse */
+        PiiActivityResponse: {
+            /** Capture Enabled */
+            capture_enabled: boolean;
+            /** Events */
+            events: components["schemas"]["PiiActivityEventModel"][];
+        };
+        /** PiiBrowserContextModel */
+        PiiBrowserContextModel: {
+            /** Action */
+            action: string;
+            /** Host */
+            host: string;
+            /** Trust Class */
+            trust_class: string;
+        };
         /** PiiDecodeRequest */
         PiiDecodeRequest: {
             /**
@@ -31151,8 +31450,18 @@ export interface components {
             /** Spans */
             spans: components["schemas"]["PiiSpanModel"][];
         };
+        /**
+         * PiiDirection
+         * @enum {string}
+         */
+        PiiDirection: "detect" | "encode" | "decode";
         /** PiiEncodeRequest */
         PiiEncodeRequest: {
+            /**
+             * Codec
+             * @description Token shape to mint. Defaults to the handle form; 'placeholder' mints the ordinal form the LLM path uses.
+             */
+            codec?: ("placeholder" | "handle" | "encrypted") | null;
             /** Entities */
             entities?: string[] | null;
             /**
@@ -31173,6 +31482,16 @@ export interface components {
         };
         /** PiiEncodeResponse */
         PiiEncodeResponse: {
+            /**
+             * Ner Stage Ran
+             * @default false
+             */
+            ner_stage_ran: boolean;
+            /**
+             * Placements
+             * @default []
+             */
+            placements: components["schemas"]["PiiPlacementModel"][];
             /** Session Id */
             session_id: string;
             /** Texts */
@@ -31206,6 +31525,41 @@ export interface components {
             codec_id: string;
             /** Entity Type */
             entity_type: string;
+            /** Token */
+            token: string;
+        };
+        /**
+         * PiiPermissionsResponse
+         * @description What the calling key may do with the vault. Never the values themselves.
+         */
+        PiiPermissionsResponse: {
+            /** Can Decode */
+            can_decode: boolean;
+            /** Can Decode Any */
+            can_decode_any: boolean;
+            /** Can Search */
+            can_search: boolean;
+        };
+        /**
+         * PiiPlacementModel
+         * @description Where a token went, in coordinates of the text the caller sent.
+         *
+         *     Offsets index the caller's own input, so this discloses nothing they did not
+         *     already have, and it saves them a second detect call to find out what moved.
+         */
+        PiiPlacementModel: {
+            /** Detector */
+            detector: string;
+            /** End */
+            end: number;
+            /** Entity Type */
+            entity_type: string;
+            /** Score */
+            score: number;
+            /** Start */
+            start: number;
+            /** Text Index */
+            text_index: number;
             /** Token */
             token: string;
         };
@@ -31268,6 +31622,21 @@ export interface components {
             start: number;
         };
         /**
+         * PiiSurface
+         * @description Which half of the system produced the event.
+         * @enum {string}
+         */
+        PiiSurface: "guardrail" | "endpoint" | "extension";
+        /** PiiTextCaptureModel */
+        PiiTextCaptureModel: {
+            /** After */
+            after: string[];
+            /** Before */
+            before: string[];
+            /** Placements */
+            placements: components["schemas"]["PiiTokenPlacementModel"][];
+        };
+        /**
          * PiiTokenMetadataModel
          * @description Everything but the value. No ciphertext, no plaintext, ever.
          */
@@ -31282,6 +31651,30 @@ export interface components {
             subject_id: string | null;
             /** Token */
             token: string;
+        };
+        /**
+         * PiiTokenPlacementModel
+         * @description One span and the token that replaced it, including the value it stood for.
+         */
+        PiiTokenPlacementModel: {
+            /** Action */
+            action: string;
+            /** Detector */
+            detector: string;
+            /** End */
+            end: number;
+            /** Entity Type */
+            entity_type: string;
+            /** Score */
+            score: number;
+            /** Start */
+            start: number;
+            /** Text Index */
+            text_index: number;
+            /** Token */
+            token: string;
+            /** Value */
+            value: string;
         };
         /**
          * PipelineTestRequest
@@ -39807,6 +40200,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_chatgpt_login_chatgpt_login_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatgptLoginStatus"];
+                };
+            };
+        };
+    };
+    end_chatgpt_login_chatgpt_login_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatgptLoginStatus"];
+                };
+            };
+        };
+    };
+    poll_chatgpt_login_chatgpt_login_poll_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatgptLoginPollRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatgptLoginPollResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_chatgpt_login_chatgpt_login_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatgptLoginStart"];
                 };
             };
         };
@@ -50003,6 +50489,93 @@ export interface operations {
             };
         };
     };
+    read_pii_activity_pii_activity_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                surface?: components["schemas"]["PiiSurface"] | null;
+                direction?: components["schemas"]["PiiDirection"] | null;
+                request_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiActivityResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ingest_pii_activity_pii_activity_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PiiActivityIngestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiActivityIngestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stream_pii_activity_pii_activity_stream_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     decode_pii_pii_decode_post: {
         parameters: {
             query?: never;
@@ -50098,6 +50671,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_pii_permissions_pii_permissions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiPermissionsResponse"];
                 };
             };
         };

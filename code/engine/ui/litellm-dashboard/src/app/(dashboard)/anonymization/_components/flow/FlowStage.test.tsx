@@ -27,6 +27,7 @@ const PLACEMENTS: PiiPlacement[] = [
 const VAULT = vaultFrom(PROMPT, PLACEMENTS);
 
 const RUN: FlowRun = {
+  mode: "endpoint",
   prompt: PROMPT,
   promptSegments: segmentPrompt(PROMPT, PLACEMENTS),
   encodedPrompt: "Email <PERSON_1> about <IBAN_CODE_1>",

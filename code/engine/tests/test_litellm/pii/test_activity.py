@@ -157,6 +157,23 @@ class TestActivityLog:
         log.record(decode)
         assert [event.id for event in log.recent(limit=10, direction=PiiDirection.DECODE)] == [decode.id]
 
+    def test_filters_by_request_id(self):
+        log = PiiActivityLog(capacity=10)
+        wanted = an_event(request_id="call-1")
+        log.record(wanted)
+        log.record(an_event(request_id="call-2"))
+        log.record(an_event())
+        assert [event.id for event in log.recent(limit=10, request_id="call-1")] == [wanted.id]
+
+    def test_request_id_filter_combines_with_direction(self):
+        log = PiiActivityLog(capacity=10)
+        decode = an_event(request_id="call-1", direction=PiiDirection.DECODE)
+        log.record(an_event(request_id="call-1", direction=PiiDirection.ENCODE))
+        log.record(decode)
+        log.record(an_event(request_id="call-2", direction=PiiDirection.DECODE))
+        found = log.recent(limit=10, direction=PiiDirection.DECODE, request_id="call-1")
+        assert [event.id for event in found] == [decode.id]
+
     def test_limit_bounds_what_comes_back(self):
         log = PiiActivityLog(capacity=10)
         for _ in range(5):
