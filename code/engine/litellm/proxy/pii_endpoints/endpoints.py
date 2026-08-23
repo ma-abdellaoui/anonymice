@@ -74,6 +74,7 @@ from litellm.types.proxy.pii_endpoints import (
     PiiExportedValueModel,
     PiiExportResponse,
     PiiIssuedTokenModel,
+    PiiPermissionsResponse,
     PiiPlacementModel,
     PiiRevokeResponse,
     PiiSearchHitModel,
@@ -349,6 +350,24 @@ def _encode_response(encoded: EncodedBatch) -> PiiEncodeResponse:
             for placement in encoded.placements
         ),
         ner_stage_ran=encoded.ner_stage_ran,
+    )
+
+
+@pii_router.get("/permissions", response_model=PiiPermissionsResponse)
+async def read_pii_permissions(
+    user_api_key_dict: Annotated[UserAPIKeyAuth, Depends(user_api_key_auth)],
+) -> PiiPermissionsResponse:
+    """What this key may do, so a caller can say so before it is refused.
+
+    Decode is deliberately not implied by being able to call the proxy, which
+    means a surface that offers it has to be able to ask first rather than
+    finding out from a 403.
+    """
+    identity: Final = identity_from(user_api_key_dict)
+    return PiiPermissionsResponse(
+        can_decode=identity.can_decode,
+        can_decode_any=identity.can_decode_any,
+        can_search=may_search(user_api_key_dict),
     )
 
 

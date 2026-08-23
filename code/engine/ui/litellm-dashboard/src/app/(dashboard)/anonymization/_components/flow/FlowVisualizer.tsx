@@ -9,7 +9,6 @@ import { runFlow, STAGE_LABELS, type FlowStage as RunStage } from "./runFlow";
 import { useFlowPlayback } from "./useFlowPlayback";
 import { useModelChoices } from "./useModelChoices";
 
-import type { PiiCodecId } from "@/components/networking";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { UiLoadingSpinner } from "@/components/ui/ui-loading-spinner";
@@ -39,7 +38,6 @@ interface AnonymizationFlowProps {
  */
 const AnonymizationFlow: React.FC<AnonymizationFlowProps> = ({ accessToken, userId, userRole }) => {
   const [prompt, setPrompt] = useState(SAMPLE_PROMPT);
-  const [codec, setCodec] = useState<PiiCodecId>("handle");
   const [model, setModel] = useState("");
   const [run, setRun] = useState<FlowRun | null>(null);
   const [stage, setStage] = useState<RunStage | null>(null);
@@ -54,7 +52,7 @@ const AnonymizationFlow: React.FC<AnonymizationFlowProps> = ({ accessToken, user
     if (!accessToken || !chosenModel) return;
     setRun(null);
     try {
-      const request = { accessToken, prompt, model: chosenModel, codec, onStage: setStage };
+      const request = { accessToken, prompt, model: chosenModel, onStage: setStage };
       const result = await runFlow(request);
       setRun(result);
       playback.restart();
@@ -91,19 +89,6 @@ const AnonymizationFlow: React.FC<AnonymizationFlowProps> = ({ accessToken, user
                   {name}
                 </option>
               ))}
-            </select>
-          </label>
-
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            Token shape
-            <select
-              aria-label="Token shape"
-              className="rounded border border-border px-2 py-1.5 text-sm text-foreground"
-              value={codec}
-              onChange={(event) => setCodec(event.target.value as PiiCodecId)}
-            >
-              <option value="handle">&lt;PERSON:9f2c…&gt; · what the vault mints</option>
-              <option value="placeholder">&lt;PERSON_1&gt; · the LLM path&apos;s form, needs the vault off</option>
             </select>
           </label>
 

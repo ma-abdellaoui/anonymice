@@ -36,7 +36,6 @@ const RUN: FlowRun = {
   decodedReply: "I drafted a note to Ada about CH93 0076 2011 6238 5295 7.",
   sessionId: "session-1",
   model: "gpt-4o-mini",
-  codec: "placeholder",
   nerStageRan: true,
   timings: { encode: 40, provider: 900, decode: 12 },
 };

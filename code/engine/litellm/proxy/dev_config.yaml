@@ -43,6 +43,11 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
 
   # ---------- ChatGPT subscription (device-code OAuth, no API key) ----------
+  # Sign in from the Admin UI: Models + Endpoints, "Sign in with ChatGPT".
+  # These only work with stream: true. The codex backend refuses a non-streaming
+  # request outright ("Stream must be set to true"), while LiteLLM's chat bridge
+  # defaults stream to false, so a non-streaming call fails with an empty
+  # Responses output. Streamed calls work.
   - model_name: chatgpt-5-4
     litellm_params:
       model: chatgpt/gpt-5.4

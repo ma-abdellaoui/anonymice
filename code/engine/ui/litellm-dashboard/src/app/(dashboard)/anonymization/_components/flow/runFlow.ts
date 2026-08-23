@@ -1,7 +1,7 @@
 import { segmentPrompt, segmentReply, vaultFrom } from "./buildFlow";
 import type { FlowRun } from "./flowTypes";
 
-import { apiClient, piiDecodeCall, piiEncodeCall, type PiiCodecId } from "@/components/networking";
+import { apiClient, piiDecodeCall, piiEncodeCall } from "@/components/networking";
 
 export type FlowStage = "encode" | "provider" | "decode";
 
@@ -15,7 +15,6 @@ export interface FlowRequest {
   accessToken: string;
   prompt: string;
   model: string;
-  codec: PiiCodecId;
   onStage: (stage: FlowStage) => void;
 }
 
@@ -44,7 +43,7 @@ const replyText = (response: ChatResponse): string => response.choices?.[0]?.mes
 export const runFlow = async (request: FlowRequest): Promise<FlowRun> => {
   const startedEncode = performance.now();
   request.onStage("encode");
-  const encoded = await piiEncodeCall(request.accessToken, [request.prompt], { codec: request.codec });
+  const encoded = await piiEncodeCall(request.accessToken, [request.prompt]);
   const encodeMs = performance.now() - startedEncode;
 
   const encodedPrompt = encoded.texts[0] ?? request.prompt;
@@ -80,7 +79,6 @@ export const runFlow = async (request: FlowRequest): Promise<FlowRun> => {
     decodedReply: decoded.texts[0] ?? providerReply,
     sessionId: encoded.session_id,
     model: request.model,
-    codec: request.codec,
     nerStageRan: encoded.ner_stage_ran ?? false,
     timings: { encode: encodeMs, provider: providerMs, decode: decodeMs },
   };

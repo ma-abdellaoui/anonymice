@@ -572,6 +572,7 @@ class LiteLLMRoutes(enum.Enum):
         "/pii/search",
         "/pii/activity",
         "/pii/activity/stream",
+        "/pii/permissions",
     ]
 
     model_info_routes = [

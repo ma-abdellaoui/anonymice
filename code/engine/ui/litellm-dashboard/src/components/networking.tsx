@@ -8438,3 +8438,16 @@ export const chatgptLoginPollCall = async (
 
 export const chatgptSignOutCall = async (accessToken: string): Promise<ChatgptLoginStatus> =>
   apiClient.delete<ChatgptLoginStatus>("/chatgpt/login", { accessToken });
+
+// ---------------------------------------------------------------------------
+// PII vault permissions (/pii/permissions)
+// ---------------------------------------------------------------------------
+
+export interface PiiPermissions {
+  can_decode: boolean;
+  can_decode_any: boolean;
+  can_search: boolean;
+}
+
+export const piiPermissionsCall = async (accessToken: string): Promise<PiiPermissions> =>
+  apiClient.get<PiiPermissions>("/pii/permissions", { accessToken });

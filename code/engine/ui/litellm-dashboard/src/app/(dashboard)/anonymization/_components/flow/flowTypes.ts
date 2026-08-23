@@ -1,5 +1,3 @@
-import type { PiiCodecId } from "@/components/networking";
-
 /** A run of the pipeline, cut into pieces that can be shown changing. */
 export type FlowSegment =
   | { kind: "plain"; text: string }
@@ -35,7 +33,6 @@ export interface FlowRun {
   decodedReply: string;
   sessionId: string;
   model: string;
-  codec: PiiCodecId;
   nerStageRan: boolean;
   timings: FlowTimings;
 }

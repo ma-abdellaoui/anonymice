@@ -7,6 +7,14 @@ from litellm.pii.vault.scope import VaultScopeType
 from litellm.pii.vault.search import MatchMode
 
 
+class PiiPermissionsResponse(BaseModel):
+    """What the calling key may do with the vault. Never the values themselves."""
+
+    can_decode: bool
+    can_decode_any: bool
+    can_search: bool
+
+
 class PiiSpanModel(BaseModel):
     entity_type: str
     start: int

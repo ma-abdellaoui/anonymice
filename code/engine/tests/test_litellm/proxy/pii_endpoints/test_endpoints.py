@@ -1009,3 +1009,48 @@ class TestCodecAgainstTheVault:
         as_key(NO_DECODE_KEY)
         encoded = client.post("/pii/encode", json={"texts": ["hello Ada"], "codec": "placeholder"}).json()
         assert encoded["texts"] == ["hello <PERSON_1>"]
+
+
+class TestPermissions:
+    """A surface that offers decode has to be able to ask first, not learn from a 403."""
+
+    def test_a_key_without_the_grant_is_told_so(self, client, as_key):
+        as_key(NO_DECODE_KEY)
+        assert client.get("/pii/permissions").json()["can_decode"] is False
+
+    def test_a_key_with_the_grant_is_told_so(self, client, as_key):
+        as_key(DECODE_KEY)
+        assert client.get("/pii/permissions").json()["can_decode"] is True
+
+    def test_reports_break_glass_separately(self, client, as_key):
+        as_key(
+            UserAPIKeyAuth(
+                user_role=LitellmUserRoles.PROXY_ADMIN,
+                user_id="breaker",
+                api_key="sk-break",
+                permissions={"allow_pii_decode": True, "allow_pii_decode_any": True},
+            )
+        )
+        body = client.get("/pii/permissions").json()
+        assert body["can_decode"] is True and body["can_decode_any"] is True
+
+    def test_being_a_proxy_admin_does_not_imply_decode(self, client, as_key):
+        """The rule the console's own grant flow exists to respect."""
+        as_key(UserAPIKeyAuth(user_role=LitellmUserRoles.PROXY_ADMIN, user_id="admin", api_key="sk-admin"))
+        assert client.get("/pii/permissions").json()["can_decode"] is False
+
+    def test_reports_search_separately_from_decode(self, client, as_key):
+        as_key(
+            UserAPIKeyAuth(
+                user_role=LitellmUserRoles.PROXY_ADMIN,
+                user_id="searcher",
+                api_key="sk-search",
+                permissions={"allow_pii_search": True},
+            )
+        )
+        body = client.get("/pii/permissions").json()
+        assert body["can_search"] is True and body["can_decode"] is False
+
+    def test_never_returns_anything_from_the_vault(self, client, as_key):
+        as_key(DECODE_KEY)
+        assert set(client.get("/pii/permissions").json()) == {"can_decode", "can_decode_any", "can_search"}
