@@ -21,8 +21,8 @@ code/extensions/
 docs/                 Specs, Endpoint-Verträge, QA-Walkthroughs, Messungen
 ```
 
-Teststand: 560 Python-Tests für die PII-Schicht, 68 Unit-Tests in der Browser-Extension
-inklusive Eval-Gate, 50 Tests im Detection-Backend.
+Teststand: über 560 Python-Tests für die PII-Schicht, 271 Unit-Tests in der
+Browser-Extension inklusive Eval-Gate, 50 Tests im Detection-Backend.
 
 Gemessene Erkennungsqualität am Swiss-Data-Airlock-Korpus, mit Methodenkritik und
 den offenen Lücken: [BENCHMARKS.md](BENCHMARKS.md).
@@ -56,8 +56,9 @@ Editor — und nicht erst am API-Gateway, wo sie längst kopiert wurden.
 1. **Aufbau auf LiteLLM statt eigener Proxy.** Multi-Provider-Routing, Virtual Keys,
    Budgets, Rate Limits und ein Guardrail-Hook-Interface, durch das bereits jede
    Request-Oberfläche geleitet wird, sind gelöste Probleme. Unsere Ergänzung ist **rein
-   additiv**: neue Pakete plus zwei Zeilen in `proxy_server.py`. Kein Upstream-Modul wird
-   umgeschrieben, das Nachziehen einer neueren LiteLLM-Version bleibt dadurch günstig.
+   additiv**: neue Pakete plus wenige Router-Registrierungen in `proxy_server.py`. Kein
+   Upstream-Modul wird umgeschrieben, das Nachziehen einer neueren LiteLLM-Version bleibt
+   dadurch günstig.
 
 2. **Typisierte Tokens statt Hashes.** `<PERSON_1>` statt `a3f9c2e1`. Das Label trägt die
    Semantik, die das Modell zum Argumentieren braucht; ein Zufallsstring zerstört genau
@@ -99,9 +100,9 @@ Editor — und nicht erst am API-Gateway, wo sie längst kopiert wurden.
 | **LiteLLM** (FastAPI) | Basis-Proxy: Provider-Routing, Virtual Keys, Auth, Admin-UI |
 | **Microsoft Presidio Analyzer** | Stufe 1 der Erkennung, auf Pattern- und Prüfsummen-Recognizer festgenagelt — deterministisch, kein Modell, ~40 Entitätstypen inkl. IBAN, Kreditkarte, AHV, NINO, SSN |
 | **piiranha** (`iiiorg/piiranha-v1-detect-personal-information`) | Stufe 2 über den HuggingFace-Token-Classification-Vertrag, für `PERSON`, `LOCATION`, `ORGANIZATION` — alles, was Muster nicht erfassen |
-| **Redis / DualCache** | Token-Store des Endpunkt-Pfads, mit TTL |
+| **Redis / DualCache** | Kurzlebiger Token-Store des Endpunkt-Pfads, mit TTL |
 | **AES-256-GCM** (`cryptography`) | Versiegelung der Werte im Store; ein kompromittierter Cache liefert Ciphertext, nie Klartext |
-| **PostgreSQL / Prisma** | Keys, Berechtigungen, Spend — aus LiteLLM übernommen |
+| **PostgreSQL / Prisma** | Persistenter Vault mit Retention, Widerruf und Key-/User-/Team-/Org-Scopes |
 | **Prometheus / OpenTelemetry** | Betrieb |
 
 Wichtig: Presidio wird **nur** über `/analyze` genutzt. Der Presidio-Anonymizer ist nicht
@@ -126,23 +127,29 @@ flowchart LR
     GR --> C
 ```
 
-`ner_stage_policy` steuert, wann Stufe 2 läuft. Default `on_miss`: Das Modell wird nur
-befragt, wenn die Regelstufe nichts gefunden hat — die meisten Requests bezahlen nur den
-günstigen Durchlauf. Überlappungen lösen deterministisch auf: höherer Score gewinnt, bei
-Gleichstand die Regelstufe, dann die längere Spanne.
+`ner_stage_policy` steuert, wann Stufe 2 läuft. Default ist `always`: Sonst genügt eine
+erkannte E-Mail, damit ein Name im selben Text ungeprüft passiert. Lange Prompts werden
+überlappend gefenstert; ohne erreichbare NER-Stufe startet die PII-Schicht nicht, ausser
+der Betreiber akzeptiert den Rules-only-Modus explizit. Überlappungen lösen
+deterministisch auf: höherer Score gewinnt, bei Gleichstand die Regelstufe, dann die
+längere Spanne.
 
 **Zwei Lebensdauern:**
 
 | | LLM-Pfad (Guardrail) | Endpunkt-Pfad (Extensions) |
 |---|---|---|
-| Lebt | einen Request | bis die TTL abläuft |
-| Store | Request-Metadaten, stirbt mit dem Request | Redis, Werte AES-256-GCM-versiegelt |
+| Lebt | einen Request | bis TTL bzw. Retention abläuft |
+| Store | Request-Metadaten, stirbt mit dem Request | Redis oder PostgreSQL, Werte AES-256-GCM-versiegelt |
 | Token | `<PERSON_1>` | `<PERSON:3f9c2e1b8d4a7f60>` |
 | Begründung | kurze typisierte Platzhalter erhalten die Antwortqualität | ein zufälliges Handle trägt keine Information über den Wert; Löschen des Eintrags tötet das Token endgültig |
 
 Der Namespace des Token-Scopes ist `sha256(api_key)`. Eine gültige `session_id` allein
 liest nie die Tokens eines anderen Keys. `/pii/decode` gibt echte Daten zurück und ist
 zusätzlich an die Key-Berechtigung `allow_pii_decode` gebunden.
+
+Der optionale Datenbank-Vault bindet Verschlüsselung und Autorisierung an Key-, User-,
+Team- oder Org-Scopes. Sessions und Betroffene lassen sich widerrufen bzw. exportieren;
+Decode, Export und Suche werden auditiert.
 
 Pro Entität ist die Aktion konfigurierbar: `BLOCK` weist den Request ab, `MASK` redigiert
 irreversibel, `ENCODE` ist der reversible Pfad.
@@ -151,7 +158,7 @@ irreversibel, `ENCODE` ist der reversible Pfad.
 
 | Komponente | Einsatz |
 |---|---|
-| **Chrome-Extension** (MV3, Custom Highlight API) | Erkennt und markiert sensible Stellen auf der Seite; der Service Worker ist das Einzige, was mit dem Backend spricht |
+| **Chrome-Extension** (MV3, Custom Highlight API) | Markiert PII, tokenisiert beim Kopieren und enthüllt beim Einfügen nur gemäss Vertrauensklasse |
 | **VS-Code-Extension** | Tokenisiert Werte im Buffer **und** auf der Platte |
 | **Detection-Backend** (Node, ohne Dependencies) | `/v1/health`, `/v1/policy`, `/v1/detect` auf einer Origin hinter einem Bearer-Credential |
 
@@ -206,6 +213,20 @@ existieren.
 **Kein Seitentext in Logs — erzwungen, nicht erinnert.** `log.ts` wirft bei einem
 Feldnamen, der Text tragen könnte.
 
+**Ein Aktivitätsbild über alle Pfade.** Guardrail, REST-Endpunkte und Browser-Extension
+melden Detect, Encode und Decode in denselben begrenzten In-Memory-Log. Counts, Typen und
+Ergebnis sind immer sichtbar; Text-Capture ist opt-in und benötigt beim Lesen dieselbe
+Decode-Berechtigung wie der Vault. Die Admin-UI kann den Feed live verfolgen.
+
+**Streaming wird während der Übertragung dekodiert.** Der Guardrail hält nur ein kurzes
+Token-Präfix zurück und emittiert synthetische Deltas. Dadurch erscheint auch ein über
+mehrere SSE-Chunks zerschnittenes Token beim Client wieder als Originalwert.
+
+**Die Demo läuft auf dem echten Pfad.** Der Flow-Tab sendet den unveränderten Prompt an
+`/v1/chat/completions`; der Guardrail erledigt Encode und Decode, die UI rekonstruiert die
+Zwischenstände über die korrelierte Activity-ID. Alternativ zeigt sie den langlebigen
+Endpunkt-Pfad. Proxy-Admins können eine ChatGPT-Subscription per Device-Code anmelden.
+
 **Eval mit Regressions-Gate.** Zwei annotierte Korpus-Seiten werden je zweimal gescort —
 annotiert und mit gestripptem `data-sensitive` — und der Lauf schlägt bei Regression gegen
 `eval/gate.json` fehl. UTF-16-Offsets unter Astral-Zeichen und Determinismus über Läufe
@@ -221,12 +242,13 @@ Das Elegante ist die **Konstruktion statt Konvention** an drei Stellen:
 2. Der Erkennungsvertrag kann keine unbekannte Entität einschleusen: Das Label-Mapping von
    piiranha verwirft alles Unbekannte, ein Modell-Upgrade kann das Vokabular nicht
    erweitern.
-3. Autorisierung ist im Store-Key eingebacken (`pii:{sha256(key)}:{session}:{token}`) und
+3. Autorisierung ist im Kurzzeit-Store-Key
+   (`pii:{sha256(key)}:{session}:{token}`) bzw. im Vault-Scope und dessen AAD eingebacken,
    nicht nur in einer Abfrage geprüft.
 
-Dazu die **Sparsamkeit der Erkennung**: Die teure Modellstufe läuft im Default nur, wenn
-die günstige nichts gefunden hat — die Kostenkurve folgt dem tatsächlichen Bedarf statt
-einer pauschalen Entscheidung.
+Dazu die **sichere Vollständigkeit der Kaskade**: Die Modellstufe läuft standardmässig
+immer, wird bei langen Eingaben aber überlappend gefenstert. Eine günstige Regelerkennung
+kann dadurch nie versehentlich die Suche nach Namen abschalten.
 
 ## Abgrenzung / Offene Punkte
 
@@ -234,10 +256,7 @@ Bewusst nicht implementiert:
 
 | Abgrenzung | Weshalb |
 |---|---|
-| **Streaming-Decode (SSE)** | Der Guardrail setzt `streaming_transform_mode = "incremental_diff"` noch nicht, gestreamte Antworten kommen daher tokenisiert an. Die Mechanik ist entworfen (Holdback pro Choice, damit ein über Chunk-Grenzen zerschnittenes Token gehalten wird) — für einen Hackathon-Zeitraum war der nicht-gestreamte Pfad der ehrlichere Beweis |
-| **Persistenter Vault** (DB-Tabelle, Widerruf, Audit, Team-/Org-Scopes) | Vollständig entworfen inklusive Schlüsselableitung per HKDF und AAD-Bindung, aber nicht gebaut. Ein Vault ohne Audit und Retention wäre eine Compliance-Schuld, kein Feature |
-| **Extensions ↔ Engine noch nicht verdrahtet** | Die Extensions sprechen heute mit dem TypeScript-Detection-Backend, die Engine hat denselben Vertrag. Beide Seiten sind bewusst gegen denselben Vertrag gebaut, damit die Zusammenführung eine Konfiguration und keine Portierung ist |
-| **Clipboard, Tokens, Replacement-Clone im Browser** (SPEC §6–§8) | Der Erkennungs- und Markierungspfad ist fertig und getestet; alles danach hängt am Vault |
+| **Token-Vault der Extension ↔ Engine noch nicht verdrahtet** | Copy/Paste läuft Ende zu Ende gegen den Browser-Mock; kein deployter Service implementiert heute dessen `/v1/tokens`. Aktivitätsmeldungen der Extension erreichen die Engine bereits |
 | **Audio, Bild, Video, Realtime** | Der Codec ist textbasiert. Ein binäres Media-Payload durchliefe den Guardrail unberührt. Eine Oberfläche, die per Design leckt, ist schlechter als eine, die 404 liefert |
 | **Nur `texts`, noch nicht `tool_calls` / `structured_messages`** | Bekannte Lücke, gleiche Mechanik |
 | **Die Modellstufe im TS-Backend ist ein Gazetteer, kein LLM** | Das Interface ist die Naht, in die eine LLM-Implementation fällt. Wir nennen das offen, weil der Eval-Score sonst überzeichnet wäre: Der Gazetteer wurde gegen dieselben Fixtures geschrieben, die er findet |
