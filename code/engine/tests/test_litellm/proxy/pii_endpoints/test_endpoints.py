@@ -980,3 +980,32 @@ class TestEncodePlacements:
         install_service(SubstringDetector("Ada"))
         as_key(NO_DECODE_KEY)
         assert client.post("/pii/encode", json={"texts": ["nothing here"]}).json()["placements"] == []
+
+
+class TestCodecAgainstTheVault:
+    """The vault keys a row by the token, so an ordinal token cannot live in it."""
+
+    def test_placeholder_is_refused_rather_than_silently_dropped(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        response = client.post("/pii/encode", json={"texts": ["hello Ada"], "codec": "placeholder"})
+        assert response.status_code == 422
+        assert "handle codec" in response.text
+
+    def test_the_refusal_explains_what_would_have_been_lost(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        detail = client.post("/pii/encode", json={"texts": ["hello Ada"], "codec": "placeholder"}).json()
+        assert "nothing can resolve" in detail["detail"]["error"]
+
+    def test_the_default_handle_codec_is_unaffected(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        assert client.post("/pii/encode", json={"texts": ["hello Ada"]}).status_code == 200
+
+    def test_placeholder_is_still_allowed_without_a_vault(self, client, install_service, as_key):
+        """The cache store keys by scope and session, so ordinals are safe there."""
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"], "codec": "placeholder"}).json()
+        assert encoded["texts"] == ["hello <PERSON_1>"]

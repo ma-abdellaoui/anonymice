@@ -39,7 +39,7 @@ interface AnonymizationFlowProps {
  */
 const AnonymizationFlow: React.FC<AnonymizationFlowProps> = ({ accessToken, userId, userRole }) => {
   const [prompt, setPrompt] = useState(SAMPLE_PROMPT);
-  const [codec, setCodec] = useState<PiiCodecId>("placeholder");
+  const [codec, setCodec] = useState<PiiCodecId>("handle");
   const [model, setModel] = useState("");
   const [run, setRun] = useState<FlowRun | null>(null);
   const [stage, setStage] = useState<RunStage | null>(null);
@@ -102,8 +102,8 @@ const AnonymizationFlow: React.FC<AnonymizationFlowProps> = ({ accessToken, user
               value={codec}
               onChange={(event) => setCodec(event.target.value as PiiCodecId)}
             >
-              <option value="placeholder">&lt;PERSON_1&gt; · what the LLM path uses</option>
               <option value="handle">&lt;PERSON:9f2c…&gt; · what the vault mints</option>
+              <option value="placeholder">&lt;PERSON_1&gt; · the LLM path&apos;s form, needs the vault off</option>
             </select>
           </label>
 

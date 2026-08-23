@@ -30,7 +30,7 @@ from litellm.pii.activity import (
     new_event,
 )
 from litellm.pii.codec.action_aware import SpanAction
-from litellm.pii.config import CodecId, PiiSettings, build_codec, build_service
+from litellm.pii.config import CodecId, PiiSettings, build_codec, build_service, mints_unique_tokens
 from litellm.pii.service import EncodedBatch, PiiService, new_session_id
 from litellm.pii.store.base import TokenScope
 from litellm.pii.types import (
@@ -427,6 +427,16 @@ async def encode_pii(
             _raise_public(cached)
         _record_encode(user_api_key_dict, cached, request.texts, started)
         return _encode_response(cached)
+
+    if request.codec is not None and not mints_unique_tokens(request.codec):
+        raise HTTPException(
+            status_code=422,
+            detail=_detail(
+                f"codec='{request.codec}' cannot be used while the PII vault is enabled: the vault keys a row by "
+                "the token itself, so an ordinal token collides with another session's and the mapping would be "
+                "dropped, leaving a token nothing can resolve. Use the default handle codec."
+            ),
+        )
 
     scope: Final = _requested_scope(identity_from(user_api_key_dict), request.scope_type)
     if isinstance(scope, VaultForbidden):
