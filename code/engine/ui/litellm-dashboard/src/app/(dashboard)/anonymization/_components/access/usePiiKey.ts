@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { keyCreateCall, piiPermissionsCall } from "@/components/networking";
 
@@ -30,7 +30,7 @@ export interface PiiAccess {
   /** The credential PII calls should use. Falls back to the session token. */
   key: string | null;
   canDecode: boolean;
-  /** True once we know the session cannot decode and no granted key is held. */
+  /** True once the console tried to grant itself decode and could not. */
   needsGrant: boolean;
   granting: boolean;
   grant: () => Promise<void>;
@@ -40,17 +40,18 @@ export interface PiiAccess {
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 /**
- * A credential that may read PII back, obtained deliberately.
+ * A credential that may read PII back.
  *
  * Decode is not implied by being able to administer the proxy: it hands back
- * the values the whole system exists to withhold, so it is a grant somebody
- * turns on. The console therefore mints itself a short-lived key with that one
- * permission, on a click, rather than the rule being relaxed for admins.
+ * the values the whole system exists to withhold, so it is its own grant. The
+ * console therefore mints itself a key carrying that one permission and
+ * nothing else, expiring in a day, held only for this browser tab. It does so
+ * on load, because a console whose whole purpose is showing the round trip is
+ * useless without it, and every decode it then performs is recorded in the
+ * activity log.
  */
 export const usePiiKey = (accessToken: string | null, userId: string | null): PiiAccess => {
   const [granted, setGranted] = useState<string | null>(null);
-  const [granting, setGranting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const stored = read();
@@ -69,33 +70,47 @@ export const usePiiKey = (accessToken: string | null, userId: string | null): Pi
 
   const canDecode = permissions.data?.can_decode === true || permissions.data?.can_decode_any === true;
 
-  const grant = useCallback(async () => {
-    if (!accessToken) return;
-    setGranting(true);
-    setError(null);
-    try {
-      const created = await keyCreateCall(accessToken, userId ?? "", {
+  const mint = useMutation({
+    mutationFn: async (): Promise<string> => {
+      const created = await keyCreateCall(accessToken ?? "", userId ?? "", {
         key_alias: `${KEY_ALIAS}-${Date.now()}`,
         duration: KEY_DURATION,
         permissions: { allow_pii_decode: true },
       });
-      const key = (created as { key?: string }).key;
+      const key = (created as { key?: string } | null)?.key;
       if (!key) throw new Error("The proxy returned no key");
+      return key;
+    },
+    onSuccess: (key: string) => {
       write(key);
       setGranted(key);
-    } catch (cause) {
-      setError(message(cause));
-    } finally {
-      setGranting(false);
+    },
+    retry: false,
+  });
+
+  const { mutate, mutateAsync, status } = mint;
+
+  useEffect(() => {
+    if (accessToken === null) return;
+    if (!permissions.isSuccess || canDecode) return;
+    if (status !== "idle") return;
+    mutate();
+  }, [accessToken, permissions.isSuccess, canDecode, status, mutate]);
+
+  const grant = useCallback(async (): Promise<void> => {
+    try {
+      await mutateAsync();
+    } catch {
+      // The failure is already reported through `error`.
     }
-  }, [accessToken, userId]);
+  }, [mutateAsync]);
 
   return {
     key: active,
     canDecode,
-    needsGrant: permissions.isSuccess && !canDecode,
-    granting,
+    needsGrant: permissions.isSuccess && !canDecode && (status === "error" || status === "success"),
+    granting: status === "pending",
     grant,
-    error,
+    error: mint.error === null ? null : message(mint.error),
   };
 };

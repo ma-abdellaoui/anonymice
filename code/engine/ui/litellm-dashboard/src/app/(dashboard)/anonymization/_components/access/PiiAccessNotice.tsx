@@ -12,11 +12,11 @@ interface PiiAccessNoticeProps {
 }
 
 /**
- * Says why decode is refused, and offers the one deliberate step that fixes it.
+ * Says why decode is refused, once the console has failed to fix it itself.
  *
  * The refusal is the design working: administering the proxy does not imply
- * permission to read PII back out of the vault. So the console asks for that
- * permission in its own right rather than the rule being widened for it.
+ * permission to read PII back out of the vault. The console asks for that
+ * permission on load; this is what the user sees when that ask did not land.
  */
 const PiiAccessNotice: React.FC<PiiAccessNoticeProps> = ({ access }) => {
   if (!access.needsGrant) return null;
@@ -30,8 +30,8 @@ const PiiAccessNotice: React.FC<PiiAccessNoticeProps> = ({ access }) => {
         </p>
         <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-300">
           Decode returns real values, so it needs the <code className="font-mono">allow_pii_decode</code> grant rather
-          than being implied by administering the proxy. Detect and encode work without it. Granting mints a key that
-          carries only that permission and expires in {KEY_DURATION}; it is held for this browser tab.
+          than being implied by administering the proxy. Detect and encode work without it. The console tried to mint
+          itself a key that carries only that permission and expires in {KEY_DURATION}, and could not.
         </p>
         {access.error && <p className="mt-1 text-xs text-rose-700 dark:text-rose-300">{access.error}</p>}
       </div>
@@ -41,7 +41,7 @@ const PiiAccessNotice: React.FC<PiiAccessNoticeProps> = ({ access }) => {
         ) : (
           <KeyRound className="mr-2 h-4 w-4" />
         )}
-        Grant decode for this session
+        Try again
       </Button>
     </div>
   );

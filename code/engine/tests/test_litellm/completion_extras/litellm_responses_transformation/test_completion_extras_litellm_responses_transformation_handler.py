@@ -338,3 +338,110 @@ async def test_acompletion_keeps_provider_native_model_id_through_responses(
 
     handed_model = responses_call.call_args.kwargs["model"]
     assert _upstream_model_for(handed_model, custom_llm_provider) == expected_upstream_model
+
+
+class _DrainedStream:
+    """A Responses stream whose completed event carries no output.
+
+    The ChatGPT codex backend behaves this way: it refuses a non-streaming
+    request outright, then reports completion with an empty ``output`` because
+    the text was already delivered as item events.
+    """
+
+    def __init__(self, events, completed_output):
+        self._events = list(events)
+        self.completed_response = MagicMock()
+        self.completed_response.response = {
+            "id": "resp_1",
+            "created_at": 0,
+            "model": "gpt-5.4",
+            "object": "response",
+            "output": list(completed_output),
+            "parallel_tool_calls": False,
+            "tool_choice": "auto",
+            "tools": [],
+        }
+
+    def __iter__(self):
+        return iter(self._events)
+
+    def __aiter__(self):
+        events = iter(self._events)
+
+        async def gen():
+            for event in events:
+                yield event
+
+        return gen()
+
+
+def _item_done_event(text):
+    return {
+        "type": "response.output_item.done",
+        "output_index": 0,
+        "item": {
+            "type": "message",
+            "id": "msg_1",
+            "role": "assistant",
+            "status": "completed",
+            "content": [{"type": "output_text", "text": text, "annotations": []}],
+        },
+    }
+
+
+def _output_texts(response):
+    """Read the message text out of items that may be dicts or parsed models."""
+    texts = []
+    for item in response.output:
+        content = item["content"] if isinstance(item, dict) else item.content
+        part = content[0]
+        texts.append(part["text"] if isinstance(part, dict) else part.text)
+    return texts
+
+
+def _text_done_event(text):
+    return {
+        "type": "response.output_text.done",
+        "output_index": 1,
+        "content_index": 0,
+        "item_id": "msg_2",
+        "text": text,
+    }
+
+
+def test_collect_response_from_stream_keeps_output_the_completed_event_dropped():
+    handler = ResponsesToCompletionBridgeHandler()
+    stream = _DrainedStream([_item_done_event("Ready.")], completed_output=[])
+
+    response = handler._collect_response_from_stream(stream)
+
+    assert _output_texts(response) == ["Ready."]
+
+
+def test_collect_response_from_stream_recovers_text_only_items():
+    handler = ResponsesToCompletionBridgeHandler()
+    stream = _DrainedStream([_text_done_event("Ready.")], completed_output=[])
+
+    response = handler._collect_response_from_stream(stream)
+
+    assert _output_texts(response) == ["Ready."]
+
+
+def test_collect_response_from_stream_leaves_a_populated_completed_event_alone():
+    handler = ResponsesToCompletionBridgeHandler()
+    kept = _item_done_event("From the completed event")["item"]
+    stream = _DrainedStream([_item_done_event("From the item events")], completed_output=[kept])
+
+    response = handler._collect_response_from_stream(stream)
+
+    assert _output_texts(response) == ["From the completed event"]
+
+
+@pytest.mark.asyncio
+async def test_acollect_response_from_stream_keeps_output_the_completed_event_dropped():
+    handler = ResponsesToCompletionBridgeHandler()
+    stream = _DrainedStream([_item_done_event("Ready.")], completed_output=[])
+
+    response = await handler._collect_response_from_stream_async(stream)
+
+    assert _output_texts(response) == ["Ready."]
