@@ -108,6 +108,7 @@ export interface ApiClientConfig {
 
 export interface WithHeaders<T> {
   data: T;
+  status: number;
   headers: Headers;
 }
 
@@ -200,7 +201,7 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     options: RequestOptions = {},
   ): Promise<WithHeaders<T>> {
     const response = await send(method, path, options);
-    return { data: await parse<T>(response), headers: response.headers };
+    return { data: await parse<T>(response), status: response.status, headers: response.headers };
   }
 
   return {

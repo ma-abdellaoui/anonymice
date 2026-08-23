@@ -1,5 +1,6 @@
 import React from "react";
 
+import ApiConsole from "./api/ApiConsole";
 import AnonymizationFlow from "./flow/FlowVisualizer";
 import AnonymizationPlayground from "./AnonymizationPlayground";
 import AnonymizationSettings from "./AnonymizationSettings";
@@ -36,6 +37,7 @@ const AnonymizationPanel: React.FC<AnonymizationPanelProps> = ({ accessToken, us
           <TabsTrigger value="flow">Flow</TabsTrigger>
           <TabsTrigger value="playground">Playground</TabsTrigger>
           <TabsTrigger value="vault">Vault</TabsTrigger>
+          <TabsTrigger value="api">API</TabsTrigger>
           <TabsTrigger value="settings">Configuration</TabsTrigger>
         </TabsList>
         <TabsContent value="flow" className="mt-4">
@@ -46,6 +48,9 @@ const AnonymizationPanel: React.FC<AnonymizationPanelProps> = ({ accessToken, us
         </TabsContent>
         <TabsContent value="vault" className="mt-4">
           <VaultBrowser accessToken={access.key} />
+        </TabsContent>
+        <TabsContent value="api" className="mt-4">
+          <ApiConsole accessToken={access.key} />
         </TabsContent>
         <TabsContent value="settings" className="mt-4">
           <AnonymizationSettings userRole={userRole} />
