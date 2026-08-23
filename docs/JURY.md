@@ -16,13 +16,12 @@
 code/engine/          LLM-Proxy — Erweiterung von LiteLLM (Python)
 code/extensions/
   ├── browser/        Chrome-Extension (TypeScript, MV3)
-  ├── vscode/         VS-Code-Extension (TypeScript)
-  └── backend/        Lokales Test-Doppel der Engine (Node, ohne Dependencies)
+  └── backend/        Detection- und Policy-Service (Node, ohne Dependencies)
 docs/                 Specs, Endpoint-Verträge, QA-Walkthroughs, Messungen
 ```
 
-Teststand: über 560 Python-Tests für die PII-Schicht, 271 Unit-Tests in der
-Browser-Extension inklusive Eval-Gate, 50 Tests im Node-Test-Doppel.
+Teststand: über 700 Python-Tests für die PII-Schicht, 280 Unit-Tests in der
+Browser-Extension inklusive Eval-Gate, 50 Tests im Backend-Service.
 
 Gemessene Erkennungsqualität am Swiss-Data-Airlock-Korpus, mit Methodenkritik und
 den offenen Lücken: [BENCHMARKS.md](BENCHMARKS.md).
@@ -32,7 +31,7 @@ den offenen Lücken: [BENCHMARKS.md](BENCHMARKS.md).
 ### Worauf haben wir uns fokussiert?
 
 Jeder produktive LLM-Workflow endet damit, dass jemand etwas in ein Modell einfügt, das er
-nicht kontrolliert: ein Support-Ticket mit IBAN, ein `.env` mit einem gültigen Key, eine
+nicht kontrolliert: ein Support-Ticket mit IBAN, eine
 Patientennotiz. Redaktion (`***`) zerstört die Struktur des Textes und damit die
 Antwortqualität. Keine Redaktion bedeutet: die Daten sind weg.
 
@@ -48,16 +47,15 @@ Antwort    Ich habe eine Notiz an <PERSON_1> zu <IBAN_CODE_1> entworfen.
 Ausgabe    Ich habe eine Notiz an Anna Meier zu CH93 0076 2011 6238 5295 7 entworfen.
 ```
 
-Zweiter Fokus: die Daten **dort** abfangen, wo Menschen tatsächlich arbeiten — Browser und
-Editor — und nicht erst am API-Gateway, wo sie längst kopiert wurden.
+Zweiter Fokus: die Daten **dort** abfangen, wo Menschen tatsächlich arbeiten — im Browser und schon
+bestehende Systeme.
 
 ### Welche technischen Grundsatzentscheide haben wir gefällt?
 
-1. **Aufbau auf LiteLLM statt eigener Proxy.** Multi-Provider-Routing, Virtual Keys,
+1. **Aufbau auf LiteLLM fork statt eigener Proxy.** Multi-Provider-Routing, Virtual Keys,
    Budgets, Rate Limits und ein Guardrail-Hook-Interface, durch das bereits jede
-   Request-Oberfläche geleitet wird, sind gelöste Probleme. Unsere Ergänzung ist **rein
-   additiv**: neue Pakete plus wenige Router-Registrierungen in `proxy_server.py`. Kein
-   Upstream-Modul wird umgeschrieben, das Nachziehen einer neueren LiteLLM-Version bleibt
+   Request-Oberfläche geleitet wird, sind gelöste Probleme. Unsere Ergänzung ist: neue Pakete plus wenige Router-Registrierungen in `proxy_server.py`. 
+   Kein Upstream-Modul wird umgeschrieben, das Nachziehen einer neueren LiteLLM-Version bleibt
    dadurch günstig.
 
 2. **Typisierte Tokens statt Hashes.** `<PERSON_1>` statt `a3f9c2e1`. Das Label trägt die
@@ -86,10 +84,13 @@ Editor — und nicht erst am API-Gateway, wo sie längst kopiert wurden.
 7. **Zwei bewusst unterschiedliche Lebensdauern** für Tokens statt eines Kompromisses
    (siehe [Technischer Aufbau](#engine-codeengine)).
 
-8. **Extensions und LLM-Pfad teilen dieselbe Engine.** Im Produktbetrieb gehen Detect,
-   Encode und Decode der Extensions an die `/pii/*`-Endpunkte. Das Node-Backend unter
-   `code/extensions/backend/` bildet diesen Vertrag nur lokal für Tests nach und ist kein
-   eigenes Deployment.
+8. **Detection und Policy liegen innerhalb derselben Vertrauensgrenze wie der Vault.**
+   `/v1/detect` empfängt rohen Seitentext, `/v1/policy` entscheidet, welche Seiten
+   überhaupt gelesen werden — ein Detektor ausserhalb der Grenze leckt genau die Daten,
+   für deren Schutz er existiert. Daraus folgt alles Weitere: Loopback-Binding per
+   Default, kein Default-Credential (ohne gesetztes `DETECT_TOKEN` startet der Dienst
+   nicht), **null Laufzeit-Dependencies**, und ein Logger, der Felder mit Seitentext
+   gar nicht erst annimmt.
 
 ## Technischer Aufbau
 
@@ -136,7 +137,7 @@ längere Spanne.
 
 **Zwei Lebensdauern:**
 
-| | LLM-Pfad (Guardrail) | Endpunkt-Pfad (Extensions) |
+| | LLM-Pfad (Guardrail) | Endpunkt-Pfad (`/pii/*`) |
 |---|---|---|
 | Lebt | einen Request | bis TTL bzw. Retention abläuft |
 | Store | Request-Metadaten, stirbt mit dem Request | Redis oder PostgreSQL, Werte AES-256-GCM-versiegelt |
@@ -159,9 +160,8 @@ irreversibel, `ENCODE` ist der reversible Pfad.
 | Komponente | Einsatz |
 |---|---|
 | **Chrome-Extension** (MV3, Custom Highlight API) | Markiert PII, tokenisiert beim Kopieren und enthüllt beim Einfügen nur gemäss Vertrauensklasse |
-| **VS-Code-Extension** | Tokenisiert Werte im Buffer **und** auf der Platte |
-| **Engine-Anbindung** | Detection, Vault und Berechtigungen kommen im Produktbetrieb aus derselben `/pii/*`-API wie der LLM-Pfad |
-| **Node-Test-Doppel** (ohne Dependencies) | Lokaler Ersatz für Unit-, Eval- und Browser-QA; nicht Teil des Produkt-Deployments |
+| **Backend-Service** (Node, ohne Dependencies) | `/v1/health`, `/v1/policy`, `/v1/detect` auf einer Origin hinter einem Bearer-Credential |
+| **Aktivitäts-Anbindung an die Engine** | Was die Extension tut, meldet sie an `POST /pii/activity` — denselben Feed, in dem der LLM-Pfad erscheint. Der `Beacon`-Typ hat kein Feld für Seitentext |
 
 Jeder Host hat eine per Managed Policy verteilte Vertrauensklasse:
 
@@ -170,13 +170,6 @@ Jeder Host hat eine per Managed Policy verteilte Vertrauensklasse:
 | `NATIVE` | Eigene Systeme. Werte bleiben stehen, sensible Spans werden markiert |
 | `TRUSTED` | Der Nutzer sieht den Wert, das DOM hält Tokens |
 | `UNTRUSTED` | Alles andere. Echte Werte gelangen nie ins DOM |
-
-Die VS-Code-Invariante: *Ein sensibler Wert ist zu keinem Zeitpunkt in einem
-`TextDocument` und in keiner Datei im Workspace.* VS Code kennt keine Reader-Isolation pro
-Ressource — Copilot und Agents hängen am **Fenster**, nicht an der Datei. Der einzige Ort,
-an dem sich etwas durchsetzen lässt, ist der Text selbst. Completion-Provider,
-Chat-`#file`, `read_file` eines Agents und ein Agent, der `cat` aufruft, sehen alle
-dasselbe Token.
 
 ## Implementation
 
@@ -202,9 +195,9 @@ bestehenden Presidio-Guardrails bewusst *nicht* übernommen: Es rät, welches vo
 Token ein abgeschnittenes war, und setzt bei einem Fehlgriff den Namen der falschen Person
 ein. `<PERSON_` anzuzeigen ist der bessere Fehlerfall.
 
-**Das Test-Doppel kann nicht still driften.** `npm run parity` vergleicht seine
-vervielfältigten Vertragsmodule bit-identisch mit der Extension; `log.ts` verbietet dort
-Felder, die Seitentext tragen könnten.
+**Backend und Extension können nicht still auseinanderlaufen.** `npm run parity`
+vergleicht die in beiden gehaltenen Vertragsmodule bit-identisch; `log.ts` verbietet im
+Backend Felder, die Seitentext tragen könnten.
 
 **Ein Aktivitätsbild über alle Pfade.** Guardrail, REST-Endpunkte und Browser-Extension
 melden Detect, Encode und Decode in denselben begrenzten In-Memory-Log. Counts, Typen und
@@ -270,5 +263,4 @@ dokumentiert, nicht wegkonstruiert.
 | [`../code/engine/litellm/pii/README.md`](../code/engine/litellm/pii/README.md) | Die PII-Schicht aus der Nähe |
 | [`../code/extensions/SPEC.md`](../code/extensions/SPEC.md) | Vertrauensklassen und das Copy/Paste-Modell |
 | [`../code/extensions/browser/SPEC.md`](../code/extensions/browser/SPEC.md) | Design der Browser-Extension |
-| [`../code/extensions/vscode/SPEC.md`](../code/extensions/vscode/SPEC.md) | Editor-Invariante und Token-Format |
-| [`extensions/browser/ENDPOINTS.md`](extensions/browser/ENDPOINTS.md) | Testvertrag des lokalen Browser-Harness |
+| [`extensions/browser/ENDPOINTS.md`](extensions/browser/ENDPOINTS.md) | Endpunkt-Vertrag zwischen Extension und Backend-Service |
