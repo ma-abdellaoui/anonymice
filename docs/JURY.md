@@ -17,12 +17,12 @@ code/engine/          LLM-Proxy — Erweiterung von LiteLLM (Python)
 code/extensions/
   ├── browser/        Chrome-Extension (TypeScript, MV3)
   ├── vscode/         VS-Code-Extension (TypeScript)
-  └── backend/        Detection-Service für die Extensions (Node, ohne Dependencies)
+  └── backend/        Lokales Test-Doppel der Engine (Node, ohne Dependencies)
 docs/                 Specs, Endpoint-Verträge, QA-Walkthroughs, Messungen
 ```
 
 Teststand: über 560 Python-Tests für die PII-Schicht, 271 Unit-Tests in der
-Browser-Extension inklusive Eval-Gate, 50 Tests im Detection-Backend.
+Browser-Extension inklusive Eval-Gate, 50 Tests im Node-Test-Doppel.
 
 Gemessene Erkennungsqualität am Swiss-Data-Airlock-Korpus, mit Methodenkritik und
 den offenen Lücken: [BENCHMARKS.md](BENCHMARKS.md).
@@ -86,10 +86,8 @@ Editor — und nicht erst am API-Gateway, wo sie längst kopiert wurden.
 7. **Zwei bewusst unterschiedliche Lebensdauern** für Tokens statt eines Kompromisses
    (siehe [Technischer Aufbau](#engine-codeengine)).
 
-8. **Der Detection-Service liegt innerhalb derselben Vertrauensgrenze wie der Vault.** Er
-   empfängt rohen Seitentext und entscheidet, welche Seiten überhaupt gelesen werden.
-   Daraus folgt alles Weitere: Loopback-Binding per Default, kein Default-Credential,
-   **null Dependencies**, und kein Logging von Seitentext.
+8. **Extensions und LLM-Pfad teilen dieselbe Engine.** Sie nutzt Detect,
+   Encode und Decode Funktionen der `/pii/*`-Endpunkte. Zu Testzwecken besteht ein einfaches Extension-only Backend.
 
 ## Technischer Aufbau
 
@@ -160,7 +158,8 @@ irreversibel, `ENCODE` ist der reversible Pfad.
 |---|---|
 | **Chrome-Extension** (MV3, Custom Highlight API) | Markiert PII, tokenisiert beim Kopieren und enthüllt beim Einfügen nur gemäss Vertrauensklasse |
 | **VS-Code-Extension** | Tokenisiert Werte im Buffer **und** auf der Platte |
-| **Detection-Backend** (Node, ohne Dependencies) | `/v1/health`, `/v1/policy`, `/v1/detect` auf einer Origin hinter einem Bearer-Credential |
+| **Engine-Anbindung** | Detection, Vault und Berechtigungen kommen im Produktbetrieb aus derselben `/pii/*`-API wie der LLM-Pfad |
+| **Node-Test-Doppel** (ohne Dependencies) | Lokaler Ersatz für Unit-, Eval- und Browser-QA; nicht Teil des Produkt-Deployments |
 
 Jeder Host hat eine per Managed Policy verteilte Vertrauensklasse:
 
@@ -176,9 +175,6 @@ Ressource — Copilot und Agents hängen am **Fenster**, nicht an der Datei. Der
 an dem sich etwas durchsetzen lässt, ist der Text selbst. Completion-Provider,
 Chat-`#file`, `read_file` eines Agents und ein Agent, der `cat` aufruft, sehen alle
 dasselbe Token.
-
-Erkennungsklassen des Backends: `IBAN`, `AHV`, `CARD`, `EMAIL`, `PHONE`, `PERSON`, `ORG`,
-`SECRET`.
 
 ## Implementation
 
@@ -204,14 +200,9 @@ bestehenden Presidio-Guardrails bewusst *nicht* übernommen: Es rät, welches vo
 Token ein abgeschnittenes war, und setzt bei einem Fehlgriff den Namen der falschen Person
 ein. `<PERSON_` anzuzeigen ist der bessere Fehlerfall.
 
-**Bit-identische Parität statt geteiltem Paket.** Extension und Detection-Backend sind
-getrennt deployte Artefakte und können einander nicht importieren. `npm run parity` diffed
-die vervielfältigten Kern-Module. Ein Backend und ein Client, die sich uneinig sind, was
-eine gültige IBAN ist, erzeugen genau die stille Divergenz, gegen die diese Regeln
-existieren.
-
-**Kein Seitentext in Logs — erzwungen, nicht erinnert.** `log.ts` wirft bei einem
-Feldnamen, der Text tragen könnte.
+**Das Test-Doppel kann nicht still driften.** `npm run parity` vergleicht seine
+vervielfältigten Vertragsmodule bit-identisch mit der Extension; `log.ts` verbietet dort
+Felder, die Seitentext tragen könnten.
 
 **Ein Aktivitätsbild über alle Pfade.** Guardrail, REST-Endpunkte und Browser-Extension
 melden Detect, Encode und Decode in denselben begrenzten In-Memory-Log. Counts, Typen und
@@ -256,10 +247,8 @@ Bewusst nicht implementiert:
 
 | Abgrenzung | Weshalb |
 |---|---|
-| **Token-Vault der Extension ↔ Engine noch nicht verdrahtet** | Copy/Paste läuft Ende zu Ende gegen den Browser-Mock; kein deployter Service implementiert heute dessen `/v1/tokens`. Aktivitätsmeldungen der Extension erreichen die Engine bereits |
 | **Audio, Bild, Video, Realtime** | Der Codec ist textbasiert. Ein binäres Media-Payload durchliefe den Guardrail unberührt. Eine Oberfläche, die per Design leckt, ist schlechter als eine, die 404 liefert |
 | **Nur `texts`, noch nicht `tool_calls` / `structured_messages`** | Bekannte Lücke, gleiche Mechanik |
-| **Die Modellstufe im TS-Backend ist ein Gazetteer, kein LLM** | Das Interface ist die Naht, in die eine LLM-Implementation fällt. Wir nennen das offen, weil der Eval-Score sonst überzeichnet wäre: Der Gazetteer wurde gegen dieselben Fixtures geschrieben, die er findet |
 | **Ausdünnen des LiteLLM-Forks** | Wir haben es evaluiert und gemessen — 189 → 159 Pakete, Image von ~1,4 auf 1,11 GB, Build grün — und **bewusst zurückgerollt**. Der Gewinn an Bytes wog das Divergenzrisiko gegenüber Upstream nicht auf. Die Laufzeit-Angriffsfläche wird ohnehin über eine Route-Allowlist in unserer eigenen Datei begrenzt, die beim Nachziehen nichts kostet |
 
 Eine Grenze, die kein Token-Format löst: Ein Request mit `response_format: json_schema` und
@@ -280,4 +269,4 @@ dokumentiert, nicht wegkonstruiert.
 | [`../code/extensions/SPEC.md`](../code/extensions/SPEC.md) | Vertrauensklassen und das Copy/Paste-Modell |
 | [`../code/extensions/browser/SPEC.md`](../code/extensions/browser/SPEC.md) | Design der Browser-Extension |
 | [`../code/extensions/vscode/SPEC.md`](../code/extensions/vscode/SPEC.md) | Editor-Invariante und Token-Format |
-| [`extensions/browser/ENDPOINTS.md`](extensions/browser/ENDPOINTS.md) | Der Drei-Endpunkt-Vertrag des Backends |
+| [`extensions/browser/ENDPOINTS.md`](extensions/browser/ENDPOINTS.md) | Testvertrag des lokalen Browser-Harness |
