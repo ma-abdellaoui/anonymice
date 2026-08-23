@@ -87,13 +87,13 @@ const AnonymizationPlayground: React.FC<AnonymizationPlaygroundProps> = ({ acces
             placeholder="Paste text containing PII to see how it is detected and encoded"
           />
           <div className="flex flex-wrap items-center gap-2">
-            <label className="text-sm text-gray-500" htmlFor="playground-scope">
+            <label className="text-sm text-muted-foreground" htmlFor="playground-scope">
               Scope
             </label>
             <select
               id="playground-scope"
               aria-label="Scope"
-              className="rounded border border-gray-200 px-2 py-1.5 text-sm text-gray-700"
+              className="rounded border border-border px-2 py-1.5 text-sm text-foreground"
               value={scope}
               onChange={(event) => setScope(event.target.value as PiiScopeType)}
             >
@@ -110,7 +110,7 @@ const AnonymizationPlayground: React.FC<AnonymizationPlaygroundProps> = ({ acces
               className="max-w-xs font-mono text-sm"
             />
           </div>
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-muted-foreground">
             Scope decides who can later resolve these tokens, and is only honoured when the vault is enabled. A
             subject_id makes the values reachable by export and erasure; it defaults to the request&apos;s end user.
           </p>
@@ -144,7 +144,7 @@ const AnonymizationPlayground: React.FC<AnonymizationPlaygroundProps> = ({ acces
           <CardHeader>
             <CardTitle>
               Detected{" "}
-              <span className="text-sm font-normal text-gray-500">
+              <span className="text-sm font-normal text-muted-foreground">
                 {detection.spans.length} span{detection.spans.length === 1 ? "" : "s"} ·{" "}
                 {detection.ner_stage_ran ? "model stage ran" : "rules only"}
               </span>
@@ -157,7 +157,7 @@ const AnonymizationPlayground: React.FC<AnonymizationPlaygroundProps> = ({ acces
                 {detection.spans.map((span, index) => (
                   <span
                     key={`${span.entity_type}-${span.start}-${index}`}
-                    className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700"
+                    className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground"
                   >
                     {span.entity_type} · {span.detector} · {span.score.toFixed(2)}
                   </span>
@@ -172,17 +172,17 @@ const AnonymizationPlayground: React.FC<AnonymizationPlaygroundProps> = ({ acces
         <Card>
           <CardHeader>
             <CardTitle>
-              Encoded <span className="text-sm font-normal text-gray-500">session {encoded.session_id}</span>
+              Encoded <span className="text-sm font-normal text-muted-foreground">session {encoded.session_id}</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <p className="whitespace-pre-wrap break-words font-mono text-sm text-gray-700">{encoded.texts[0]}</p>
+            <p className="whitespace-pre-wrap break-words font-mono text-sm text-foreground">{encoded.texts[0]}</p>
             {encoded.tokens.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {encoded.tokens.map((token) => (
                   <span
                     key={token.token}
-                    className="rounded-full bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-700"
+                    className="rounded-full bg-muted px-2 py-0.5 font-mono text-xs text-foreground"
                   >
                     {token.token}
                   </span>
@@ -198,13 +198,13 @@ const AnonymizationPlayground: React.FC<AnonymizationPlaygroundProps> = ({ acces
           <CardHeader>
             <CardTitle>
               Decoded{" "}
-              <span className="text-sm font-normal text-gray-500">
+              <span className="text-sm font-normal text-muted-foreground">
                 {decoded === text ? "round-trip matches the source" : "differs from the source"}
               </span>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="whitespace-pre-wrap break-words font-mono text-sm text-gray-700">{decoded}</p>
+            <p className="whitespace-pre-wrap break-words font-mono text-sm text-foreground">{decoded}</p>
           </CardContent>
         </Card>
       )}

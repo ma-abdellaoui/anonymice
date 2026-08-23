@@ -78,6 +78,7 @@ import SidebarAccountMenu from "./SidebarAccountMenu/SidebarAccountMenu";
 import SidebarUsageCard from "./SidebarUsageCard";
 import { MIGRATED_PAGES, migratedHref, legacyPageHref } from "@/utils/migratedPages";
 import { PRODUCT_WORDMARK_SRC } from "@/lib/brand";
+import { NavModeToggle, SIMPLE_PAGES, useNavMode } from "@/components/NavMode";
 
 const ICON = { strokeWidth: 1.75 } as const;
 
@@ -221,6 +222,13 @@ const menuGroups: MenuGroup[] = [
         ),
       },
       { key: "logs", page: "logs", label: "Logs", icon: <Activity {...ICON} /> },
+      {
+        key: "pii-activity",
+        page: "pii-activity",
+        label: "PII Activity",
+        icon: <VenetianMask {...ICON} />,
+        roles: all_admin_roles,
+      },
       {
         key: "guardrails-monitor",
         page: "guardrails-monitor",
@@ -433,6 +441,7 @@ const Sidebar_: React.FC<SidebarProps> = ({
   allowVectorStoresForTeamAdmins,
 }) => {
   const { userId, accessToken, userRole, isViewOnly } = useAuthorized();
+  const { mode, setMode } = useNavMode();
   const isOrgAdmin = useIsOrgAdmin();
   const { data: teams } = useTeams();
   const { logoUrl, logoUrlDark } = useTheme();
@@ -504,9 +513,21 @@ const Sidebar_: React.FC<SidebarProps> = ({
       });
   };
 
+  // The page you are on stays reachable even when simple mode would hide it,
+  // so a deep link never lands you somewhere the sidebar cannot show.
+  const inSimpleNav = (item: MenuItem) => SIMPLE_PAGES.has(item.page) || item.key === selectedKey;
+
+  const narrowToSimple = (items: MenuItem[]): MenuItem[] =>
+    items
+      .map((item) => (item.children ? { ...item, children: item.children.filter(inSimpleNav) } : item))
+      .filter((item) => (item.children ? item.children.length > 0 : inSimpleNav(item)));
+
   const visibleGroups = menuGroups
     .filter((group) => !group.roles || group.roles.includes(userRole))
-    .map((group) => ({ groupLabel: group.groupLabel, items: filterItemsByRole(group.items) }))
+    .map((group) => {
+      const byRole = filterItemsByRole(group.items);
+      return { groupLabel: group.groupLabel, items: mode === "simple" ? narrowToSimple(byRole) : byRole };
+    })
     .filter((group) => group.items.length > 0);
 
   const toggleGroup = (key: string) => {
@@ -649,6 +670,7 @@ const Sidebar_: React.FC<SidebarProps> = ({
 
       <ScrollArea className="min-h-0 flex-1">
         <nav className="flex flex-col gap-0.5 px-3 pb-3">
+          <NavModeToggle mode={mode} onChange={setMode} />
           {visibleGroups.map((group, gi) => (
             <SidebarGroup key={group.groupLabel}>
               {gi > 0 && <SidebarSeparator className="hidden group-data-[collapsed=true]/sidebar:block" />}

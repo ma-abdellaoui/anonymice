@@ -2,8 +2,17 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from litellm.pii.config import CodecId
 from litellm.pii.vault.scope import VaultScopeType
 from litellm.pii.vault.search import MatchMode
+
+
+class PiiPermissionsResponse(BaseModel):
+    """What the calling key may do with the vault. Never the values themselves."""
+
+    can_decode: bool
+    can_decode_any: bool
+    can_search: bool
 
 
 class PiiSpanModel(BaseModel):
@@ -45,12 +54,34 @@ class PiiEncodeRequest(BaseModel):
         default=None,
         description="Opaque subject reference for erasure and export. Never an email address or a name.",
     )
+    codec: CodecId | None = Field(
+        default=None,
+        description="Token shape to mint. Defaults to the handle form; 'placeholder' mints the ordinal form the LLM path uses.",
+    )
+
+
+class PiiPlacementModel(BaseModel):
+    """Where a token went, in coordinates of the text the caller sent.
+
+    Offsets index the caller's own input, so this discloses nothing they did not
+    already have, and it saves them a second detect call to find out what moved.
+    """
+
+    text_index: int
+    start: int
+    end: int
+    entity_type: str
+    detector: str
+    score: float
+    token: str
 
 
 class PiiEncodeResponse(BaseModel):
     texts: tuple[str, ...]
     session_id: str
     tokens: tuple[PiiIssuedTokenModel, ...]
+    placements: tuple[PiiPlacementModel, ...] = ()
+    ner_stage_ran: bool = False
 
 
 class PiiDecodeRequest(BaseModel):

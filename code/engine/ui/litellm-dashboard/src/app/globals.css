@@ -280,3 +280,82 @@
 [data-slot="dialog-content"][data-nested-dialog-open] {
   visibility: hidden;
 }
+
+/* ---------------------------------------------------------------------------
+   PII anonymization flow visualizer.
+
+   Only the parts Tailwind cannot express: a width that animates to the exact
+   length of a monospaced string, and the two packet crossings. Everything else
+   about the visualizer is utility classes.
+   --------------------------------------------------------------------------- */
+
+.anm-morph {
+  display: inline-flex;
+  align-items: baseline;
+  vertical-align: baseline;
+}
+
+.anm-morph > span {
+  display: inline-block;
+  white-space: pre;
+  overflow: hidden;
+  max-width: var(--anm-w);
+  opacity: 1;
+  transition:
+    max-width 520ms cubic-bezier(0.65, 0, 0.35, 1),
+    opacity 260ms ease,
+    filter 260ms ease;
+}
+
+.anm-morph[data-show="token"] > .anm-morph-value,
+.anm-morph[data-show="value"] > .anm-morph-token {
+  max-width: 0;
+  opacity: 0;
+  filter: blur(3px);
+}
+
+@keyframes anm-cross {
+  0% {
+    transform: translate(0, -50%) scale(0.94);
+    opacity: 0;
+  }
+  14% {
+    opacity: 1;
+  }
+  86% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--anm-travel), -50%) scale(1);
+    opacity: 0;
+  }
+}
+
+.anm-packet {
+  animation: anm-cross 1750ms cubic-bezier(0.5, 0, 0.5, 1) both;
+}
+
+@keyframes anm-boundary-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.anm-boundary-live {
+  animation: anm-boundary-pulse 1200ms ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anm-morph > span {
+    transition-duration: 1ms;
+  }
+  .anm-packet,
+  .anm-boundary-live {
+    animation-duration: 1ms;
+    animation-iteration-count: 1;
+  }
+}

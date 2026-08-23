@@ -1,3 +1,4 @@
+import time
 from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal, Optional, assert_never
@@ -6,6 +7,23 @@ from litellm._logging import verbose_proxy_logger
 from litellm.caching.dual_cache import DualCache
 from litellm.exceptions import BlockedPiiEntityError, GuardrailRaisedException
 from litellm.integrations.custom_guardrail import CustomGuardrail, log_guardrail_information
+from litellm.pii.activity import (
+    Applied,
+    Blocked,
+    Failed,
+    PiiDirection,
+    PiiOutcome,
+    PiiSurface,
+    TextCapture,
+    Unscanned,
+    action_counts_of,
+    activity_log,
+    capture_enabled,
+    capture_of,
+    decode_tally,
+    entity_counts_of,
+    new_event,
+)
 from litellm.pii.codec.action_aware import ActionAwareCodec, SpanAction, blocked_entities
 from litellm.pii.config import (
     DEFAULT_LANGUAGE,
@@ -45,6 +63,10 @@ if TYPE_CHECKING:
 TOKEN_BUCKET_KEY: Final = "pii_tokens"
 SESSION_ID_KEY: Final = "litellm_session_id"
 API_KEY_METADATA_KEY: Final = "user_api_key"
+MODEL_KEY: Final = "model"
+KEY_ALIAS_METADATA_KEY: Final = "user_api_key_alias"
+USER_ID_METADATA_KEY: Final = "user_api_key_user_id"
+CALL_ID_KEY: Final = "litellm_call_id"
 SUPPORTED_EVENT_HOOKS: Final = (
     GuardrailEventHooks.pre_call,
     GuardrailEventHooks.during_call,
@@ -86,6 +108,16 @@ def _with_arguments(tool_call: object, arguments: str) -> object:
         return tool_call
     rewritten: Final = {**function, "arguments": arguments}  # mutable-ok: plain tool-call dict
     return {**tool_call, "function": rewritten}  # mutable-ok: plain tool-call dict
+
+
+def _text_field(source: Mapping[str, object], key: str) -> str | None:
+    value: Final = source.get(key)
+    return value if isinstance(value, str) else None
+
+
+def _metadata_of(request_data: Mapping[str, object]) -> Mapping[str, object]:
+    metadata: Final = request_data.get("metadata")
+    return metadata if isinstance(metadata, Mapping) else MappingProxyType({})
 
 
 def _to_span_action(action: PiiAction | str) -> SpanAction:
@@ -236,6 +268,41 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
         }
         return updated
 
+    def _record(
+        self,
+        request_data: dict,  # mutable-ok: CustomGuardrail.apply_guardrail declares request_data as a plain dict
+        direction: PiiDirection,
+        outcome: PiiOutcome,
+        started: float,
+        entity_counts: Mapping[str, int] = MappingProxyType({}),
+        action_counts: Mapping[str, int] = MappingProxyType({}),
+        token_count: int = 0,
+        resolved_count: int = 0,
+        ner_stage_ran: bool = False,
+        capture: TextCapture | None = None,
+    ) -> None:
+        metadata: Final = _metadata_of(request_data)
+        activity_log().record(
+            new_event(
+                surface=PiiSurface.GUARDRAIL,
+                direction=direction,
+                outcome=outcome,
+                duration_ms=(time.monotonic() - started) * 1000,
+                entity_counts=entity_counts,
+                action_counts=action_counts,
+                token_count=token_count,
+                resolved_count=resolved_count,
+                ner_stage_ran=ner_stage_ran,
+                request_id=_text_field(request_data, CALL_ID_KEY),
+                session_id=_text_field(request_data, SESSION_ID_KEY),
+                key_alias=_text_field(metadata, KEY_ALIAS_METADATA_KEY),
+                user_id=_text_field(metadata, USER_ID_METADATA_KEY),
+                model=_text_field(request_data, MODEL_KEY),
+                guardrail_name=self.guardrail_name,
+                capture=capture,
+            )
+        )
+
     async def _decode(
         self,
         service: PiiService,
@@ -243,11 +310,26 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
         texts: Sequence[str],
         tool_calls: Sequence[object],
         scope: TokenScope,
+        request_data: dict,  # mutable-ok: CustomGuardrail.apply_guardrail declares request_data as a plain dict
     ) -> GenericGuardrailAPIInputs:
+        started: Final = time.monotonic()
         combined: Final = (*texts, *(_arguments_of(call) for call in tool_calls))
         decoded: Final = await service.decode(texts=combined, scope=scope)
         if not isinstance(decoded, tuple):
+            self._record(request_data, PiiDirection.DECODE, Failed(reason=_public_message(decoded)), started)
             self._raise_public(decoded)
+
+        tally: Final = decode_tally(self.codec.grammar, combined, decoded)
+        self._record(
+            request_data,
+            PiiDirection.DECODE,
+            Applied(),
+            started,
+            entity_counts=tally.entity_counts,
+            token_count=tally.token_count,
+            resolved_count=tally.resolved_count,
+            capture=(TextCapture(before=combined, after=decoded, placements=()) if capture_enabled() else None),
+        )
         return self._rebuild(inputs, tool_calls, decoded, len(texts), with_holdback=True)
 
     async def _encode(
@@ -257,10 +339,12 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
         texts: Sequence[str],
         tool_calls: Sequence[object],
         scope: TokenScope,
+        request_data: dict,  # mutable-ok: CustomGuardrail.apply_guardrail declares request_data as a plain dict
     ) -> GenericGuardrailAPIInputs:
         # One shared token space across messages and tool-call arguments, so the same
         # person named in both gets one token. `<` and `>` need no JSON escaping, so
         # encoding inside an arguments string leaves it valid JSON.
+        started: Final = time.monotonic()
         combined: Final = (*texts, *(_arguments_of(call) for call in tool_calls))
         encoded: Final = await service.encode(
             texts=combined,
@@ -269,11 +353,23 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
             is_reversible=self.codec.is_reversible,
         )
         if not isinstance(encoded, EncodedBatch):
+            self._record(request_data, PiiDirection.ENCODE, Failed(reason=_public_message(encoded)), started)
             self._raise_public(encoded)
 
         blocked: Final = blocked_entities(
             tuple(span for spans in encoded.spans_by_text for span in spans),
             self.actions,
+        )
+        self._record(
+            request_data,
+            PiiDirection.ENCODE,
+            Blocked(entity_type=blocked[0]) if blocked else Applied(),
+            started,
+            entity_counts=entity_counts_of(encoded.spans_by_text),
+            action_counts=action_counts_of(encoded.spans_by_text, self.codec.action_for),
+            token_count=len(encoded.tokens),
+            ner_stage_ran=encoded.ner_stage_ran,
+            capture=capture_of(combined, encoded.texts, encoded.placements, self.codec.action_for),
         )
         if blocked:
             raise BlockedPiiEntityError(entity_type=blocked[0], guardrail_name=self.guardrail_name)
@@ -293,6 +389,8 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
         if not texts and not tool_calls:
             return inputs
 
+        started: Final = time.monotonic()
+        direction: Final = PiiDirection.DECODE if input_type == "response" else PiiDirection.ENCODE
         service: Final = self._service(request_data)
         if service is None:
             # Forwarding unscanned is the one outcome a PII guardrail must never
@@ -300,6 +398,7 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
             # it exists to withhold.
             reason: Final = self.unmet_requirement or "no PII detector is configured"
             if self.fail_closed:
+                self._record(request_data, direction, Failed(reason=reason), started)
                 raise GuardrailRaisedException(
                     guardrail_name=self.guardrail_name,
                     message=f"PII anonymization is not available: {reason}",
@@ -311,12 +410,13 @@ class PiiAnonymizerGuardrail(CustomGuardrail):
                 self.guardrail_name,
                 reason,
             )
+            self._record(request_data, direction, Unscanned(reason=reason), started)
             return inputs
 
         scope: Final = self._scope(request_data)
         if input_type == "response":
-            return await self._decode(service, inputs, texts, tool_calls, scope)
-        return await self._encode(service, inputs, texts, tool_calls, scope)
+            return await self._decode(service, inputs, texts, tool_calls, scope, request_data)
+        return await self._encode(service, inputs, texts, tool_calls, scope, request_data)
 
 
 def guardrail_settings(

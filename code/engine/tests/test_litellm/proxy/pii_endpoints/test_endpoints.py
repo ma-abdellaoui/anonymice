@@ -849,3 +849,208 @@ class TestSessionBrowsing:
         client.post("/pii/encode", json={"texts": ["hello Ada"], "session_id": "s1"})
         client.delete("/pii/session/s1")
         assert client.get("/pii/session/s1").json()["tokens"] == []
+
+
+@pytest.fixture
+def recorded(monkeypatch):
+    from litellm.pii.activity import PiiActivityLog
+
+    fresh = PiiActivityLog(capacity=50)
+    monkeypatch.setattr("litellm.pii.activity._LOG", fresh)
+    return fresh
+
+
+class TestCodecSelection:
+    def test_defaults_to_the_handle_form(self, client, install_service, as_key):
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"]}).json()
+        assert encoded["texts"][0].startswith("hello <PERSON:")
+
+    def test_placeholder_mints_the_ordinal_form_the_llm_path_uses(self, client, install_service, as_key):
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"], "codec": "placeholder"}).json()
+        assert encoded["texts"] == ["hello <PERSON_1>"]
+
+    def test_a_placeholder_token_still_decodes(self, client, install_service, as_key):
+        """The grammar recognises both forms, so decode needs no matching option."""
+        install_service(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"], "codec": "placeholder"}).json()
+        decoded = client.post(
+            "/pii/decode", json={"texts": encoded["texts"], "session_id": encoded["session_id"]}
+        ).json()
+        assert decoded["texts"] == ["hello Ada"]
+
+    def test_rejects_a_codec_that_does_not_exist(self, client, install_service, as_key):
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        response = client.post("/pii/encode", json={"texts": ["hello Ada"], "codec": "rot13"})
+        assert response.status_code == 422
+
+
+class TestEndpointActivityRecording:
+    def test_a_detect_is_recorded(self, client, install_service, as_key, recorded):
+        from litellm.pii.activity import PiiDirection, PiiSurface
+
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        client.post("/pii/detect", json={"texts": ["hello Ada"]})
+        event = recorded.recent(limit=1)[0]
+        assert (event.surface, event.direction) == (PiiSurface.ENDPOINT, PiiDirection.DETECT)
+        assert dict(event.entity_counts) == {"PERSON": 1}
+
+    def test_an_encode_records_its_session_so_the_two_halves_can_be_joined(
+        self, client, install_service, as_key, recorded
+    ):
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"]}).json()
+        assert recorded.recent(limit=1)[0].session_id == encoded["session_id"]
+
+    def test_a_decode_records_how_much_it_resolved(self, client, install_service, as_key, recorded):
+        from litellm.pii.activity import PiiDirection
+
+        install_service(SubstringDetector("Ada"))
+        as_key(DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"], "codec": "placeholder"}).json()
+        client.post(
+            "/pii/decode",
+            json={"texts": ["<PERSON_1> and <PERSON_9>"], "session_id": encoded["session_id"]},
+        )
+        event = recorded.recent(limit=1, direction=PiiDirection.DECODE)[0]
+        assert (event.token_count, event.resolved_count) == (2, 1)
+
+    def test_a_detector_outage_is_recorded_as_a_failure(self, client, install_service, as_key, recorded):
+        from litellm.pii.activity import Failed
+
+        install_service(SubstringDetector("Ada", error=DetectorUnavailable(detector=DetectorKind.RULES, reason="down")))
+        as_key(NO_DECODE_KEY)
+        client.post("/pii/detect", json={"texts": ["hello Ada"]})
+        outcome = recorded.recent(limit=1)[0].outcome
+        assert isinstance(outcome, Failed) and "down" in outcome.reason
+
+    def test_attributes_the_event_to_the_calling_key(self, client, install_service, as_key, recorded):
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        client.post("/pii/encode", json={"texts": ["hello Ada"]})
+        assert recorded.recent(limit=1)[0].user_id == "test-user"
+
+
+class TestEncodePlacements:
+    def test_reports_where_each_token_went(self, client, install_service, as_key):
+        install_service(SubstringDetector("Ada"), codec=None)
+        as_key(NO_DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"], "codec": "placeholder"}).json()
+        assert encoded["placements"] == [
+            {
+                "text_index": 0,
+                "start": 6,
+                "end": 9,
+                "entity_type": "PERSON",
+                "detector": "rules",
+                "score": 0.95,
+                "token": "<PERSON_1>",
+            }
+        ]
+
+    def test_offsets_index_the_text_the_caller_sent(self, client, install_service, as_key):
+        """A caller must be able to slice its own input with these, not the encoded output."""
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        source = "hello Ada"
+        placement = client.post("/pii/encode", json={"texts": [source]}).json()["placements"][0]
+        assert source[placement["start"] : placement["end"]] == "Ada"
+
+    def test_a_repeated_value_reports_both_positions_under_one_token(self, client, install_service, as_key):
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["Ada", "Ada again"], "codec": "placeholder"}).json()
+        placements = encoded["placements"]
+        assert [p["text_index"] for p in placements] == [0, 1]
+        assert {p["token"] for p in placements} == {"<PERSON_1>"}
+
+    def test_reports_whether_the_model_stage_ran(self, client, install_service, as_key):
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        assert client.post("/pii/encode", json={"texts": ["hello Ada"]}).json()["ner_stage_ran"] is False
+
+    def test_clean_text_reports_no_placements(self, client, install_service, as_key):
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        assert client.post("/pii/encode", json={"texts": ["nothing here"]}).json()["placements"] == []
+
+
+class TestCodecAgainstTheVault:
+    """The vault keys a row by the token, so an ordinal token cannot live in it."""
+
+    def test_placeholder_is_refused_rather_than_silently_dropped(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        response = client.post("/pii/encode", json={"texts": ["hello Ada"], "codec": "placeholder"})
+        assert response.status_code == 422
+        assert "handle codec" in response.text
+
+    def test_the_refusal_explains_what_would_have_been_lost(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        detail = client.post("/pii/encode", json={"texts": ["hello Ada"], "codec": "placeholder"}).json()
+        assert "nothing can resolve" in detail["detail"]["error"]
+
+    def test_the_default_handle_codec_is_unaffected(self, client, install_vault, as_key):
+        install_vault(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        assert client.post("/pii/encode", json={"texts": ["hello Ada"]}).status_code == 200
+
+    def test_placeholder_is_still_allowed_without_a_vault(self, client, install_service, as_key):
+        """The cache store keys by scope and session, so ordinals are safe there."""
+        install_service(SubstringDetector("Ada"))
+        as_key(NO_DECODE_KEY)
+        encoded = client.post("/pii/encode", json={"texts": ["hello Ada"], "codec": "placeholder"}).json()
+        assert encoded["texts"] == ["hello <PERSON_1>"]
+
+
+class TestPermissions:
+    """A surface that offers decode has to be able to ask first, not learn from a 403."""
+
+    def test_a_key_without_the_grant_is_told_so(self, client, as_key):
+        as_key(NO_DECODE_KEY)
+        assert client.get("/pii/permissions").json()["can_decode"] is False
+
+    def test_a_key_with_the_grant_is_told_so(self, client, as_key):
+        as_key(DECODE_KEY)
+        assert client.get("/pii/permissions").json()["can_decode"] is True
+
+    def test_reports_break_glass_separately(self, client, as_key):
+        as_key(
+            UserAPIKeyAuth(
+                user_role=LitellmUserRoles.PROXY_ADMIN,
+                user_id="breaker",
+                api_key="sk-break",
+                permissions={"allow_pii_decode": True, "allow_pii_decode_any": True},
+            )
+        )
+        body = client.get("/pii/permissions").json()
+        assert body["can_decode"] is True and body["can_decode_any"] is True
+
+    def test_being_a_proxy_admin_does_not_imply_decode(self, client, as_key):
+        """The rule the console's own grant flow exists to respect."""
+        as_key(UserAPIKeyAuth(user_role=LitellmUserRoles.PROXY_ADMIN, user_id="admin", api_key="sk-admin"))
+        assert client.get("/pii/permissions").json()["can_decode"] is False
+
+    def test_reports_search_separately_from_decode(self, client, as_key):
+        as_key(
+            UserAPIKeyAuth(
+                user_role=LitellmUserRoles.PROXY_ADMIN,
+                user_id="searcher",
+                api_key="sk-search",
+                permissions={"allow_pii_search": True},
+            )
+        )
+        body = client.get("/pii/permissions").json()
+        assert body["can_search"] is True and body["can_decode"] is False
+
+    def test_never_returns_anything_from_the_vault(self, client, as_key):
+        as_key(DECODE_KEY)
+        assert set(client.get("/pii/permissions").json()) == {"can_decode", "can_decode_any", "can_search"}

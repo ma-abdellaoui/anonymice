@@ -8092,10 +8092,22 @@ export interface PiiDetectResponse {
   results: PiiDetectResult[];
 }
 
+export interface PiiPlacement {
+  text_index: number;
+  start: number;
+  end: number;
+  entity_type: string;
+  detector: string;
+  score: number;
+  token: string;
+}
+
 export interface PiiEncodeResponse {
   texts: string[];
   session_id: string;
   tokens: PiiIssuedToken[];
+  placements: PiiPlacement[];
+  ner_stage_ran: boolean;
 }
 
 export interface PiiDecodeResponse {
@@ -8112,11 +8124,14 @@ export const piiDetectCall = async (
     body: { texts, language },
   });
 
+export type PiiCodecId = "placeholder" | "handle" | "encrypted";
+
 export interface PiiEncodeOptions {
   sessionId?: string;
   language?: string;
   scopeType?: PiiScopeType;
   subjectId?: string;
+  codec?: PiiCodecId;
 }
 
 export const piiEncodeCall = async (
@@ -8132,6 +8147,7 @@ export const piiEncodeCall = async (
       ...(options.sessionId ? { session_id: options.sessionId } : {}),
       ...(options.scopeType ? { scope_type: options.scopeType } : {}),
       ...(options.subjectId ? { subject_id: options.subjectId } : {}),
+      ...(options.codec ? { codec: options.codec } : {}),
     },
   });
 
@@ -8257,3 +8273,181 @@ export const piiSearchCall = async (accessToken: string, args: PiiSearchArgs): P
       ...(args.scopeType ? { scope_type: args.scopeType } : {}),
     },
   });
+
+// ---------------------------------------------------------------------------
+// PII activity log (/pii/activity)
+// ---------------------------------------------------------------------------
+
+export type PiiSurface = "guardrail" | "endpoint" | "extension";
+export type PiiDirection = "detect" | "encode" | "decode";
+
+export interface PiiActivityOutcome {
+  kind: "applied" | "blocked" | "failed" | "unscanned";
+  entity_type: string | null;
+  reason: string | null;
+}
+
+export interface PiiTokenPlacement {
+  token: string;
+  entity_type: string;
+  detector: string;
+  score: number;
+  action: string;
+  text_index: number;
+  start: number;
+  end: number;
+  value: string;
+}
+
+export interface PiiTextCapture {
+  before: string[];
+  after: string[];
+  placements: PiiTokenPlacement[];
+}
+
+export interface PiiBrowserContext {
+  host: string;
+  trust_class: string;
+  action: string;
+}
+
+export interface PiiActivityEvent {
+  id: string;
+  at: string;
+  surface: PiiSurface;
+  direction: PiiDirection;
+  outcome: PiiActivityOutcome;
+  duration_ms: number;
+  entity_counts: Record<string, number>;
+  action_counts: Record<string, number>;
+  token_count: number;
+  resolved_count: number;
+  ner_stage_ran: boolean;
+  request_id: string | null;
+  session_id: string | null;
+  key_alias: string | null;
+  user_id: string | null;
+  model: string | null;
+  guardrail_name: string | null;
+  browser: PiiBrowserContext | null;
+  capture: PiiTextCapture | null;
+  capture_withheld: boolean;
+}
+
+export interface PiiActivityResponse {
+  events: PiiActivityEvent[];
+  capture_enabled: boolean;
+}
+
+export interface PiiActivityFilters {
+  limit?: number;
+  surface?: PiiSurface;
+  direction?: PiiDirection;
+}
+
+export const piiActivityCall = async (
+  accessToken: string,
+  filters: PiiActivityFilters = {},
+): Promise<PiiActivityResponse> =>
+  apiClient.get<PiiActivityResponse>("/pii/activity", {
+    accessToken,
+    query: {
+      ...(filters.limit ? { limit: filters.limit } : {}),
+      ...(filters.surface ? { surface: filters.surface } : {}),
+      ...(filters.direction ? { direction: filters.direction } : {}),
+    },
+  });
+
+/**
+ * Live tail over SSE, read through fetch rather than EventSource.
+ *
+ * EventSource cannot send an Authorization header, and the alternative is
+ * putting the key in a query string where it lands in access logs. The reader
+ * below costs a few lines and keeps the credential in a header.
+ */
+export const streamPiiActivity = async (
+  accessToken: string,
+  onEvent: (event: PiiActivityEvent) => void,
+  signal: AbortSignal,
+): Promise<void> => {
+  const url = `${getProxyBaseUrl()}/pii/activity/stream`;
+  const response = await fetch(url, {
+    headers: { [globalLitellmHeaderName]: `Bearer ${accessToken}` },
+    signal,
+  });
+  if (!response.ok || response.body === null) {
+    throw new Error(`activity stream ${response.status}`);
+  }
+
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffered = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    buffered += value;
+    const frames = buffered.split("\n\n");
+    buffered = frames.pop() ?? "";
+    for (const frame of frames) {
+      const payload = frame
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trim())
+        .join("");
+      if (payload) onEvent(JSON.parse(payload) as PiiActivityEvent);
+    }
+  }
+};
+
+// ---------------------------------------------------------------------------
+// ChatGPT subscription sign-in (/chatgpt/login)
+// ---------------------------------------------------------------------------
+
+export interface ChatgptLoginStatus {
+  signed_in: boolean;
+  account_id: string | null;
+  expires_at: number | null;
+}
+
+export interface ChatgptLoginStart {
+  verification_url: string;
+  user_code: string;
+  device_auth_id: string;
+  interval_seconds: number;
+}
+
+export interface ChatgptLoginPoll {
+  status: "pending" | "complete";
+  account_id: string | null;
+}
+
+export const chatgptLoginStatusCall = async (accessToken: string): Promise<ChatgptLoginStatus> =>
+  apiClient.get<ChatgptLoginStatus>("/chatgpt/login", { accessToken });
+
+export const chatgptLoginStartCall = async (accessToken: string): Promise<ChatgptLoginStart> =>
+  apiClient.post<ChatgptLoginStart>("/chatgpt/login/start", { accessToken });
+
+export const chatgptLoginPollCall = async (
+  accessToken: string,
+  deviceAuthId: string,
+  userCode: string,
+): Promise<ChatgptLoginPoll> =>
+  apiClient.post<ChatgptLoginPoll>("/chatgpt/login/poll", {
+    accessToken,
+    body: { device_auth_id: deviceAuthId, user_code: userCode },
+  });
+
+export const chatgptSignOutCall = async (accessToken: string): Promise<ChatgptLoginStatus> =>
+  apiClient.delete<ChatgptLoginStatus>("/chatgpt/login", { accessToken });
+
+// ---------------------------------------------------------------------------
+// PII vault permissions (/pii/permissions)
+// ---------------------------------------------------------------------------
+
+export interface PiiPermissions {
+  can_decode: boolean;
+  can_decode_any: boolean;
+  can_search: boolean;
+}
+
+export const piiPermissionsCall = async (accessToken: string): Promise<PiiPermissions> =>
+  apiClient.get<PiiPermissions>("/pii/permissions", { accessToken });

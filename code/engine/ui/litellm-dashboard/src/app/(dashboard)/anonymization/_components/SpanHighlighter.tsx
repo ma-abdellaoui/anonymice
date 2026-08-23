@@ -4,7 +4,7 @@ import type { PiiSpan } from "@/components/networking";
 
 const DETECTOR_STYLES: Record<string, string> = {
   rules: "bg-blue-100 text-blue-900 ring-1 ring-blue-300",
-  ner: "bg-amber-100 text-amber-900 ring-1 ring-amber-300",
+  ner: "bg-amber-100 dark:bg-amber-950/50 text-amber-900 dark:text-amber-300 ring-1 ring-amber-300 dark:ring-amber-700",
 };
 
 interface SpanHighlighterProps {
@@ -18,7 +18,7 @@ interface SpanHighlighterProps {
  */
 const SpanHighlighter: React.FC<SpanHighlighterProps> = ({ text, spans }) => {
   if (spans.length === 0) {
-    return <p className="whitespace-pre-wrap break-words font-mono text-sm text-gray-700">{text}</p>;
+    return <p className="whitespace-pre-wrap break-words font-mono text-sm text-foreground">{text}</p>;
   }
 
   const ordered = [...spans].sort((a, b) => a.start - b.start);
@@ -32,7 +32,7 @@ const SpanHighlighter: React.FC<SpanHighlighterProps> = ({ text, spans }) => {
     pieces.push(
       <mark
         key={`span-${index}`}
-        className={`rounded px-1 ${DETECTOR_STYLES[span.detector] ?? "bg-gray-100 text-gray-900"}`}
+        className={`rounded px-1 ${DETECTOR_STYLES[span.detector] ?? "bg-muted text-foreground"}`}
         title={`${span.entity_type} · ${span.detector} · ${span.score.toFixed(2)}`}
       >
         {text.slice(span.start, span.end)}
@@ -45,7 +45,7 @@ const SpanHighlighter: React.FC<SpanHighlighterProps> = ({ text, spans }) => {
     pieces.push(<span key="plain-tail">{text.slice(cursor)}</span>);
   }
 
-  return <p className="whitespace-pre-wrap break-words font-mono text-sm text-gray-700">{pieces}</p>;
+  return <p className="whitespace-pre-wrap break-words font-mono text-sm text-foreground">{pieces}</p>;
 };
 
 export default SpanHighlighter;

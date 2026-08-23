@@ -49,6 +49,15 @@ export interface Policy extends PolicyLists {
   reveal: 'off' | 'dom';
   /** Loud per-decision logging in the page console (SPEC §10.8). Never on by default. */
   debug: boolean;
+  /**
+   * Where to report what this extension did, so the browser half and the proxy
+   * half appear in one log (`POST /pii/activity` on the engine). Empty disables
+   * the report entirely, which is how it ships: sending anything anywhere is an
+   * administrator's decision, not a default.
+   */
+  activityEndpoint: string;
+  /** The engine credential the report is made with. Separate from `detectToken`: different service, different origin. */
+  activityToken: string;
 }
 
 export const DEFAULT_POLICY: Policy = {
@@ -67,6 +76,8 @@ export const DEFAULT_POLICY: Policy = {
   egress: 'off',
   reveal: 'off',
   debug: false,
+  activityEndpoint: '',
+  activityToken: '',
 };
 
 export interface PolicySources {

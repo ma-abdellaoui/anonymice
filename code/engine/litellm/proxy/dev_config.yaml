@@ -33,7 +33,21 @@ model_list:
       model: anthropic/claude-sonnet-5
       api_key: os.environ/ANTHROPIC_API_KEY
 
+  # ---------- OpenRouter ----------
+  # `openrouter/free` is OpenRouter's own auto-router across whatever is free
+  # right now, so this one entry keeps working as individual free models come
+  # and go. It is here to give /v1/models something that always answers.
+  - model_name: openrouter-free
+    litellm_params:
+      model: openrouter/openrouter/free
+      api_key: os.environ/OPENROUTER_API_KEY
+
   # ---------- ChatGPT subscription (device-code OAuth, no API key) ----------
+  # Sign in from the Admin UI: Models + Endpoints, "Sign in with ChatGPT".
+  # The codex backend refuses a non-streaming request outright ("Stream must be
+  # set to true"), so the transformation always streams on the wire and the
+  # chat bridge reassembles a whole response for callers that did not ask for
+  # one. Both streaming and non-streaming callers work.
   - model_name: chatgpt-5-4
     litellm_params:
       model: chatgpt/gpt-5.4

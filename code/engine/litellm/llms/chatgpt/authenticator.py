@@ -196,48 +196,71 @@ class Authenticator:
             "interval": str(interval or "5"),
         }
 
-    def _poll_for_authorization_code(self, device_code: dict[str, str]) -> dict[str, str]:
+    AUTHORIZED_KEYS: Final = ("authorization_code", "code_challenge", "code_verifier")
+
+    def begin_device_login(self) -> dict[str, str]:
+        """Ask for a code and return immediately, so a caller can render it and poll."""
+        device_code: Final = self._request_device_code()
+        self._record_device_code_request()
+        return device_code
+
+    def poll_device_login(self, device_auth_id: str, user_code: str) -> dict[str, str] | None:
+        """One attempt. ``None`` means the person has not finished approving yet.
+
+        Split out of the blocking loop so a browser can own the waiting. Both
+        callers share this, so the CLI and the Admin UI cannot come to different
+        conclusions about what "pending" looks like.
+        """
         client: Final = _get_httpx_client()
+        try:
+            resp: Final = client.post(
+                CHATGPT_DEVICE_TOKEN_URL,
+                json={"device_auth_id": device_auth_id, "user_code": user_code},
+            )
+            if resp.status_code == 200:
+                data: Final = resp.json()
+                return data if all(key in data for key in self.AUTHORIZED_KEYS) else None
+            if resp.status_code in (403, 404):
+                return None
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            status_code: Final = exc.response.status_code if exc.response else 400
+            if status_code in (403, 404):
+                return None
+            raise GetAccessTokenError(message=f"Polling failed: {exc}", status_code=status_code)
+        except Exception as exc:
+            raise GetAccessTokenError(message=f"Polling failed: {exc}", status_code=400)
+        return None
+
+    def complete_device_login(self, code_data: dict[str, str]) -> None:
+        """Exchange an approved code and persist the session."""
+        tokens: Final = self._exchange_code_for_tokens(code_data)
+        self._write_auth_file(self._build_auth_record(tokens))
+
+    def has_session(self) -> bool:
+        """Whether a token is on disk, without refreshing or logging in to find out."""
+        auth_data: Final = self._read_auth_file()
+        return bool(auth_data and auth_data.get("access_token"))
+
+    def session_expires_at(self) -> float | None:
+        auth_data: Final = self._read_auth_file()
+        expires_at: Final = auth_data.get("expires_at") if auth_data else None
+        return float(expires_at) if isinstance(expires_at, (int, float)) else None
+
+    def sign_out(self) -> None:
+        """Forget the session. The file is the whole of it, so removing it is the whole job."""
+        try:
+            os.remove(self.auth_file)
+        except OSError:
+            pass
+
+    def _poll_for_authorization_code(self, device_code: dict[str, str]) -> dict[str, str]:
         interval: Final = int(device_code.get("interval", "5"))
         start_time: Final = time.time()
         while time.time() - start_time < DEVICE_CODE_TIMEOUT_SECONDS:
-            try:
-                resp = client.post(
-                    CHATGPT_DEVICE_TOKEN_URL,
-                    json={
-                        "device_auth_id": device_code["device_auth_id"],
-                        "user_code": device_code["user_code"],
-                    },
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    if all(
-                        key in data
-                        for key in (
-                            "authorization_code",
-                            "code_challenge",
-                            "code_verifier",
-                        )
-                    ):
-                        return data
-                if resp.status_code in (403, 404):
-                    time.sleep(max(interval, DEVICE_CODE_POLL_SLEEP_SECONDS))
-                    continue
-                resp.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                status_code = exc.response.status_code if exc.response else None
-                if status_code in (403, 404):
-                    time.sleep(max(interval, DEVICE_CODE_POLL_SLEEP_SECONDS))
-                    continue
-                raise GetAccessTokenError(
-                    message=f"Polling failed: {exc}",
-                    status_code=exc.response.status_code,
-                )
-            except Exception as exc:
-                raise GetAccessTokenError(
-                    message=f"Polling failed: {exc}",
-                    status_code=400,
-                )
+            approved = self.poll_device_login(device_code["device_auth_id"], device_code["user_code"])
+            if approved is not None:
+                return approved
             time.sleep(max(interval, DEVICE_CODE_POLL_SLEEP_SECONDS))
 
         raise GetAccessTokenError(

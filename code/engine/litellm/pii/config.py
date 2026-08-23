@@ -150,6 +150,17 @@ def build_ner_stage(settings: PiiSettings) -> ChunkedDetector | None:
     )
 
 
+def mints_unique_tokens(codec_id: CodecId) -> bool:
+    """Whether two independent encodes can be relied on not to mint the same token.
+
+    The vault stores a token as the primary key of its row, so an ordinal token
+    is not merely ugly there: ``<IBAN_CODE_1>`` from one session would collide
+    with another session's, the insert would be skipped, and the caller would
+    hold a token nothing can resolve.
+    """
+    return codec_id != "placeholder"
+
+
 def build_detector(settings: PiiSettings) -> CascadingDetector | None:
     if unmet_requirement(settings) is not None:
         return None

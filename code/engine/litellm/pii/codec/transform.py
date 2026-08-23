@@ -12,10 +12,20 @@ MINT_ATTEMPT_LIMIT: Final = 64
 
 
 @dataclass(frozen=True, slots=True)
+class Placement:
+    """Which span in which text became which token."""
+
+    text_index: int
+    span: PiiSpan
+    token: str
+
+
+@dataclass(frozen=True, slots=True)
 class BatchDraft:
     texts: tuple[str, ...]
     tokens: tuple[IssuedToken, ...]
     mapping: Mapping[str, str]
+    placements: tuple[Placement, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,13 +33,6 @@ class EncodedDraft:
     text: str
     tokens: tuple[IssuedToken, ...]
     mapping: Mapping[str, str]
-
-
-@dataclass(frozen=True, slots=True)
-class _Placement:
-    text_index: int
-    span: PiiSpan
-    token: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +45,7 @@ class _Minted:
 class _Assignment:
     by_value: Mapping[tuple[str, str], str]
     ordinals: Mapping[str, int]
-    placements: tuple[_Placement, ...]
+    placements: tuple[Placement, ...]
     error: CodecError | None
 
 
@@ -82,7 +85,7 @@ def _assign(
     identity: Final = (span.entity_type, value)
     existing: Final = state.by_value.get(identity)
     if existing is not None:
-        return replace(state, placements=(*state.placements, _Placement(text_index, span, existing)))
+        return replace(state, placements=(*state.placements, Placement(text_index, span, existing)))
 
     ordinal: Final = state.ordinals.get(span.entity_type, 0) + 1
     minted: Final = _mint_unused(codec, span.entity_type, ordinal, value, avoid)
@@ -92,12 +95,12 @@ def _assign(
     return _Assignment(
         by_value=MappingProxyType({**state.by_value, identity: minted.token}),
         ordinals=MappingProxyType({**state.ordinals, span.entity_type: minted.ordinal}),
-        placements=(*state.placements, _Placement(text_index, span, minted.token)),
+        placements=(*state.placements, Placement(text_index, span, minted.token)),
         error=None,
     )
 
 
-def _splice(source: str, placements: Sequence[_Placement]) -> str:
+def _splice(source: str, placements: Sequence[Placement]) -> str:
     return reduce(
         lambda text, placement: text[: placement.span.start] + placement.token + text[placement.span.end :],
         sorted(placements, key=lambda placement: placement.span.start, reverse=True),
@@ -127,7 +130,7 @@ def encode_batch(
         for span in sorted(spans, key=lambda span: span.start)
     )
     if not located:
-        return BatchDraft(texts=tuple(texts), tokens=(), mapping=MappingProxyType({}))
+        return BatchDraft(texts=tuple(texts), tokens=(), mapping=MappingProxyType({}), placements=())
 
     avoid: Final = codec.grammar.canonical_tokens(texts)
     assigned: Final = reduce(
@@ -149,7 +152,7 @@ def encode_batch(
     mapping: Final = MappingProxyType(
         {p.token: p.span.text_from(texts[p.text_index]) for p in assigned.placements if reversible(p.span)}
     )
-    return BatchDraft(texts=encoded, tokens=tokens, mapping=mapping)
+    return BatchDraft(texts=encoded, tokens=tokens, mapping=mapping, placements=assigned.placements)
 
 
 def encode_text(text: str, spans: Sequence[PiiSpan], codec: PiiCodec) -> EncodedDraft | CodecError:

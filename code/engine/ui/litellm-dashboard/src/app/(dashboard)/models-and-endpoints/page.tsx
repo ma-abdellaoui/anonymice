@@ -10,6 +10,7 @@ import { all_admin_roles, internalUserRoles } from "@/utils/roles";
 import { canCreateModels } from "@/utils/modelPermissions";
 import BetaBadge from "@/components/BetaBadge";
 import CostOptimizationFeedbackBanner from "@/components/molecules/cost_optimization_feedback_banner";
+import ChatgptSignIn from "./components/ChatgptSignIn";
 import ModelInfoView from "@/components/model_info_view";
 import TeamInfoView from "@/components/team/TeamInfo";
 import { useModelDetailRouting } from "@/app/(dashboard)/models-and-endpoints/detailNavigation";
@@ -161,6 +162,8 @@ export default function ModelsAndEndpointsPage() {
         </div>
 
         <CostOptimizationFeedbackBanner />
+
+        {isAdmin && <ChatgptSignIn accessToken={accessToken} />}
 
         {modelId ? (
           <ModelInfoView

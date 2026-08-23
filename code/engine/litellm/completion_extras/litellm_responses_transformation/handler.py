@@ -3,11 +3,15 @@ Handler for transforming /chat/completions api requests to litellm.responses req
 """
 
 from collections.abc import Coroutine
-from typing import TYPE_CHECKING, Any, Final, Union
+from typing import TYPE_CHECKING, Any, Final, Union, cast
 
 from typing_extensions import TypedDict
 
-from litellm.types.llms.openai import ResponsesAPIResponse
+from litellm.responses.sse_output_recovery import (
+    record_output_item_chunk,
+    record_output_text_chunk,
+)
+from litellm.types.llms.openai import ResponsesAPIResponse, ResponsesAPIStreamEvents
 
 if TYPE_CHECKING:
     from litellm import CustomStreamWrapper, LiteLLMLoggingObj, ModelResponse
@@ -28,6 +32,56 @@ class ResponsesToCompletionBridgeHandlerInputKwargs(TypedDict):
 def _restore_routing_prefix(model: str, custom_llm_provider: str) -> str:
     """`responses()` runs `get_llm_provider()` itself, so hand back the prefixed model `completion()` started from."""
     return f"{custom_llm_provider}/{model}"
+
+
+def _event_as_dict(event: Any) -> dict[str, Any] | None:
+    """Normalize one streamed Responses event into a plain dict, or None."""
+    if isinstance(event, dict):
+        return event
+    dump: Final = getattr(event, "model_dump", None)
+    if dump is None:
+        return None
+    try:
+        payload: Final = dump()
+    except Exception:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _observe_output_event(
+    event: Any,
+    output_items: dict[int, dict[str, Any]],
+    text_only_items: dict[int, dict[str, Any]],
+) -> None:
+    """Record the output an event carries, so a drained stream is not lost.
+
+    Some providers (the ChatGPT codex backend among them) only accept a
+    streamed request and then send ``response.completed`` with an empty
+    ``output``: the text lived in the item events. Draining the stream for a
+    non-streaming caller would otherwise throw that text away.
+    """
+    payload: Final = _event_as_dict(event)
+    if payload is None:
+        return
+    event_type: Final = payload.get("type")
+    if event_type == ResponsesAPIStreamEvents.OUTPUT_ITEM_DONE:
+        record_output_item_chunk(parsed_chunk=payload, output_items=output_items)
+    elif event_type == ResponsesAPIStreamEvents.OUTPUT_TEXT_DONE:
+        record_output_text_chunk(
+            parsed_chunk=payload,
+            output_items=output_items,
+            text_only_items=text_only_items,
+        )
+
+
+def _merge_output_items(
+    output_items: dict[int, dict[str, Any]],
+    text_only_items: dict[int, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Order the recorded items by output index, real items winning a tie."""
+    merged: Final[dict[int, dict[str, Any]]] = {**text_only_items}
+    merged.update(output_items)  # mutable-ok: building one ordered view of two records
+    return [item for _, item in sorted(merged.items())]
 
 
 class ResponsesToCompletionBridgeHandler:
@@ -75,8 +129,10 @@ class ResponsesToCompletionBridgeHandler:
         return response
 
     def _collect_response_from_stream(self, stream_iter: Any) -> "ResponsesAPIResponse":
-        for _ in stream_iter:
-            pass
+        output_items: Final[dict[int, dict[str, Any]]] = {}
+        text_only_items: Final[dict[int, dict[str, Any]]] = {}
+        for event in stream_iter:
+            _observe_output_event(event, output_items, text_only_items)
 
         completed: Final = getattr(stream_iter, "completed_response", None)
         response_obj: Final = getattr(completed, "response", None) if completed else None
@@ -87,11 +143,27 @@ class ResponsesToCompletionBridgeHandler:
         response: Final = self._coerce_response_object(response_obj, hidden_params)
         if not isinstance(response, ResponsesAPIResponse):
             raise ValueError("Stream completed response is invalid")
+        self._restore_drained_output(response, output_items, text_only_items)
         return response
 
+    @staticmethod
+    def _restore_drained_output(
+        response: "ResponsesAPIResponse",
+        output_items: dict[int, dict[str, Any]],
+        text_only_items: dict[int, dict[str, Any]],
+    ) -> None:
+        """Put the streamed items back when the completed event carried none."""
+        if getattr(response, "output", None):
+            return
+        recovered: Final = _merge_output_items(output_items, text_only_items)
+        if recovered:
+            response.output = cast(Any, recovered)
+
     async def _collect_response_from_stream_async(self, stream_iter: Any) -> "ResponsesAPIResponse":
-        async for _ in stream_iter:
-            pass
+        output_items: Final[dict[int, dict[str, Any]]] = {}
+        text_only_items: Final[dict[int, dict[str, Any]]] = {}
+        async for event in stream_iter:
+            _observe_output_event(event, output_items, text_only_items)
 
         completed: Final = getattr(stream_iter, "completed_response", None)
         response_obj: Final = getattr(completed, "response", None) if completed else None
@@ -102,6 +174,7 @@ class ResponsesToCompletionBridgeHandler:
         response: Final = self._coerce_response_object(response_obj, hidden_params)
         if not isinstance(response, ResponsesAPIResponse):
             raise ValueError("Stream completed response is invalid")
+        self._restore_drained_output(response, output_items, text_only_items)
         return response
 
     def validate_input_kwargs(self, kwargs: dict) -> ResponsesToCompletionBridgeHandlerInputKwargs:

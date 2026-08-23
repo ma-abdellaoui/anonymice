@@ -63,6 +63,8 @@ class VaultService:
             tokens=drafted.draft.tokens,
             session_id=session_id,
             spans_by_text=drafted.spans_by_text,
+            placements=drafted.draft.placements,
+            ner_stage_ran=drafted.ner_stage_ran,
         )
 
     async def decode(self, texts: Sequence[str], scope: VaultScope) -> DecodedBatch | StoreError:

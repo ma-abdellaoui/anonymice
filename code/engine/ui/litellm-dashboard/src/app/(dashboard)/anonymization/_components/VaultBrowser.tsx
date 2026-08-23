@@ -36,10 +36,10 @@ const VaultBrowser: React.FC<VaultBrowserProps> = ({ accessToken }) => {
         <CardHeader>
           <CardTitle>Scope</CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
+        <CardContent className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
           <select
             aria-label="Scope"
-            className="rounded border border-gray-200 px-2 py-1.5 text-sm text-gray-700"
+            className="rounded border border-border px-2 py-1.5 text-sm text-foreground"
             value={scope}
             onChange={(event) => setScope(event.target.value as PiiScopeType)}
           >
@@ -51,7 +51,7 @@ const VaultBrowser: React.FC<VaultBrowserProps> = ({ accessToken }) => {
           </select>
           <p>
             Every action below is confined to this scope. A key can only reach a scope it belongs to, so choosing{" "}
-            <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs">team</code> without being on one is
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">team</code> without being on one is
             refused rather than silently widened.
           </p>
         </CardContent>
