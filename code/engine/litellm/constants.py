@@ -141,6 +141,9 @@ MCP_STDIO_ALLOWED_COMMANDS: Final[frozenset] = frozenset(
 MCP_TOKEN_EXCHANGE_CACHE_MAX_SIZE: Final = int(os.getenv("MCP_TOKEN_EXCHANGE_CACHE_MAX_SIZE", "500"))
 
 LITELLM_UI_ALLOW_HEADERS: Final = [
+    # Correlates a completion with the PII activity events it produced, which
+    # is how the anonymization console shows what actually crossed the boundary.
+    "x-litellm-call-id",
     "x-litellm-semantic-filter",
     "x-litellm-semantic-filter-tools",
     "x-litellm-adaptive-router-model",

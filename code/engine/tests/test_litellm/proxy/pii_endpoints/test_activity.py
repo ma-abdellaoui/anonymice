@@ -135,6 +135,19 @@ class TestReading:
         events = client.get("/pii/activity", params={"direction": "decode"}).json()["events"]
         assert [event["direction"] for event in events] == ["decode"]
 
+    def test_filters_by_request_id(self, client, as_key, empty_log):
+        as_key(ADMIN_KEY)
+        empty_log.record(an_event(request_id="call-1"))
+        empty_log.record(an_event(request_id="call-2"))
+        events = client.get("/pii/activity", params={"request_id": "call-1"}).json()["events"]
+        assert [event["request_id"] for event in events] == ["call-1"]
+
+    def test_an_unknown_request_id_returns_nothing_rather_than_everything(self, client, as_key, empty_log):
+        as_key(ADMIN_KEY)
+        empty_log.record(an_event(request_id="call-1"))
+        events = client.get("/pii/activity", params={"request_id": "call-9"}).json()["events"]
+        assert events == []
+
     def test_rejects_a_limit_beyond_the_cap(self, client, as_key):
         as_key(ADMIN_KEY)
         assert client.get("/pii/activity", params={"limit": 100_000}).status_code == 422

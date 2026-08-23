@@ -104,6 +104,31 @@ describe("createApiClient", () => {
     expect(init.headers).toEqual({ "Content-Type": "application/json" });
   });
 
+  it("hands back response headers alongside the body when asked for both", async () => {
+    const headed = {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ id: "chatcmpl-1" }),
+      headers: new Headers({ "x-litellm-call-id": "call-1" }),
+    } as unknown as Response;
+    const fetchImpl = vi.fn(async () => headed);
+    const client = createApiClient({ getBaseUrl: () => "", fetchImpl });
+
+    const { data, headers } = await client.requestWithHeaders("POST", "/v1/chat/completions", { accessToken: "sk" });
+
+    expect(data).toEqual({ id: "chatcmpl-1" });
+    expect(headers.get("x-litellm-call-id")).toBe("call-1");
+  });
+
+  it("throws on a non-2xx response when headers were asked for, same as any other call", async () => {
+    const fetchImpl = vi.fn(async () => errorResponse(429, { error: { message: "slow down" } }));
+    const onError = vi.fn();
+    const client = createApiClient({ getBaseUrl: () => "", onError, fetchImpl });
+
+    await expect(client.requestWithHeaders("POST", "/v1/chat/completions")).rejects.toThrow(ApiError);
+    expect(onError).toHaveBeenCalledWith("slow down");
+  });
+
   it("resolves the global fetch per call, so a swap after construction takes effect", async () => {
     const client = createApiClient({ getBaseUrl: () => "" });
 

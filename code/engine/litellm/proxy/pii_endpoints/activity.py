@@ -130,10 +130,21 @@ async def read_pii_activity(
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
     surface: PiiSurface | None = None,
     direction: PiiDirection | None = None,
+    request_id: Annotated[str | None, Query(max_length=200)] = None,
 ) -> PiiActivityResponse:
-    """The most recent events this worker recorded, newest first."""
+    """The most recent events this worker recorded, newest first.
+
+    ``request_id`` narrows to one completion, which is how a caller holding the
+    ``x-litellm-call-id`` of a request it just made reads back what the
+    guardrail did to that request and nothing else.
+    """
     with_capture: Final = may_read_capture(user_api_key_dict)
-    events: Final = activity_log().recent(limit=limit, surface=surface, direction=direction)
+    events: Final = activity_log().recent(
+        limit=limit,
+        surface=surface,
+        direction=direction,
+        request_id=request_id,
+    )
     return PiiActivityResponse(
         events=tuple(to_model(event, with_capture) for event in events),
         capture_enabled=capture_enabled(),

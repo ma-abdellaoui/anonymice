@@ -312,11 +312,14 @@ class PiiActivityLog:
         limit: int,
         surface: PiiSurface | None = None,
         direction: PiiDirection | None = None,
+        request_id: str | None = None,
     ) -> tuple[PiiActivityEvent, ...]:
         matching: Final = (
             event
             for event in reversed(self._events)
-            if (surface is None or event.surface is surface) and (direction is None or event.direction is direction)
+            if (surface is None or event.surface is surface)
+            and (direction is None or event.direction is direction)
+            and (request_id is None or event.request_id == request_id)
         )
         return tuple(islice(matching, limit))
 
